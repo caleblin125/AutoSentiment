@@ -2760,9 +2760,55 @@ button[type="submit"] {
 @media (max-width: 720px) {
   .app-body { padding: 12px 12px 32px; }
   .search-form { flex-direction: column; }
+  .freshness-select, .depth-select, .use-case-select { width: 100%; }
   .timeline-event { grid-template-columns: 48px minmax(0, 1fr); }
   .event-time { display: none; }
   .analysis-grid { grid-template-columns: 1fr; }
   .snippet-analysis { grid-template-columns: 1fr; }
   .source-table { display: block; overflow-x: auto; white-space: nowrap; }
+  .search-panel { flex-direction: column; align-items: stretch; }
+}
+
+@media (max-width: 480px) {
+  /* Header: tighten padding, hide subtitle to prevent overflow */
+  .app-header { padding: 0 12px; gap: 8px; height: 48px; }
+  .app-lede { display: none; }
+  .app-logo h1 { font-size: 16px; }
+
+  /* Report header: stack title and export buttons */
+  .report-header { flex-direction: column; align-items: flex-start; gap: 8px; }
+  .export-actions { flex-wrap: wrap; }
+
+  /* Exec summary: stack score block and body vertically */
+  .exec-summary { flex-direction: column; gap: 10px; }
+  .exec-summary-score {
+    min-width: unset;
+    width: 100%;
+    flex-direction: row;
+    justify-content: center;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+  }
+
+  /* Timing grid: allow narrower cards so they fit 2 per row at 360px */
+  .timing-grid { grid-template-columns: repeat(auto-fit, minmax(90px, 1fr)); }
+
+  /* Evidence modal: reduce padding so content breathes on small screens */
+  .modal-backdrop { padding: 10px; }
+  .evidence-modal { padding: 14px 16px 18px; }
+  .modal-source-header { flex-wrap: wrap; gap: 6px; }
+
+  /* Timeline range: 2-column layout (label+value) instead of 4-column */
+  .timeline-range { grid-template-columns: auto 1fr; gap: 4px 8px; }
+
+  /* Run status: stack left info and right action buttons vertically */
+  .run-status { flex-direction: column; align-items: flex-start; gap: 10px; }
+
+  /* Graph controls: allow wrapping */
+  .graph-controls { flex-wrap: wrap; }
+
+  /* Source group header: allow count to wrap below label */
+  .source-group-header { flex-wrap: wrap; }
+  .source-group-bar { min-width: 100%; order: 10; }
 }
