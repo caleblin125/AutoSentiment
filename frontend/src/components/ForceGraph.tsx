@@ -17,10 +17,11 @@ const W = 900
 const H = 480
 
 const REPULSION = 9500
-const SPRING_K = 0.032
-const SPRING_REST_BASE = 140
-const DAMPING = 0.85
-const CENTER_K = 0.003
+const SPRING_K = 0.028
+const SPRING_REST_BASE = 130
+const DAMPING = 0.82
+const CENTER_K = 0.0008  // weakened — let graph spread naturally
+const BOUNDARY_FORCE = 0.15  // soft push-back near edges, not hard clamp
 
 interface Vec2 { x: number; y: number }
 interface NodeSim { id: string; pos: Vec2; vel: Vec2; fixed: boolean }
@@ -135,8 +136,14 @@ function useForce(nodes: GraphNode[], edges: GraphEdge[], storageKey: string) {
         if (!s.fixed) {
           s.vel.x = (s.vel.x + fx[i]) * DAMPING
           s.vel.y = (s.vel.y + fy[i]) * DAMPING
-          s.pos.x = Math.max(36, Math.min(W - 36, s.pos.x + s.vel.x))
-          s.pos.y = Math.max(24, Math.min(H - 24, s.pos.y + s.vel.y))
+          // Soft boundary: push back gently from edges instead of hard clamp.
+          const margin = 60
+          if (s.pos.x < margin) s.vel.x += BOUNDARY_FORCE * (margin - s.pos.x) / margin
+          if (s.pos.x > W - margin) s.vel.x -= BOUNDARY_FORCE * (s.pos.x - (W - margin)) / margin
+          if (s.pos.y < margin) s.vel.y += BOUNDARY_FORCE * (margin - s.pos.y) / margin
+          if (s.pos.y > H - margin) s.vel.y -= BOUNDARY_FORCE * (s.pos.y - (H - margin)) / margin
+          s.pos.x += s.vel.x
+          s.pos.y += s.vel.y
         }
         totalSpeed += Math.abs(s.vel.x) + Math.abs(s.vel.y)
         next.set(s.id, { x: s.pos.x, y: s.pos.y })

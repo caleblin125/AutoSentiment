@@ -587,14 +587,18 @@ async def test_run_completes_when_one_sentiment_call_fails(monkeypatch, session_
         ]),
     )
 
-    async def flaky_analyze(_self, snippet: str) -> SentimentResult:
+    async def batch_with_fallback(_self, snippets: list[str]) -> list[SentimentResult]:
         nonlocal call_count
         call_count += 1
-        if "boom" in snippet:
-            raise RuntimeError("Ollama timeout on this snippet")
-        return SentimentResult(label=SentimentLabel.POSITIVE, summary="ok")
+        # In batch mode a failing item becomes neutral rather than being skipped.
+        return [
+            SentimentResult(label=SentimentLabel.NEUTRAL, summary="fallback")
+            if "boom" in s
+            else SentimentResult(label=SentimentLabel.POSITIVE, summary="ok")
+            for s in snippets
+        ]
 
-    monkeypatch.setattr(orchestrator.SentimentQueue, "analyze", flaky_analyze)
+    monkeypatch.setattr(orchestrator.SentimentQueue, "analyze_batch", batch_with_fallback)
     monkeypatch.setattr(orchestrator, "synthesize_report", lambda *_a, **_kw: _async({"themes": [], "narrative": ""}))
 
     async with session_factory() as db:
@@ -615,10 +619,9 @@ async def test_run_completes_when_one_sentiment_call_fails(monkeypatch, session_
         chunks = (await db.execute(EvidenceChunk.__table__.select())).all()
 
     assert stored is not None
-    # Run must complete despite the failing item.
+    # Run must complete with all items stored (boom item stored as neutral, not skipped).
     assert stored.status == "completed"
-    # Two good items should have been stored (the boom item was skipped).
-    assert len(chunks) == 2
+    assert len(chunks) == 3
 
 
 async def _async(value):

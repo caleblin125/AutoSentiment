@@ -671,8 +671,8 @@ export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMo
         </div>
       )}
 
-      {/* Loading / stage indicator */}
-      {runId && !visibleReport && status !== 'error' && status !== 'cancelled' && (
+      {/* Loading / stage indicator — never hide report during expansion */}
+      {runId && !visibleReport && !expanding && status !== 'error' && status !== 'cancelled' && (
         <div className="panel">
           <LoadingStage events={events} status={status} />
         </div>
