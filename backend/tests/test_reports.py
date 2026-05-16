@@ -47,6 +47,31 @@ def test_pick_top_quotes_returns_expected_shape_and_limit() -> None:
     assert [q["evidence_id"] for q in quotes] == ["0", "1", "2"]
 
 
+def test_pick_top_quotes_confidence_field_and_ranking() -> None:
+    """Quotes should include confidence from confidence_map and rank higher-confidence first."""
+    chunks = [
+        EvidenceChunk(id="low",  run_id="r", url="https://example.com/a", source_type="reddit", snippet="s", label="positive", summary="low conf"),
+        EvidenceChunk(id="high", run_id="r", url="https://example.com/b", source_type="reddit", snippet="s", label="positive", summary="high conf"),
+    ]
+    confidence_map = {"low": 0.5, "high": 0.95}
+
+    quotes = pick_top_quotes(chunks, SentimentLabel.POSITIVE, confidence_map=confidence_map)
+
+    # Both quotes should carry the confidence field.
+    assert all("confidence" in q for q in quotes)
+    # Higher-confidence item should rank first (credibility equal).
+    assert quotes[0]["evidence_id"] == "high"
+    assert quotes[0]["confidence"] == 0.95
+    assert quotes[1]["confidence"] == 0.5
+
+
+def test_pick_top_quotes_default_confidence_when_map_absent() -> None:
+    """Without a confidence_map the confidence field should default to 0.8."""
+    chunk = EvidenceChunk(id="x", run_id="r", url="https://example.com/x", source_type="reddit", snippet="s", label="positive", summary="s")
+    quotes = pick_top_quotes([chunk], SentimentLabel.POSITIVE)
+    assert quotes[0]["confidence"] == 0.8
+
+
 def test_report_aspects_source_facts_and_graph_link_evidence() -> None:
     from app.reports.builder import build_idea_graph, compute_aspects, compute_source_facts
 

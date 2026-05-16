@@ -170,6 +170,46 @@ async def test_sentiment_queue_normalizes_label_and_missing_summary(monkeypatch)
 
 
 @pytest.mark.asyncio
+async def test_sentiment_queue_parses_confidence_field(monkeypatch) -> None:
+    """When the model returns a confidence value it must be clamped to [0, 1]."""
+    async def fake_with_confidence(*_args, **_kwargs):
+        return {"label": "positive", "summary": "great", "confidence": 0.87}
+
+    monkeypatch.setattr("app.agents.light_queue.ollama_generate", fake_with_confidence)
+
+    result = await SentimentQueue(Settings()).analyze("snippet")
+
+    assert result.label == SentimentLabel.POSITIVE
+    assert abs(result.confidence - 0.87) < 1e-6
+
+
+@pytest.mark.asyncio
+async def test_sentiment_queue_defaults_confidence_on_missing_field(monkeypatch) -> None:
+    """When the model omits the confidence field the default must be 0.8."""
+    async def fake_no_confidence(*_args, **_kwargs):
+        return {"label": "neutral", "summary": "mixed"}
+
+    monkeypatch.setattr("app.agents.light_queue.ollama_generate", fake_no_confidence)
+
+    result = await SentimentQueue(Settings()).analyze("snippet")
+
+    assert result.confidence == 0.8
+
+
+@pytest.mark.asyncio
+async def test_sentiment_queue_clamps_confidence_out_of_range(monkeypatch) -> None:
+    """Model hallucinations like confidence=2.5 must be clamped to 1.0."""
+    async def fake_bad_confidence(*_args, **_kwargs):
+        return {"label": "positive", "summary": "great", "confidence": 2.5}
+
+    monkeypatch.setattr("app.agents.light_queue.ollama_generate", fake_bad_confidence)
+
+    result = await SentimentQueue(Settings()).analyze("snippet")
+
+    assert result.confidence == 1.0
+
+
+@pytest.mark.asyncio
 async def test_nemoclaw_wrappers_parse_success_and_fallback(monkeypatch) -> None:
     async def fake_generate(prompt, **_kwargs):
         if "Generate 5 search queries" in prompt:
