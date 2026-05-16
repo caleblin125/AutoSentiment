@@ -185,3 +185,39 @@ def test_compute_claims_groups_factual_claims_and_flags_verification() -> None:
     assert claim["evidence_ids"] == ["c1"]
     assert "news.example" in claim["supporting_domains"]
     assert fact_check["summary"].startswith("Extracted")
+
+
+def test_use_case_insights_and_chart_data_support_entertainment_mode() -> None:
+    from app.reports.builder import compute_aspects, compute_chart_data, compute_claims, compute_use_case_insights
+
+    chunks = [
+        EvidenceChunk(
+            id="e1",
+            run_id="r",
+            url="https://reddit.com/r/show/1",
+            source_type="reddit",
+            snippet="The story and casting are strong, but the trailer marketing was confusing.",
+            label="negative",
+            summary="confusing marketing",
+        ),
+        EvidenceChunk(
+            id="e2",
+            run_id="r",
+            url="https://trade.example/review",
+            source_type="news",
+            snippet="The film was released on March 5, 2026 and box office tracking increased.",
+            label="positive",
+            summary="tracking increased",
+        ),
+    ]
+
+    aspects = compute_aspects(chunks, "New Show")
+    fact_check = compute_claims(chunks)
+    insights = compute_use_case_insights(chunks, "entertainment_product", aspects, fact_check)
+    chart_data = compute_chart_data(chunks, aspects, fact_check)
+
+    assert insights["use_case"] == "entertainment_product"
+    assert "audience_pulse" in insights["sections"]
+    assert chart_data["source_mix"]
+    assert chart_data["aspect_matrix"]
+    assert any(aspect["aspect"] in {"story", "casting", "marketing", "commercial potential"} for aspect in chart_data["aspect_matrix"])

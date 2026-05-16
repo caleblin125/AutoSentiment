@@ -373,6 +373,70 @@ function FactCheckSection({ factCheck }: { factCheck: NonNullable<Report['fact_c
   )
 }
 
+function UseCaseInsightsSection({ insights }: { insights: NonNullable<Report['use_case_insights']> }) {
+  const entries = Object.entries(insights.sections)
+  if (!entries.length) return null
+  return (
+    <div className="insight-section">
+      <h3>{insights.use_case.replaceAll('_', ' ')}</h3>
+      <div className="decision-grid">
+        {entries.map(([key, value]) => (
+          <div className="decision-card" key={key}>
+            <strong>{key.replaceAll('_', ' ')}</strong>
+            <p>{Array.isArray(value) ? value.join(' · ') : value}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function ChartDataSection({ chartData }: { chartData: NonNullable<Report['chart_data']> }) {
+  const topSources = chartData.source_mix.slice(0, 5)
+  const topAspects = chartData.aspect_matrix.slice(0, 6)
+  if (!topSources.length && !topAspects.length) return null
+  return (
+    <div className="insight-section">
+      <h3>Decision data</h3>
+      <div className="decision-grid">
+        {topSources.length > 0 && (
+          <div className="decision-card">
+            <strong>Source mix</strong>
+            {topSources.map(source => (
+              <div className="mini-metric" key={source.source_type}>
+                <span>{SOURCE_TYPE_LABEL[source.source_type] ?? source.source_type}</span>
+                <b>{source.count}</b>
+              </div>
+            ))}
+          </div>
+        )}
+        {topAspects.length > 0 && (
+          <div className="decision-card">
+            <strong>Aspect matrix</strong>
+            {topAspects.map(aspect => (
+              <div className="mini-metric" key={aspect.aspect}>
+                <span>{aspect.aspect}</span>
+                <b>{aspect.count}</b>
+              </div>
+            ))}
+          </div>
+        )}
+        {chartData.claim_corroboration.length > 0 && (
+          <div className="decision-card">
+            <strong>Claim corroboration</strong>
+            {chartData.claim_corroboration.slice(0, 4).map((claim, idx) => (
+              <div className="mini-metric" key={`${idx}:${claim.claim}`}>
+                <span title={claim.claim}>{claim.needs_verification ? 'Needs check' : 'Supported'}</span>
+                <b>{claim.supporting_sources}</b>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ── Quotes ────────────────────────────────────────────────────────────────
 
 function QuoteList({ title, quotes, onCite, highlightedId, sectionRef }: {
@@ -563,7 +627,7 @@ export function ReportView({ runId, topic, report }: Props) {
 
   const {
     overall, by_source, top_positive, top_negative, themes, narrative,
-    timings, aspects, source_facts, timeline, fact_check, graph, impacts, reasons, arguments: args,
+    timings, aspects, source_facts, timeline, fact_check, use_case_insights, chart_data, graph, impacts, reasons, arguments: args,
   } = report
 
   return (
@@ -618,6 +682,8 @@ export function ReportView({ runId, topic, report }: Props) {
 
       {timeline && <TimelineSummary timeline={timeline} />}
       {fact_check && <FactCheckSection factCheck={fact_check} />}
+      {use_case_insights && <UseCaseInsightsSection insights={use_case_insights} />}
+      {chart_data && <ChartDataSection chartData={chart_data} />}
 
       <AnalysisSection impacts={impacts} reasons={reasons} arguments={args} />
 

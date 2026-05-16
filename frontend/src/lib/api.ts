@@ -83,7 +83,21 @@ export interface Report {
   source_facts?: SourceFact[]
   timeline?: ReportTimeline
   fact_check?: FactCheck
+  use_case_insights?: UseCaseInsights
+  chart_data?: ChartData
   graph?: IdeaGraph
+}
+
+export interface UseCaseInsights {
+  use_case: UseCase
+  sections: Record<string, string | string[]>
+}
+
+export interface ChartData {
+  source_mix: Array<{ source_type: string; count: number }>
+  sentiment_over_time: Array<{ date: string; positive: number; neutral: number; negative: number; total: number }>
+  aspect_matrix: Array<{ aspect: string; positive: number; neutral: number; negative: number; count: number }>
+  claim_corroboration: Array<{ claim: string; supporting_sources: number; needs_verification: boolean }>
 }
 
 export interface FactClaim {

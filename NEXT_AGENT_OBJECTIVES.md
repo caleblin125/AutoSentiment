@@ -475,6 +475,14 @@ Implemented the first pass of Objective 4:
 - Frontend report now renders a fact-check section with corroboration/verification status.
 - Added tests for claim extraction, evidence linking, and verification flag shape.
 
+Implemented the first pass of Objectives 5 and 6:
+
+- Extended aspect detection with entertainment-specific dimensions such as story, casting, pacing, gameplay, monetization, marketing, fan trust, and commercial potential.
+- Added `use_case_insights` report data for entertainment product, public current event, and generic workflows.
+- Added `chart_data` report data for source mix, sentiment over time, aspect matrix, and claim corroboration.
+- Frontend report now renders use-case decision cards and compact analyst data cards.
+- Added tests for entertainment-mode insights and chart data.
+
 ```bash
 cd /home/asus/AutoSentiment/frontend
 npm run lint

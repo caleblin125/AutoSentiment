@@ -108,6 +108,14 @@ ASPECT_KEYWORDS = {
     "competition": {"competitor", "competition", "rival", "alternative", "versus", "compared", "better", "worse"},
     "environment": {"environment", "environmental", "sustainable", "carbon", "green", "emission", "climate", "eco"},
     "usability": {"usable", "usability", "intuitive", "interface", "experience", "difficult", "complex", "simple"},
+    "story": {"story", "plot", "writing", "script", "narrative", "ending", "character", "characters"},
+    "casting": {"cast", "casting", "actor", "actress", "performance", "chemistry"},
+    "pacing": {"pacing", "slow", "rushed", "drag", "boring", "runtime"},
+    "gameplay": {"gameplay", "controls", "combat", "mechanics", "level", "missions"},
+    "monetization": {"monetization", "microtransaction", "battle pass", "dlc", "paywall", "loot"},
+    "marketing": {"trailer", "teaser", "campaign", "poster", "marketing", "promotion"},
+    "fan trust": {"fans", "fandom", "trust", "betrayed", "canon", "adaptation"},
+    "commercial potential": {"box office", "streaming", "sales", "preorder", "viewership", "ratings"},
 }
 
 # Comprehensive English stop words — single tokens that carry no semantic signal.
@@ -347,6 +355,97 @@ def compute_claims(chunks: list[EvidenceChunk], limit: int = 10) -> dict:
     }
 
 
+def compute_use_case_insights(
+    chunks: list[EvidenceChunk],
+    use_case: str,
+    aspects: list[dict],
+    fact_check: dict,
+) -> dict:
+    """Create mode-specific report sections for commercial and public workflows."""
+    labels = Counter(str(chunk.label) for chunk in chunks)
+    total = max(1, len(chunks))
+    negative_share = labels["negative"] / total
+    positive_share = labels["positive"] / total
+    top_aspects = [aspect["name"] for aspect in aspects[:5]]
+    needs_verification = len(fact_check.get("needs_verification", []))
+
+    if use_case == "entertainment_product":
+        sections = {
+            "audience_pulse": _pulse_sentence(positive_share, negative_share),
+            "critic_trade_pulse": _source_pulse(chunks, {"news", "web"}),
+            "fandom_concerns": _aspect_sentence(top_aspects, fallback="No recurring fandom concerns identified."),
+            "conversion_blockers": _aspect_sentence(
+                [a["name"] for a in aspects if a["sentiment"] == "negative"][:4],
+                fallback="No major conversion blockers were detected.",
+            ),
+            "launch_risks": _risk_sentence(negative_share, needs_verification),
+            "recommended_monitoring_queries": [
+                "trailer reaction",
+                "audience complaints",
+                "critic review",
+                "box office streaming ratings",
+            ],
+        }
+    elif use_case == "public_current_event":
+        sections = {
+            "what_is_known": fact_check.get("summary", "No factual claims extracted."),
+            "what_is_disputed": f"{needs_verification} extracted claim(s) need additional verification.",
+            "what_is_opinion": _aspect_sentence(top_aspects, fallback="No recurring opinion themes identified."),
+            "what_changed_recently": "Use the chronology section to inspect dated developments and source links.",
+            "source_warning": _source_warning(chunks),
+        }
+    else:
+        sections = {
+            "audience_pulse": _pulse_sentence(positive_share, negative_share),
+            "key_drivers": _aspect_sentence(top_aspects, fallback="No dominant drivers identified."),
+            "verification_notes": f"{needs_verification} claim(s) need additional verification.",
+        }
+
+    return {"use_case": use_case, "sections": sections}
+
+
+def compute_chart_data(chunks: list[EvidenceChunk], aspects: list[dict], fact_check: dict) -> dict:
+    labels = [label.value for label in SentimentLabel]
+    source_mix = Counter(str(chunk.source_type) for chunk in chunks)
+    sentiment_by_date: dict[str, Counter] = defaultdict(Counter)
+    for chunk in chunks:
+        date = chunk.retrieved_at.date().isoformat() if chunk.retrieved_at else "unknown"
+        sentiment_by_date[date][str(chunk.label)] += 1
+
+    return {
+        "source_mix": [
+            {"source_type": source, "count": count}
+            for source, count in source_mix.most_common()
+        ],
+        "sentiment_over_time": [
+            {
+                "date": date,
+                **{label: counts[label] for label in labels},
+                "total": sum(counts.values()),
+            }
+            for date, counts in sorted(sentiment_by_date.items())
+        ],
+        "aspect_matrix": [
+            {
+                "aspect": aspect["name"],
+                "positive": aspect["positive"],
+                "neutral": aspect["neutral"],
+                "negative": aspect["negative"],
+                "count": aspect["count"],
+            }
+            for aspect in aspects
+        ],
+        "claim_corroboration": [
+            {
+                "claim": claim["claim"],
+                "supporting_sources": len(claim["supporting_domains"]),
+                "needs_verification": claim["needs_verification"],
+            }
+            for claim in fact_check.get("claims", [])
+        ],
+    }
+
+
 def _extract_dates(text: str) -> list[tuple[str, str]]:
     dates: list[tuple[str, str]] = []
     for match in re.finditer(r"\b(20\d{2})[-/](0?[1-9]|1[0-2])[-/](0?[1-9]|[12]\d|3[01])\b", text):
@@ -406,6 +505,47 @@ def _claim_summary(claims: list[dict]) -> str:
         return "No factual-looking claims were extracted from the evidence."
     needs = sum(1 for claim in claims if claim["needs_verification"])
     return f"Extracted {len(claims)} factual-looking claims; {needs} need additional verification."
+
+
+def _pulse_sentence(positive_share: float, negative_share: float) -> str:
+    if negative_share >= 0.5:
+        return "Audience pulse is predominantly negative and should be treated as a risk signal."
+    if positive_share >= 0.5:
+        return "Audience pulse is predominantly positive and can support confident positioning."
+    return "Audience pulse is mixed; investigate the strongest directional topics before acting."
+
+
+def _source_pulse(chunks: list[EvidenceChunk], source_types: set[str]) -> str:
+    scoped = [chunk for chunk in chunks if chunk.source_type in source_types]
+    if not scoped:
+        return "No critic, trade, or established web sources were captured in this run."
+    labels = Counter(str(chunk.label) for chunk in scoped)
+    dominant = labels.most_common(1)[0][0]
+    return f"{len(scoped)} critic/trade/web item(s) captured; dominant sentiment is {dominant}."
+
+
+def _aspect_sentence(aspects: list[str], fallback: str) -> str:
+    if not aspects:
+        return fallback
+    return "Key recurring topics: " + ", ".join(aspects) + "."
+
+
+def _risk_sentence(negative_share: float, needs_verification: int) -> str:
+    risks = []
+    if negative_share >= 0.4:
+        risks.append("high negative sentiment")
+    if needs_verification:
+        risks.append(f"{needs_verification} unverified factual claim(s)")
+    return ", ".join(risks).capitalize() + "." if risks else "No severe launch risk signal detected."
+
+
+def _source_warning(chunks: list[EvidenceChunk]) -> str:
+    if not chunks:
+        return "No sources were analyzed."
+    social_count = sum(1 for chunk in chunks if chunk.source_type in {"reddit", "social", "forum"})
+    if social_count / len(chunks) > 0.75:
+        return "Most evidence comes from social/community sources; verify key claims against primary sources."
+    return "Source mix includes non-social evidence, but primary-source verification is still recommended."
 
 
 def _event_label(text: str, topic: str) -> str:
