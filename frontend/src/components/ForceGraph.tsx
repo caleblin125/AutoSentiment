@@ -691,7 +691,7 @@ export function ForceGraph({ graph, runId, onNodeClick }: Props) {
                   <circle cx={pos.x} cy={pos.y} r={r + 5} fill="none"
                     stroke="var(--rog-cyan)" strokeWidth={2} strokeDasharray="4 2" opacity={0.8} />
                 )}
-                {!isUrl && (
+                {!isUrl && (zoom >= 0.65 || node.kind === 'topic' || node.kind === 'theme' || node.kind === 'aspect' || isSelected) && (
                   <text x={pos.x + r + 5} y={pos.y + 4} className="graph-node-label">
                     {shortLabel(node.label)}
                   </text>

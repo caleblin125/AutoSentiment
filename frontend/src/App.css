@@ -243,6 +243,9 @@ code {
 
 .search-panel::before { display: none; } /* no left stripe on search row */
 
+.search-panel-inner { display: flex; flex-direction: column; gap: 10px; flex: 1; position: relative; }
+.search-input-wrap { position: relative; flex: 1; min-width: 0; }
+
 .search-form {
   display: flex;
   align-items: center;
@@ -1016,6 +1019,7 @@ input:focus, select:focus, button:focus-visible {
   font-size: 14px;
   color: var(--text-strong);
 }
+.loading-stage-pct { font-family: var(--mono); font-size: 11px; color: var(--text); margin-left: auto; }
 
 .loading-stage-bar {
   height: 6px;
@@ -1092,6 +1096,9 @@ button[type="submit"] {
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
 }
+.spinner--red { border-color: rgba(232, 0, 13, 0.3); border-top-color: var(--rog-red); }
+.spinner--cyan { border-color: rgba(0, 200, 212, 0.3); border-top-color: var(--rog-cyan); }
+.spinner--xs { width: 12px; height: 12px; }
 
 @keyframes spin { to { transform: rotate(360deg); } }
 
@@ -1245,6 +1252,10 @@ button[type="submit"] {
 .run-status--completed::after { background: linear-gradient(90deg, transparent, var(--positive), transparent); }
 .run-status--error::after { background: linear-gradient(90deg, transparent, var(--rog-red), transparent); animation: none; }
 
+.run-status-info { min-width: 0; }
+.run-status-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; }
+.run-debug-id { font-family: var(--mono); font-size: 10px; }
+
 .run-status strong { display: block; color: var(--text-bright); font-size: 13px; margin-bottom: 2px; }
 .run-topic-meta {
   color: var(--text);
@@ -1276,6 +1287,7 @@ button[type="submit"] {
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
+.status-spinner--sm { width: 16px; height: 16px; border-width: 2px; }
 
 .inline-spinner { width: 16px; height: 16px; }
 
@@ -1297,6 +1309,7 @@ button[type="submit"] {
 .skeleton-line--short { width: 40%; }
 .skeleton-line--medium { width: 70%; }
 .skeleton-line--full { width: 100%; }
+.skeleton-line--mb { margin-bottom: 8px; }
 
 /* ── Timeline ───────────────────────────────────────────────────────────── */
 
@@ -3927,7 +3940,9 @@ button[type="submit"] {
   min-height: 0;
 }
 
-.compare-title { font-size: 18px; font-weight: 600; margin: 0 0 12px; }
+.compare-title-row { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.compare-title { font-size: 18px; font-weight: 600; margin: 0; }
+.compare-reset-btn { font-size: 11px; padding: 3px 9px; opacity: 0.75; }
 
 .compare-form { display: flex; flex-direction: column; gap: 10px; }
 .compare-inputs { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }

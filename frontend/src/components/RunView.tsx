@@ -366,9 +366,9 @@ export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMo
     <div className="run-view">
       {/* ── Search bar + history ── */}
       <div className="panel search-panel">
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, flex: 1, position: 'relative' }}>
+        <div className="search-panel-inner">
           <form className="search-form" ref={searchFormRef} onSubmit={handleSubmit} autoComplete="off">
-            <div style={{ position: 'relative', flex: 1, minWidth: 0 }}>
+            <div className="search-input-wrap">
               <input
                 className="search-input"
                 type="text"
@@ -412,7 +412,7 @@ export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMo
               disabled={!topic.trim() || suggestLoading}
               title="Get AI research angle suggestions"
             >
-              {suggestLoading ? <span className="spinner" style={{ width: 12, height: 12 }} /> : '💡'}
+              {suggestLoading ? <span className="spinner spinner--xs" /> : '💡'}
             </button>
             <select
               className="freshness-select"
@@ -561,27 +561,27 @@ export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMo
       {/* ── Run status strip ── */}
       {runId && (
         <div className={`run-status run-status--${status}`} aria-live="polite">
-          <div style={{ minWidth: 0 }}>
+          <div className="run-status-info">
             <strong>{statusLabel(status, events.length)}</strong>
             {activeTopic && <p className="run-topic clip-text" title={activeTopic}>{activeTopic}</p>}
             <p className="run-topic-meta">
               <span className={`depth-dot depth-dot--${activeDepth}`} /> {activeDepthOption.label} · {activeDepthOption.queryCount} queries · {activeDepthOption.urlCount} URLs · {activeDepthOption.itemCount} items
             </p>
             {devMode && (
-              <p className="muted" style={{ fontFamily: 'var(--mono)', fontSize: 10 }}>
+              <p className="muted run-debug-id">
                 run: {runId}
               </p>
             )}
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          <div className="run-status-actions">
             {cached && !isRunning && <span className="cached-badge">⚡ cached</span>}
             {isCancelled && <span className="cancelled-badge">⊘ cancelled</span>}
             {isExpandedRun && !isCompleted && <span className="expanded-run-badge">expanded search</span>}
 
             {canCancelCurrentRun && (
               <button className="btn-cancel" onClick={handleCancel} disabled={cancelling}>
-                {cancelling ? <span className="spinner" style={{ borderTopColor: 'var(--rog-red)' }} /> : '⊘'}
+                {cancelling ? <span className="spinner spinner--red" /> : '⊘'}
                 {cancelling ? 'Stopping…' : 'Cancel'}
               </button>
             )}
@@ -610,7 +610,7 @@ export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMo
                 title={`${isAtMaxDepth ? 'Search more at' : 'Expand to'} ${expandDepthOption.label}: ${expandDepthOption.queryCount} queries, ${expandDepthOption.urlCount} URLs, ${expandDepthOption.itemCount} items`}
               >
                 {expanding
-                  ? <><span className="spinner" style={{ borderTopColor: 'var(--rog-cyan)' }} /> Expanding…</>
+                  ? <><span className="spinner spinner--cyan" /> Expanding…</>
                   : isAtMaxDepth ? '⊕ Search more' : `⊕ Expand to ${expandDepthOption.label}`}
               </button>
             )}
@@ -682,11 +682,9 @@ function LoadingStage({ events, status }: { events: LoadEvent[]; status: string 
   return (
     <div className="loading-stage">
       <div className="loading-stage-header">
-        <span className="status-spinner" style={{ width: 16, height: 16, borderWidth: 2 }} />
+        <span className="status-spinner status-spinner--sm" />
         <strong>{label}</strong>
-        <span style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--text)', marginLeft: 'auto' }}>
-          {pct}%
-        </span>
+        <span className="loading-stage-pct">{pct}%</span>
       </div>
       <div className="loading-stage-bar">
         <div className="loading-stage-fill" style={{ width: `${pct}%` }} />
@@ -694,7 +692,7 @@ function LoadingStage({ events, status }: { events: LoadEvent[]; status: string 
       <p className="loading-stage-detail">{detail}</p>
       {events.length < 2 && (
         <>
-          <div className="skeleton skeleton-line skeleton-line--medium" style={{ marginBottom: 8 }} />
+          <div className="skeleton skeleton-line skeleton-line--medium skeleton-line--mb" />
           <div className="skeleton skeleton-line skeleton-line--full" />
         </>
       )}

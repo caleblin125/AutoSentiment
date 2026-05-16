@@ -207,13 +207,28 @@ export function CompareView() {
     }
   }
 
+  function handleReset() {
+    setTopics(['', ''])
+    setRunIds([null, null])
+    setSlotCount(2)
+    setError(null)
+  }
+
   const activeTopics = topics.slice(0, slotCount)
   const canCompare = activeTopics.filter(t => t.trim().length >= 2).length >= 2
+  const hasResults = runIds.some(id => id !== null)
 
   return (
     <div className="compare-view">
       <div className="compare-header">
-        <h2 className="compare-title">Compare Topics</h2>
+        <div className="compare-title-row">
+          <h2 className="compare-title">Compare Topics</h2>
+          {hasResults && (
+            <button type="button" className="btn-secondary compare-reset-btn" onClick={handleReset}>
+              ↺ Reset
+            </button>
+          )}
+        </div>
         <form className="compare-form" onSubmit={handleCompare}>
           <div className="compare-inputs">
             {Array.from({ length: slotCount }, (_, i) => (
