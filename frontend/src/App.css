@@ -705,6 +705,21 @@ input:focus, select:focus, button:focus-visible {
   vertical-align: middle;
 }
 
+.confidence-badge {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--rog-cyan);
+  background: rgba(0, 212, 232, 0.08);
+  border: 1px solid rgba(0, 212, 232, 0.2);
+  border-radius: 10px;
+  padding: 1px 6px;
+  margin-left: 6px;
+  vertical-align: middle;
+  white-space: nowrap;
+  letter-spacing: 0.02em;
+}
+
 .export-actions {
   display: flex;
   gap: 6px;
@@ -2108,8 +2123,12 @@ button[type="submit"] {
   background: var(--surface-elevated);
 }
 
+.history-chart-wrap { position: relative; }
 .history-chart { width: 100%; height: auto; display: block; }
 .chart-tick { fill: var(--text); font-family: var(--mono); font-size: 9px; }
+.chart-gridline { stroke: var(--border); stroke-width: 1; }
+.chart-dot { stroke: var(--surface); stroke-width: 1.5; cursor: pointer; }
+.chart-current-run { stroke: var(--rog-cyan); stroke-width: 1; stroke-dasharray: 3 3; opacity: 0.7; }
 
 .chart-tooltip {
   position: absolute;

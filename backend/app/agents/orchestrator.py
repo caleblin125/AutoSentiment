@@ -397,6 +397,8 @@ async def run_research(
             chunks: list[EvidenceChunk] = []
             sentiment_tasks: dict[str, asyncio.Task] = {}
             pending_cache: dict[str, tuple[str, str]] = {}  # snippet_hash -> (label, summary)
+            # Maps chunk.id → model confidence (0–1); used for report ranking.
+            confidence_map: dict[str, float] = {}
 
             stage_started = perf_counter()
             analyze_tasks = [
@@ -420,6 +422,7 @@ async def run_research(
                 db.add(chunk)
                 await db.flush()
                 chunks.append(chunk)
+                confidence_map[chunk.id] = round(result.confidence, 2)
 
                 # Collect sentiment cache entry for bulk insert.
                 import hashlib
@@ -438,6 +441,7 @@ async def run_research(
                         "domain": _domain_from_url(chunk.url),
                         "source_type": chunk.source_type,
                         "duration_ms": round(duration_ms, 1),
+                        "confidence": confidence_map[chunk.id],
                     },
                 )
                 await db.commit()
@@ -466,8 +470,8 @@ async def run_research(
             )
             chunks = list(all_chunks_result.scalars().all())
             counts = compute_counts(chunks)
-            top_positive = pick_top_quotes(chunks, SentimentLabel.POSITIVE)
-            top_negative = pick_top_quotes(chunks, SentimentLabel.NEGATIVE)
+            top_positive = pick_top_quotes(chunks, SentimentLabel.POSITIVE, confidence_map=confidence_map)
+            top_negative = pick_top_quotes(chunks, SentimentLabel.NEGATIVE, confidence_map=confidence_map)
             aspects = compute_aspects(chunks, topic)
             source_facts = compute_source_facts(chunks)
             timeline = compute_timeline(chunks, topic)

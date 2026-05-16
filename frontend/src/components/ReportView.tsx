@@ -116,18 +116,24 @@ function TimingSummary({ timings }: { timings: Record<string, number> }) {
 function SentimentBar({ label, value, color }: { label: string; value: number; color: string }) {
   const [displayed, setDisplayed] = useState(0)
   const rafRef = useRef(0)
+  // Track the current rendered value in a ref so the effect can read it without
+  // needing to include `displayed` in the dependency array (which would
+  // restart the animation on every frame).
+  const currentRef = useRef(0)
 
   useEffect(() => {
+    const from = currentRef.current
     const target = value
     const duration = 700  // ms
     const start = performance.now()
-    const from = displayed
 
     const animate = (now: number) => {
       const t = Math.min(1, (now - start) / duration)
       // Ease-out cubic: decelerates into the final value
       const eased = 1 - (1 - t) ** 3
-      setDisplayed(from + (target - from) * eased)
+      const next = from + (target - from) * eased
+      currentRef.current = next
+      setDisplayed(next)
       if (t < 1) rafRef.current = requestAnimationFrame(animate)
     }
     rafRef.current = requestAnimationFrame(animate)
@@ -674,6 +680,15 @@ function QuoteList({ title, quotes, onCite, highlightedId, sectionRef }: {
                 <SourceLogo url={q.url} />
               </a>
               <div className="quote-actions">
+                {q.confidence != null && (
+                  <span
+                    className="confidence-badge"
+                    title={`Model confidence: ${Math.round(q.confidence * 100)}%`}
+                    style={{ opacity: 0.55 + q.confidence * 0.45 }}
+                  >
+                    {Math.round(q.confidence * 100)}%
+                  </span>
+                )}
                 <a href={q.url} target="_blank" rel="noreferrer" className="cite-btn cite-btn--link" title="Open source in new tab">
                   ↗ source
                 </a>

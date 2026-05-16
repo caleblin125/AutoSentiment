@@ -58,7 +58,8 @@ class SentimentQueue:
         prompt = (
             "Classify the sentiment of the following text.\n"
             "Return exactly: {\"label\": \"positive\" | \"neutral\" | \"negative\", "
-            "\"summary\": \"<3-5 words describing the author's opinion>\"}\n\n"
+            "\"summary\": \"<3-5 words describing the author's opinion>\", "
+            "\"confidence\": <0.0-1.0 float, how certain you are of the label>}\n\n"
             f"Text:\n{truncated}"
         )
 
@@ -74,9 +75,15 @@ class SentimentQueue:
                 )
                 label = _coerce_label(payload.get("label"))
                 summary = str(payload.get("summary") or _SUMMARY_BY_LABEL[label]).strip()
+                raw_conf = payload.get("confidence")
+                try:
+                    confidence = max(0.0, min(1.0, float(raw_conf)))  # type: ignore[arg-type]
+                except (TypeError, ValueError):
+                    confidence = 0.8  # sensible default when model omits the field
                 return SentimentResult(
                     label=label,
                     summary=summary[:160] or _SUMMARY_BY_LABEL[label],
+                    confidence=confidence,
                 )
             except GenerationCancelled:
                 raise

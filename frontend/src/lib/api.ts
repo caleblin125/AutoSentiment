@@ -191,6 +191,8 @@ export interface Quote {
   summary: string
   evidence_id: string
   url: string
+  credible?: boolean
+  confidence?: number  // 0.0–1.0 model confidence in the label
 }
 
 export interface EvidenceChunk {

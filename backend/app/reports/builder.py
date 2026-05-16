@@ -114,14 +114,27 @@ def _is_credible(url: str) -> bool:
     return _credibility_score(url) >= 0.70
 
 
-def pick_top_quotes(chunks: list[EvidenceChunk], label: SentimentLabel, n: int = 5) -> list[dict]:
-    """Return up to n quote dicts for the label, credible sources first."""
+def pick_top_quotes(
+    chunks: list[EvidenceChunk],
+    label: SentimentLabel,
+    n: int = 5,
+    confidence_map: dict[str, float] | None = None,
+) -> list[dict]:
+    """Return up to n quote dicts for the label.
+
+    Ranking: credible sources first, then higher confidence, then insertion order.
+    """
+    conf = confidence_map or {}
     matching = [c for c in chunks if str(c.label) == label.value]
-    # Sort credible sources first so they appear at the top of the report.
-    matching.sort(key=lambda c: (0 if _is_credible(c.url) else 1))
+    matching.sort(key=lambda c: (0 if _is_credible(c.url) else 1, -(conf.get(c.id, 0.8))))
     return [
-        {"summary": chunk.summary, "evidence_id": chunk.id, "url": chunk.url,
-         "credible": _is_credible(chunk.url)}
+        {
+            "summary": chunk.summary,
+            "evidence_id": chunk.id,
+            "url": chunk.url,
+            "credible": _is_credible(chunk.url),
+            "confidence": round(conf.get(chunk.id, 0.8), 2),
+        }
         for chunk in matching[:n]
     ]
 

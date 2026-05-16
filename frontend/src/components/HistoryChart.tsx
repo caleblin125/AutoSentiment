@@ -13,9 +13,9 @@ const CHART_H = 140
 const PAD = { top: 12, right: 16, bottom: 32, left: 40 }
 
 const LINES = [
-  { key: 'positive' as const, color: '#22c55e', label: 'Positive' },
-  { key: 'neutral'  as const, color: '#94a3b8', label: 'Neutral' },
-  { key: 'negative' as const, color: '#ef4444', label: 'Negative' },
+  { key: 'positive' as const, color: 'var(--positive)',   cls: 'pos', label: 'Positive' },
+  { key: 'neutral'  as const, color: 'var(--neutral)',    cls: 'neu', label: 'Neutral'  },
+  { key: 'negative' as const, color: 'var(--rog-red)',    cls: 'neg', label: 'Negative' },
 ]
 
 interface Props { topic: string; currentRunId: string }
@@ -26,16 +26,16 @@ export function HistoryChart({ topic, currentRunId }: Props) {
 
   useEffect(() => {
     listRuns(topic, 30)
-      .then(data => setRuns([...data].reverse())   // oldest first
-      )
+      .then(data => setRuns([...data].reverse()))
       .catch(() => {/* non-fatal */})
-  }, [topic, currentRunId])   // re-fetch when a new run for this topic completes
+  }, [topic, currentRunId])
 
-  if (runs.length < 2) return null   // chart only makes sense with 2+ points
+  if (runs.length < 2) return null
 
   const plotW = CHART_W - PAD.left - PAD.right
   const plotH = CHART_H - PAD.top - PAD.bottom
   const n = runs.length
+  const baseline = PAD.top + plotH
 
   function xScale(i: number) {
     return PAD.left + (n === 1 ? plotW / 2 : (plotW / (n - 1)) * i)
@@ -44,13 +44,14 @@ export function HistoryChart({ topic, currentRunId }: Props) {
     return PAD.top + plotH - v * plotH
   }
 
-  function polyline(key: 'positive' | 'neutral' | 'negative') {
-    return runs
-      .map((r, i) => {
-        const v = r.overall?.[key] ?? 0
-        return `${xScale(i)},${yScale(v)}`
-      })
-      .join(' ')
+  function polyPoints(key: 'positive' | 'neutral' | 'negative') {
+    return runs.map((r, i) => `${xScale(i)},${yScale(r.overall?.[key] ?? 0)}`).join(' ')
+  }
+
+  function areaPoints(key: 'positive' | 'neutral' | 'negative') {
+    const pts = runs.map((r, i) => `${xScale(i)},${yScale(r.overall?.[key] ?? 0)}`).join(' ')
+    // Close path along the bottom baseline
+    return `${pts} ${xScale(n - 1)},${baseline} ${xScale(0)},${baseline}`
   }
 
   function formatDate(iso: string) {
@@ -60,29 +61,40 @@ export function HistoryChart({ topic, currentRunId }: Props) {
   return (
     <div className="insight-section history-chart-section">
       <h3>Sentiment history <span className="graph-hint">{n} runs</span></h3>
-      <div style={{ position: 'relative' }}>
+      <div className="history-chart-wrap">
         <svg
           className="history-chart"
           viewBox={`0 0 ${CHART_W} ${CHART_H}`}
           aria-label="Historical sentiment trend"
         >
-          {/* Y-axis ticks */}
+          {/* Y-axis gridlines */}
           {[0, 0.25, 0.5, 0.75, 1].map(v => (
             <g key={v}>
               <line
                 x1={PAD.left} y1={yScale(v)}
                 x2={CHART_W - PAD.right} y2={yScale(v)}
-                stroke="#e2e8f0" strokeWidth={1}
+                className="chart-gridline"
               />
               <text x={PAD.left - 6} y={yScale(v) + 4} className="chart-tick">{Math.round(v * 100)}%</text>
             </g>
+          ))}
+
+          {/* Area fills (under lines, semi-transparent) */}
+          {LINES.map(({ key, color }) => (
+            <polygon
+              key={`area-${key}`}
+              points={areaPoints(key)}
+              fill={color}
+              fillOpacity={0.07}
+              stroke="none"
+            />
           ))}
 
           {/* Lines */}
           {LINES.map(({ key, color }) => (
             <polyline
               key={key}
-              points={polyline(key)}
+              points={polyPoints(key)}
               fill="none"
               stroke={color}
               strokeWidth={2}
@@ -101,25 +113,23 @@ export function HistoryChart({ topic, currentRunId }: Props) {
                     key={key}
                     cx={xScale(i)} cy={yScale(v)} r={4}
                     fill={color}
-                    stroke="#fff" strokeWidth={1.5}
-                    style={{ cursor: 'pointer' }}
+                    className="chart-dot"
                     onMouseEnter={() => setHovered(run)}
                     onMouseLeave={() => setHovered(null)}
                   />
                 )
               })}
-              {/* Highlight current run */}
               {run.id === currentRunId && (
                 <line
                   x1={xScale(i)} y1={PAD.top}
                   x2={xScale(i)} y2={CHART_H - PAD.bottom}
-                  stroke="#2563eb" strokeWidth={1} strokeDasharray="3 3"
+                  className="chart-current-run"
                 />
               )}
             </g>
           ))}
 
-          {/* X-axis labels: only first and last */}
+          {/* X-axis labels: first and last only */}
           {[0, n - 1].map(i => (
             <text
               key={i}
@@ -133,7 +143,6 @@ export function HistoryChart({ topic, currentRunId }: Props) {
           ))}
         </svg>
 
-        {/* Tooltip */}
         {hovered && hovered.overall && (
           <div className="chart-tooltip">
             <strong>{formatDate(hovered.created_at)}</strong>
@@ -147,7 +156,6 @@ export function HistoryChart({ topic, currentRunId }: Props) {
         )}
       </div>
 
-      {/* Legend */}
       <div className="graph-legend">
         {LINES.map(({ key, color, label }) => (
           <span key={key} className="graph-legend-item">

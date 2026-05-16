@@ -40,4 +40,5 @@ class SSEEventType(StrEnum):
 @dataclass
 class SentimentResult:
     label: SentimentLabel
-    summary: str  # 3–5 words
+    summary: str    # 3–5 words
+    confidence: float = 0.8  # 0.0–1.0; how certain the model is about the label

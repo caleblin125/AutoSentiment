@@ -4,7 +4,7 @@ Last updated: 2026-05-16 20:41 UTC
 
 | Agent | Session | Claimed Task | Working File | Status | Since |
 |-------|---------|-------------|--------------|--------|-------|
-| cursor | autosentiment-cursor | Timeline overlap fix DONE | EventTimeline.tsx, App.css | idle | 20:41 |
+| cursor | autosentiment-cursor | Warmup + counters + confidence | app/main.py, App.css, ReportView.tsx | active | 21:00 |
 
 ## Conflict Rules
 1. **pi** owns: App.css (utility classes), RunView.tsx, tests/, documentation

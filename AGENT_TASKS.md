@@ -32,9 +32,13 @@ Last updated: 2026-05-16 20:40 UTC
 - [x] [claude] Multi-topic compare mode frontend: CompareView.tsx with 2-3 side-by-side sentiment cards, independent useRunStream hooks per slot, ⊞ Compare button in header (569448e)
 
 ## Next Tasks (high value, unclaimed)
-- [ ] [FREE]  Sentiment confidence scores per item (prompt template change)
 - [ ] [FREE]  Contradiction detection in claims (opposing claim pairs)
 - [ ] [FREE]  More Playwright E2E tests (saved search, thread click, shareable URL)
-- [ ] [FREE]  Ollama model warm-up on startup (tiny prompt to avoid cold start)
-- [ ] [FREE]  Frontend dark/light theme transition animation
-- [ ] [FREE]  Animated number counters on sentiment bars
+
+## ✅ Cursor Agent — current session
+- [x] [cursor] Fix timeline condensed-mode URL overlap (live preview hoisted to sibling li)
+- [x] [cursor] Fix map/graph scroll-zoom hijacking page scroll (non-passive wheel listener)
+- [ ] [cursor] Ollama model warm-up on startup (tiny prompt to avoid cold start)
+- [ ] [cursor] Animated number counters on sentiment bars
+- [ ] [cursor] Dark/light theme transition animation
+- [ ] [cursor] Sentiment confidence scores per item (prompt + report display)

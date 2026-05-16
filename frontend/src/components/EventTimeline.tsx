@@ -225,6 +225,15 @@ function ItemAnalyzedRow({ ev }: { ev: SSEEvent }) {
           {badgeContent}
         </span>
       ) : null}
+      {typeof ev.detail.confidence === 'number' && (
+        <span
+          className="confidence-badge"
+          title={`Model confidence: ${Math.round((ev.detail.confidence as number) * 100)}%`}
+          style={{ opacity: 0.55 + (ev.detail.confidence as number) * 0.45 }}
+        >
+          {Math.round((ev.detail.confidence as number) * 100)}%
+        </span>
+      )}
       {typeof ev.detail.duration_ms === 'number' && (
         <span className="duration-badge">{formatDuration(ev.detail.duration_ms)}</span>
       )}
