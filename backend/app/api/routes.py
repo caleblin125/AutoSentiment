@@ -103,8 +103,8 @@ def _run_to_dict(run: Run) -> dict:
     }
 
 
-def _evidence_to_dict(chunk: EvidenceChunk) -> dict:
-    return {
+def _evidence_to_dict(chunk: EvidenceChunk, report: dict | None = None) -> dict:
+    payload = {
         "id": chunk.id,
         "run_id": chunk.run_id,
         "url": chunk.url,
@@ -113,6 +113,29 @@ def _evidence_to_dict(chunk: EvidenceChunk) -> dict:
         "label": chunk.label,
         "summary": chunk.summary,
         "retrieved_at": chunk.retrieved_at.isoformat(),
+    }
+    if report:
+        payload["related"] = _related_report_context(chunk.id, report)
+    return payload
+
+
+def _related_report_context(chunk_id: str, report: dict) -> dict:
+    timeline = report.get("timeline") or {}
+    fact_check = report.get("fact_check") or {}
+    aspects = report.get("aspects") or []
+    return {
+        "timeline_events": [
+            event for event in timeline.get("important_dates", [])
+            if chunk_id in event.get("evidence_ids", [])
+        ],
+        "claims": [
+            claim for claim in fact_check.get("claims", [])
+            if chunk_id in claim.get("evidence_ids", [])
+        ],
+        "aspects": [
+            aspect for aspect in aspects
+            if chunk_id in aspect.get("evidence_ids", [])
+        ],
     }
 
 
@@ -518,4 +541,5 @@ async def get_evidence(
     chunk = await db.get(EvidenceChunk, chunk_id)
     if chunk is None or chunk.run_id != run_id:
         raise HTTPException(status_code=404, detail="Evidence chunk not found")
-    return _evidence_to_dict(chunk)
+    run = await db.get(Run, run_id)
+    return _evidence_to_dict(chunk, run.report if run else None)

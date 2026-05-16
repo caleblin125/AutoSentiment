@@ -563,6 +563,29 @@ function EvidenceModal({ chunk, onClose }: { chunk: EvidenceChunk; onClose: () =
           </div>
         </div>
 
+        {chunk.related && (
+          <div className="snippet-related">
+            {chunk.related.timeline_events.length > 0 && (
+              <div>
+                <h4>Related dates</h4>
+                <p>{chunk.related.timeline_events.map(event => event.date).join(', ')}</p>
+              </div>
+            )}
+            {chunk.related.claims.length > 0 && (
+              <div>
+                <h4>Related claims</h4>
+                <p>{chunk.related.claims.map(claim => claim.claim).join(' · ')}</p>
+              </div>
+            )}
+            {chunk.related.aspects.length > 0 && (
+              <div>
+                <h4>Related topics</h4>
+                <p>{chunk.related.aspects.map(aspect => aspect.name).join(', ')}</p>
+              </div>
+            )}
+          </div>
+        )}
+
         <a href={chunk.url} target="_blank" rel="noreferrer" className="view-source-link">
           View full source ↗
         </a>

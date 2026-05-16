@@ -157,6 +157,11 @@ export interface EvidenceChunk {
   label: 'positive' | 'neutral' | 'negative'
   summary: string
   retrieved_at: string
+  related?: {
+    timeline_events: TimelineEvent[]
+    claims: FactClaim[]
+    aspects: AspectInsight[]
+  }
 }
 
 export interface AspectInsight {

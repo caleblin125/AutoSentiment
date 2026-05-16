@@ -495,6 +495,12 @@ Implemented a reliability slice from Objective 10:
 - Diagnostics report DB readiness, Brave key presence without exposing the key, configured models, run limits, run counts, and active SSE queues.
 - Added a route test proving diagnostics do not leak the Brave key value.
 
+Implemented a first pass of Objective 9:
+
+- Evidence endpoint now includes related timeline events, claims, and aspects from the completed report.
+- Evidence modal now displays related dates, related claims, and related topics for the opened citation.
+- Added route coverage for evidence related-context serialization.
+
 ```bash
 cd /home/asus/AutoSentiment/frontend
 npm run lint

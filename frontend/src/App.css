@@ -320,6 +320,26 @@ input:focus, select:focus, button:focus-visible {
   color: var(--text);
 }
 
+.snippet-related {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+
+.snippet-related h4 {
+  margin: 0 0 4px;
+  color: var(--rog-cyan);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.snippet-related p {
+  margin: 0;
+  color: var(--text);
+}
+
 .mini-metric {
   display: flex;
   justify-content: space-between;

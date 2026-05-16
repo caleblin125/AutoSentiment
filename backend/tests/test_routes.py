@@ -80,6 +80,39 @@ async def test_get_run_and_get_evidence_return_serializable_dicts(db_session) ->
 
 
 @pytest.mark.asyncio
+async def test_get_evidence_includes_related_report_context(db_session) -> None:
+    run = Run(
+        topic="topic",
+        freshness="pm",
+        status="completed",
+        report={
+            "timeline": {"important_dates": [{"date": "2026-03-05", "evidence_ids": ["chunk-1"]}]},
+            "fact_check": {"claims": [{"claim": "A claim", "evidence_ids": ["chunk-1"]}]},
+            "aspects": [{"name": "cost", "evidence_ids": ["chunk-1"]}],
+        },
+    )
+    db_session.add(run)
+    await db_session.flush()
+    chunk = EvidenceChunk(
+        id="chunk-1",
+        run_id=run.id,
+        url="https://example.com",
+        source_type="news",
+        snippet="snippet",
+        label="neutral",
+        summary="summary",
+    )
+    db_session.add(chunk)
+    await db_session.commit()
+
+    payload = await routes.get_evidence(run.id, chunk.id, db_session)
+
+    assert payload["related"]["timeline_events"][0]["date"] == "2026-03-05"
+    assert payload["related"]["claims"][0]["claim"] == "A claim"
+    assert payload["related"]["aspects"][0]["name"] == "cost"
+
+
+@pytest.mark.asyncio
 async def test_stream_events_yields_sse_data_and_deregisters(db_session) -> None:
     run = Run(topic="topic", freshness="pm", status="running")
     db_session.add(run)
