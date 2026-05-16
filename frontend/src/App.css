@@ -33,6 +33,9 @@
   --border-dim: #1c1c28;
   --shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
   --shadow-panel: 0 4px 20px rgba(0, 0, 0, 0.4);
+  /* Aliases and derived values */
+  --text-muted: rgba(138, 138, 154, 0.55);
+  --heading: var(--sans);
 }
 
 [data-theme="light"] {
@@ -70,6 +73,7 @@
   --shadow: 0 12px 32px rgba(15, 23, 42, 0.08);
   --shadow-panel: 0 10px 32px rgba(15, 23, 42, 0.08), inset 0 1px 0 rgba(255,255,255,0.75);
   --graph-node-stroke: #ffffff;
+  --text-muted: rgba(102, 102, 128, 0.55);
   color-scheme: light;
 }
 
@@ -175,6 +179,13 @@ body {
   margin: 0 auto;
   padding: 20px 20px 48px;
   gap: 16px;
+}
+
+.run-view {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
 }
 
 /* ── Panel cards ────────────────────────────────────────────────────────── */
@@ -4266,6 +4277,12 @@ button[type="submit"] {
 .compare-bar-fill--pos { background: var(--positive); }
 .compare-bar-fill--neu { background: var(--neutral); }
 .compare-bar-fill--neg { background: var(--rog-red); }
+
+/* Container elements used in CompareView but previously unstyled */
+.compare-header { margin-bottom: 12px; }
+.compare-slot-report { display: flex; flex-direction: column; gap: 10px; }
+.compare-themes { padding-top: 2px; }
+.compare-narrative { padding-top: 2px; }
 .compare-bar-pct { width: 34px; text-align: right; font-family: var(--mono); opacity: 0.75; }
 
 .compare-section-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; opacity: 0.5; margin-bottom: 5px; }

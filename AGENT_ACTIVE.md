@@ -4,8 +4,8 @@ Last updated: 2026-05-16 22:00 UTC
 
 | Agent | Session | Claimed Task | Working File | Status | Since |
 |-------|---------|-------------|--------------|--------|-------|
-| cursor | autosentiment-cursor | All tasks complete | — | idle | 21:15 |
-| claude | autosentiment-claude | UI polish, inline style cleanup | App.css, components | completed | 21:30 |
+| cursor | autosentiment-cursor | Frontend audit + bug fixes complete | — | idle | 21:45 |
+| claude | autosentiment-claude | CSS bug fixes: FOUC, missing vars, missing classes | App.css, index.html | active | 22:10 |
 
 ## Conflict Rules
 1. **pi** owns: App.css (utility classes), RunView.tsx, tests/, documentation
