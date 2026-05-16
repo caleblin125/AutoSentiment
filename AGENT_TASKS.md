@@ -38,7 +38,7 @@ Last updated: 2026-05-16 20:40 UTC
 ## ✅ Cursor Agent — current session
 - [x] [cursor] Fix timeline condensed-mode URL overlap (live preview hoisted to sibling li)
 - [x] [cursor] Fix map/graph scroll-zoom hijacking page scroll (non-passive wheel listener)
-- [ ] [cursor] Ollama model warm-up on startup (tiny prompt to avoid cold start)
-- [ ] [cursor] Animated number counters on sentiment bars
-- [ ] [cursor] Dark/light theme transition animation
-- [ ] [cursor] Sentiment confidence scores per item (prompt + report display)
+- [x] [cursor] Ollama model warm-up on startup (parallel keep_alive pings in lifespan)
+- [x] [cursor] Animated number counters on sentiment bars (RAF ease-out cubic)
+- [x] [cursor] Dark/light theme transition animation (CSS transition on *, excluded SVGs)
+- [x] [cursor] Sentiment confidence scores per item (prompt + confidence_map + badge UI)

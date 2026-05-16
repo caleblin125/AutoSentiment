@@ -161,7 +161,7 @@ function FetchBatchHeader({ ev, expanded, setExpanded }: {
         <span className="event-prefix event-prefix--fetch">
           {done ? 'Fetched' : 'Fetching'}
         </span>
-        <span className="count-badge" style={{ fontFamily: 'var(--mono)', fontSize: 11 }}>
+        <span className="count-badge count-badge--mono">
           {ev._fetchCount}/{ev._totalUrls} URLs
         </span>
         {domains.map(d => (
@@ -348,7 +348,7 @@ export function EventTimeline({ events, status }: Props) {
     <section className="panel" aria-label="Run timeline">
       <div className="timeline-header">
         <h2>Timeline</h2>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <div className="timeline-header-controls">
           {credibleCount > 0 && (
             <button
               className="credibility-count credibility-count--btn"
