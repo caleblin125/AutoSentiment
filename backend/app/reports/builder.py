@@ -63,13 +63,33 @@ def compute_counts(chunks: list[EvidenceChunk]) -> dict:
     return {"overall": overall, "by_source": by_source}
 
 
+_CREDIBLE_DOMAINS = frozenset({
+    "reuters.com", "apnews.com", "bbc.com", "bbc.co.uk", "nytimes.com",
+    "wsj.com", "bloomberg.com", "ft.com", "theguardian.com", "economist.com",
+    "nature.com", "science.org", "sciencedirect.com", "pubmed.ncbi.nlm.nih.gov",
+    "who.int", "cdc.gov", "europa.eu", "un.org",
+    "mit.edu", "stanford.edu", "harvard.edu", "ieee.org", "acm.org",
+})
+
+
+def _is_credible(url: str) -> bool:
+    try:
+        domain = urlparse(url).netloc.removeprefix("www.")
+        return domain in _CREDIBLE_DOMAINS or any(domain.endswith(f".{d}") for d in _CREDIBLE_DOMAINS)
+    except Exception:
+        return False
+
+
 def pick_top_quotes(chunks: list[EvidenceChunk], label: SentimentLabel, n: int = 5) -> list[dict]:
-    """Return up to n {summary, evidence_id, url} dicts for the given label."""
+    """Return up to n quote dicts for the label, credible sources first."""
+    matching = [c for c in chunks if str(c.label) == label.value]
+    # Sort credible sources first so they appear at the top of the report.
+    matching.sort(key=lambda c: (0 if _is_credible(c.url) else 1))
     return [
-        {"summary": chunk.summary, "evidence_id": chunk.id, "url": chunk.url}
-        for chunk in chunks
-        if str(chunk.label) == label.value
-    ][:n]
+        {"summary": chunk.summary, "evidence_id": chunk.id, "url": chunk.url,
+         "credible": _is_credible(chunk.url)}
+        for chunk in matching[:n]
+    ]
 
 
 ASPECT_KEYWORDS = {

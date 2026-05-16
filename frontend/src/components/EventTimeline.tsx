@@ -300,10 +300,17 @@ function EventRow({ ev, isLast }: { ev: FoldedEvent; isLast: boolean }) {
 
 export function EventTimeline({ events, status }: Props) {
   const [collapsed, setCollapsed] = useState(false)
+  const [showCredibleModal, setShowCredibleModal] = useState(false)
   const folded = foldEvents(events)
-  const credibleCount = events.filter(e =>
+
+  const credibleItems = events.filter(e =>
     e.type === 'item_analyzed' && isHighCredibility((e.detail.domain as string | undefined) ?? '')
-  ).length
+  )
+  const credibleDomains = [...new Set(
+    credibleItems.map(e => (e.detail.domain as string | undefined) ?? '').filter(Boolean)
+  )]
+  const credibleCount = credibleItems.length
+  const lastEvent = folded.length > 0 ? folded[folded.length - 1] : null
 
   return (
     <section className="panel" aria-label="Run timeline">
@@ -311,9 +318,13 @@ export function EventTimeline({ events, status }: Props) {
         <h2>Timeline</h2>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           {credibleCount > 0 && (
-            <span className="credibility-count" title="Items from high-credibility sources">
+            <button
+              className="credibility-count credibility-count--btn"
+              title="Click to see credible sources"
+              onClick={() => setShowCredibleModal(m => !m)}
+            >
               ★ {credibleCount} credible
-            </span>
+            </button>
           )}
           <span className="timeline-count">{folded.length} events</span>
           <button
@@ -325,6 +336,32 @@ export function EventTimeline({ events, status }: Props) {
           </button>
         </div>
       </div>
+
+      {/* Credible-sources list */}
+      {showCredibleModal && credibleDomains.length > 0 && (
+        <div className="credible-modal">
+          <div className="credible-modal-header">
+            <strong>High-credibility sources in this run</strong>
+            <button className="topic-detail-close" onClick={() => setShowCredibleModal(false)}>✕</button>
+          </div>
+          <ul className="credible-modal-list">
+            {credibleDomains.map(d => (
+              <li key={d} className="credible-modal-item">
+                <img src={faviconUrl(d)} alt="" width={12} height={12}
+                  onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
+                <a href={`https://${d}`} target="_blank" rel="noreferrer">{d}</a>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Collapsed: show most recent event */}
+      {collapsed && lastEvent && (
+        <div className="timeline-collapsed-preview">
+          <EventRow ev={lastEvent} isLast={false} />
+        </div>
+      )}
 
       {!collapsed && (
         <>

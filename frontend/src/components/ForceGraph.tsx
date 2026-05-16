@@ -7,7 +7,7 @@
  *   Left-click sentiment node → calls onNodeClick to scroll to quotes
  *   Right-click + drag → reposition node
  */
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'  // eslint-disable-line
 import type { EvidenceChunk, GraphEdge, GraphNode, IdeaGraph } from '../lib/api'
 import { getEvidence } from '../lib/api'
 
@@ -261,9 +261,13 @@ function TopicDetailPopover({ node, runId, x, y, onClose }: {
           <p className="topic-detail-empty">No supporting evidence stored for this topic.</p>
         )}
 
-        {chunks.map(chunk => (
+        {chunks.map(chunk => {
+          const summary = chunk.summary?.length > 180
+            ? chunk.summary.slice(0, 177) + '…'
+            : chunk.summary
+          return (
           <div key={chunk.id} className="topic-detail-evidence">
-            <p className="topic-detail-summary">"{chunk.summary}"</p>
+            <p className="topic-detail-summary">"{summary}"</p>
             <div className="topic-detail-meta">
               <span className={`sentiment-chip sentiment-chip--${chunk.label}`} style={{ fontSize: 9 }}>
                 {chunk.label}
@@ -282,7 +286,7 @@ function TopicDetailPopover({ node, runId, x, y, onClose }: {
               </a>
             </div>
           </div>
-        ))}
+        )})}
       </div>
     </>
   )
@@ -301,6 +305,7 @@ export function ForceGraph({ graph, runId, onNodeClick }: Props) {
   const { positions, onContextMenu } = useForce(graph.nodes, graph.edges)
   const [popover, setPopover] = useState<PopoverState | null>(null)
   const [topicDetail, setTopicDetail] = useState<TopicDetailState | null>(null)
+  const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const popoverNode = popover ? graph.nodes.find(n => n.id === popover.nodeId) : null
 
@@ -317,6 +322,19 @@ export function ForceGraph({ graph, runId, onNodeClick }: Props) {
     } else if (node.url) {
       window.open(node.url, '_blank')
     }
+  }
+
+  function handleMouseEnter(node: GraphNode, e: React.MouseEvent) {
+    if (node.kind !== 'theme' && node.kind !== 'aspect') return
+    const x = e.clientX, y = e.clientY
+    if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current)
+    hoverTimerRef.current = setTimeout(() => {
+      setTopicDetail(prev => prev?.node.id === node.id ? prev : { node, x: x + 14, y: y + 4 })
+    }, 180)
+  }
+
+  function handleMouseLeave() {
+    if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current)
   }
 
   return (
@@ -369,6 +387,8 @@ export function ForceGraph({ graph, runId, onNodeClick }: Props) {
               style={{ cursor: isClickable ? 'pointer' : 'default' }}
               onClick={e => handleLeftClick(node, e)}
               onContextMenu={e => onContextMenu(node.id, e)}
+              onMouseEnter={e => handleMouseEnter(node, e)}
+              onMouseLeave={handleMouseLeave}
             >
               <circle cx={pos.x} cy={pos.y} r={r} fill={color} stroke="#0c1018" strokeWidth={2} />
               {/* Link indicator dot */}

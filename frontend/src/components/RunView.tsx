@@ -45,6 +45,8 @@ export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMo
   const [suggestions, setSuggestions] = useState<string[]>([])
   const [showSuggestions, setShowSuggestions] = useState(false)
   const [suggestLoading, setSuggestLoading] = useState(false)
+  // Track the pre-expand runId so we can restore it if the expanded run is cancelled.
+  const [preExpandRunId, setPreExpandRunId] = useState<string | null>(null)
 
   const { events, status } = useRunStream(runId)
 
@@ -52,6 +54,14 @@ export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMo
     const completed = events.findLast(e => e.type === 'run_completed')
     return (completed?.detail as { report?: Report } | undefined)?.report ?? null
   }, [events])
+
+  // Restore the pre-expand run when an expanded run is cancelled.
+  useEffect(() => {
+    if (status === 'cancelled' && preExpandRunId) {
+      setRunId(preExpandRunId)
+      setPreExpandRunId(null)
+    }
+  }, [status, preExpandRunId])
 
   // Propagate status + label + runId to parent (for tab state + close-kills-task).
   useEffect(() => {
@@ -99,12 +109,14 @@ export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMo
     if (!runId) return
     setExpanding(true)
     setNcRunId(null)
+    setPreExpandRunId(runId)  // remember so we can restore on cancel
     try {
       const { run_id } = await expandRun(runId)
       setRunId(run_id)
       setCached(false)
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Expand failed')
+      setPreExpandRunId(null)
     } finally {
       setExpanding(false)
     }

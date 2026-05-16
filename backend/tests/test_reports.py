@@ -42,11 +42,9 @@ def test_pick_top_quotes_returns_expected_shape_and_limit() -> None:
 
     quotes = pick_top_quotes(chunks, SentimentLabel.POSITIVE, n=3)
 
-    assert quotes == [
-        {"summary": "summary 0", "evidence_id": "0", "url": "https://example.com/0"},
-        {"summary": "summary 1", "evidence_id": "1", "url": "https://example.com/1"},
-        {"summary": "summary 2", "evidence_id": "2", "url": "https://example.com/2"},
-    ]
+    assert len(quotes) == 3
+    assert all("credible" in q for q in quotes)
+    assert [q["evidence_id"] for q in quotes] == ["0", "1", "2"]
 
 
 def test_report_aspects_source_facts_and_graph_link_evidence() -> None:

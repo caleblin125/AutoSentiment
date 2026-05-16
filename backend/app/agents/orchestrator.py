@@ -41,15 +41,14 @@ async def run_research(
 ) -> None:
     """End-to-end pipeline for one run. Runs as a background asyncio task.
 
-    Stages (see SPEC.md §Agent Flow):
+    Stages:
       1. 120B query expansion
       2. Brave search (1/sec) → unique URLs
-      3. Parallel URL fetch (up to _FETCH_CONCURRENCY at once), events emitted as each finishes
-      4. 30B sentiment per item (concurrency-capped via SentimentQueue), events emitted as each finishes
+      3. Parallel URL fetch (up to _FETCH_CONCURRENCY at once)
+      4. 30B sentiment per item (concurrency-capped via SentimentQueue)
       5. 120B synthesis → store report + emit run_completed
     """
     queue = event_bus.get(run_id)
-    seq = 0
     run_started_at = perf_counter()
     timings: dict[str, float] = {
         "query_expansion_ms": 0.0,
@@ -61,6 +60,13 @@ async def run_research(
     }
 
     async with AsyncSessionLocal() as db:
+        # Start seq after any pre-seeded events (e.g. copied from original run on expand).
+        from sqlalchemy import func as sqlfunc, select as _select
+        _count_result = await db.execute(
+            _select(sqlfunc.count()).select_from(RunEvent).where(RunEvent.run_id == run_id)
+        )
+        seq = _count_result.scalar_one() or 0
+
         async def emit(event_type: SSEEventType, message: str, detail: dict | None = None) -> None:
             """Persist and stream one SSE event.
 
@@ -105,7 +111,10 @@ async def run_research(
             # ── Stage 1: query expansion ────────────────────────────────────
             stage_started = perf_counter()
             queries = _expand_platform_queries(
-                await expand_queries(topic, settings=settings, cancel_check=_cancel_check),
+                await expand_queries(
+                    topic, settings=settings,
+                    freshness=freshness, cancel_check=_cancel_check,
+                ),
                 topic,
             )
             timings["query_expansion_ms"] = _elapsed_ms(stage_started)
@@ -129,7 +138,20 @@ async def run_research(
                 if remaining <= 0:
                     break
 
-                for url in await brave_search(query, freshness=freshness, count=remaining, settings=settings):
+                # Wrap in wait_for so a pending cancel isn't blocked by a slow HTTP response.
+                try:
+                    search_results = await asyncio.wait_for(
+                        brave_search(query, freshness=freshness, count=remaining, settings=settings),
+                        timeout=12.0,
+                    )
+                except asyncio.TimeoutError:
+                    if is_cancelled(run_id):
+                        raise _CancelledByUser()
+                    logger.warning("Brave search timed out for query: %s", query)
+                    continue
+                if is_cancelled(run_id):
+                    raise _CancelledByUser()
+                for url in search_results:
                     if url in seen_urls or url in skip_urls:
                         continue
                     seen_urls.add(url)
@@ -266,12 +288,13 @@ async def run_research(
             await db.commit()
 
         except (_CancelledByUser, GenerationCancelled):
-            logger.info("Run cancelled by user: %s", run_id)
+            logger.info("Run cancelled: %s", run_id)
             run = await db.get(Run, run_id)
             if run is not None:
                 run.status = "cancelled"
             await emit(SSEEventType.RUN_CANCELLED, "Run cancelled")
             await db.commit()
+
         except Exception as exc:
             logger.exception("Run failed: %s", run_id)
             run = await db.get(Run, run_id)
@@ -279,6 +302,7 @@ async def run_research(
                 run.status = "error"
             await emit(SSEEventType.RUN_ERROR, "Run error", {"message": str(exc)})
             await db.commit()
+
         finally:
             clear_cancel(run_id)
             if queue is not None:
@@ -310,15 +334,53 @@ async def _analyze_item(sentiment_queue: SentimentQueue, item) -> tuple:
     return item, result, _elapsed_ms(started_at)
 
 
+_CREDIBLE_DOMAINS_SET = frozenset({
+    "reuters.com", "apnews.com", "bbc.com", "bbc.co.uk", "nytimes.com",
+    "wsj.com", "bloomberg.com", "ft.com", "theguardian.com", "economist.com",
+    "nature.com", "science.org", "sciencedirect.com", "pubmed.ncbi.nlm.nih.gov",
+    "who.int", "cdc.gov", "europa.eu", "un.org", "mit.edu", "stanford.edu",
+    "harvard.edu", "ieee.org", "acm.org",
+})
+
+
+def _chunk_is_credible(chunk: EvidenceChunk) -> bool:
+    try:
+        domain = urlparse(chunk.url).netloc.removeprefix("www.")
+        return domain in _CREDIBLE_DOMAINS_SET or any(
+            domain.endswith(f".{d}") for d in _CREDIBLE_DOMAINS_SET
+        )
+    except Exception:
+        return False
+
+
 def _summaries_for_synthesis(chunks: list[EvidenceChunk], limit: int = 40) -> list[dict]:
-    """Keep synthesis prompts bounded while preserving sentiment diversity."""
+    """Keep synthesis prompts bounded while preserving sentiment diversity.
+
+    Credible sources are always included first to up-weight authoritative signals
+    in the 120B model's context window.
+    """
+    # Partition into credible and regular.
+    credible = [c for c in chunks if _chunk_is_credible(c)]
+    regular  = [c for c in chunks if not _chunk_is_credible(c)]
+
     selected: list[EvidenceChunk] = []
     per_label = max(1, limit // 3)
-    for label in SentimentLabel:
-        selected.extend([chunk for chunk in chunks if str(chunk.label) == label.value][:per_label])
 
-    seen = {chunk.id for chunk in selected}
-    selected.extend(chunk for chunk in chunks if chunk.id not in seen)
+    # Take credible sources first, diverse across labels.
+    for label in SentimentLabel:
+        selected.extend([c for c in credible if str(c.label) == label.value][:per_label])
+
+    # Fill remainder from regular sources, balanced by label.
+    seen = {c.id for c in selected}
+    for label in SentimentLabel:
+        selected.extend(
+            [c for c in regular if str(c.label) == label.value and c.id not in seen][: per_label]
+        )
+        seen = {c.id for c in selected}
+
+    seen = {c.id for c in selected}
+    selected.extend(c for c in chunks if c.id not in seen)
+
     return [
         {
             "label": chunk.label,

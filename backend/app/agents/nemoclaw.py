@@ -52,14 +52,34 @@ async def expand_queries(
     topic: str,
     *,
     settings: Settings,
+    freshness: str | None = None,
     cancel_check: "Callable[[], bool] | None" = None,
 ) -> list[str]:
-    """Call the 120B model to produce 5 search query variants for the topic."""
-    from collections.abc import Callable  # noqa: PLC0415 — avoid circular at module level
+    """Call the 120B model to produce 5 search query variants for the topic.
+
+    freshness controls time-scoping:
+      pm = past month  → queries must NOT include years > 1 month ago
+      pw = past week   → queries must NOT include specific years
+      pd = past day    → queries must NOT include specific years
+      py = past year   → allow current + prior year only
+      None             → no date restriction
+    """
+    from collections.abc import Callable  # noqa: PLC0415
+    from datetime import date
+    today = date.today().strftime("%B %Y")
+
+    freshness_rule = {
+        "pm": f"Today is {today}. ONLY include queries for the past month. Do NOT add years like 2023 or 2024. Omit any year suffix entirely or use '{date.today().year}' at most.",
+        "pw": f"Today is {today}. ONLY include queries for the past week. Omit specific years.",
+        "pd": f"Today is {today}. ONLY include queries for the past 24 hours. Omit specific years.",
+        "py": f"Today is {today}. Include queries for the past year; use only {date.today().year} or {date.today().year - 1} if a year is needed.",
+    }.get(freshness or "", f"Today is {today}.")
+
     system = "You are a search query generator. Respond with JSON only."
     prompt = (
-        "Generate 5 search queries to find public opinions, reviews, and discussions "
+        f"Generate 5 search queries to find public opinions, reviews, and discussions "
         f"about: {topic}\n"
+        f"{freshness_rule}\n"
         "Include variants targeting reviews, news, and discussion forums.\n"
         "Return exactly: {\"queries\": [\"...\", \"...\", \"...\", \"...\", \"...\"]}"
     )

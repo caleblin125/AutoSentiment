@@ -166,6 +166,7 @@ input:focus, select:focus, button:focus-visible {
 
 .search-input {
   flex: 1;
+  width: 100%;
   min-width: 0;
   font-size: 15px;
   background: var(--surface-elevated);
@@ -1621,6 +1622,60 @@ button[type="submit"] {
   border: 1px solid rgba(255,200,0,0.3);
 }
 
+.credibility-count--btn {
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.credibility-count--btn:hover { background: rgba(255,200,0,0.2); }
+
+/* Credible domains modal */
+.credible-modal {
+  background: var(--surface-elevated);
+  border: 1px solid rgba(255,200,0,0.4);
+  border-radius: 6px;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  font-size: 12px;
+}
+.credible-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.credible-modal-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.credible-modal-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(255,200,0,0.08);
+  border-radius: 4px;
+  padding: 2px 8px;
+}
+.credible-modal-item a {
+  color: gold;
+  text-decoration: none;
+}
+.credible-modal-item a:hover { text-decoration: underline; }
+
+/* Collapsed timeline preview row */
+.timeline-collapsed-preview {
+  padding: 2px 0 6px;
+  opacity: 0.8;
+  pointer-events: none;
+  overflow: hidden;
+}
+.timeline-collapsed-preview .timeline-event {
+  border-left-color: transparent;
+}
+
 /* ── History status icon + running dot ───────────────────────────────────── */
 
 .history-status-icon {
@@ -1829,11 +1884,12 @@ button[type="submit"] {
 
 .fetch-url-live {
   display: flex;
-  flex-direction: row;
-  flex-wrap: wrap;
-  gap: 4px;
+  flex-direction: column;
+  gap: 2px;
   width: 100%;
   margin-top: 4px;
+  max-height: 80px;
+  overflow: hidden;
 }
 
 .fetch-url-list {
@@ -1846,9 +1902,9 @@ button[type="submit"] {
   margin-top: 4px;
 }
 
-/* Collapsed view: compact pill per domain */
+/* Collapsed view: one compact row per URL */
 .fetch-url-live .fetch-url-link {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 4px;
   font-family: var(--mono);

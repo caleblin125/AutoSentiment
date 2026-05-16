@@ -187,8 +187,13 @@ async def stream_events(run_id: str, db: AsyncSession = Depends(get_db)) -> Stre
     if run is None:
         raise HTTPException(status_code=404, detail="Run not found")
 
-    # Completed/errored runs replay stored events from the DB so cached runs
-    # can be fully replayed by the frontend without needing a live queue.
+    def _ev_to_json(ev: RunEvent) -> str:
+        return json.dumps({
+            "seq": ev.seq, "type": ev.type,
+            "message": ev.message, "detail": ev.detail or {},
+        })
+
+    # Completed/errored/cancelled runs: full replay from DB.
     if run.status in ("completed", "error", "cancelled"):
         ev_result = await db.execute(
             select(RunEvent).where(RunEvent.run_id == run_id).order_by(RunEvent.seq)
@@ -197,9 +202,16 @@ async def stream_events(run_id: str, db: AsyncSession = Depends(get_db)) -> Stre
 
         async def replay():
             for ev in stored:
-                yield f"data: {json.dumps({'seq': ev.seq, 'type': ev.type, 'message': ev.message, 'detail': ev.detail or {}})}\n\n"
+                yield f"data: {_ev_to_json(ev)}\n\n"
 
         return StreamingResponse(replay(), media_type="text/event-stream")
+
+    # Running/pending: replay any pre-seeded stored events (e.g. from expand)
+    # then switch to the live queue so no events are missed.
+    ev_result = await db.execute(
+        select(RunEvent).where(RunEvent.run_id == run_id).order_by(RunEvent.seq)
+    )
+    stored_events = ev_result.scalars().all()
 
     queue = event_bus.get(run_id)
     if queue is None:
@@ -207,6 +219,8 @@ async def stream_events(run_id: str, db: AsyncSession = Depends(get_db)) -> Stre
 
     async def event_generator():
         try:
+            for ev in stored_events:
+                yield f"data: {_ev_to_json(ev)}\n\n"
             while True:
                 item = await queue.get()
                 if item is None:
@@ -256,6 +270,19 @@ async def expand_run(
     db.add(run)
     await db.commit()
     await db.refresh(run)
+
+    # Copy existing RunEvents so the expanded run's timeline continues from original.
+    orig_events_result = await db.execute(
+        select(RunEvent).where(RunEvent.run_id == run_id).order_by(RunEvent.seq)
+    )
+    for ev in orig_events_result.scalars().all():
+        db.add(RunEvent(
+            run_id=run.id,
+            seq=ev.seq,
+            type=ev.type,
+            message=ev.message,
+            detail=ev.detail,
+        ))
 
     # Copy existing evidence chunks and collect URLs to skip so the expanded
     # run focuses on sources not yet covered.

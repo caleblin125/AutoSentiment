@@ -98,7 +98,9 @@ export function NemoClawPanel({ ncRunId, topic }: Props) {
                           : 'var(--rog-cyan)'
               return (
                 <div className="nemoclaw-col" key={ci}>
-                  <h4 style={{ color }}>{cat.name}</h4>
+                  <h4 className="nemoclaw-cat-title" style={{ color, fontSize: '0.95rem', fontWeight: 700, letterSpacing: '0.02em' }}>
+                    {cat.name}
+                  </h4>
                   <ul>
                     {cat.items.map((item, i) => (
                       <li key={i} style={{ color }}>{item}</li>
