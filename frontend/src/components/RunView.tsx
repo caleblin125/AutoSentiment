@@ -176,19 +176,22 @@ export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMo
     }
   }, [status, activeTopic, cached, runId, expanding, isExpandedRun, onStatusChange])
 
-  // Keyboard shortcuts
+  // Keyboard shortcuts — use a ref to this RunView's own form so Ctrl+Enter
+  // only submits the active tab (not the first .search-form in the DOM when
+  // multiple RunViews are mounted simultaneously).
+  const searchFormRef = useRef<HTMLFormElement | null>(null)
   useKeyboardShortcuts({
     'Ctrl+Enter': () => {
-      if (topic.trim() && !loading) {
-        const form = document.querySelector('.search-form') as HTMLFormElement | null
-        form?.requestSubmit()
-      }
+      if (topic.trim() && !loading) searchFormRef.current?.requestSubmit()
     },
     'Escape': () => { setShowSuggestions(false) },
   })
 
-  // Page title updates
+  // Page title — only update if this panel is visible (not display:none).
+  // Check the parent .app-body div's display style via the form ref's closest ancestor.
   useEffect(() => {
+    const panel = searchFormRef.current?.closest('.app-body') as HTMLElement | null
+    if (panel && panel.style.display === 'none') return
     const label = activeTopic ?? 'AutoSentiment'
     const s = status === 'running' ? '⟳' : status === 'completed' ? '✓' : status === 'cancelled' ? '⊘' : ''
     document.title = `${s ? s + ' ' : ''}${label} — AutoSentiment`
@@ -358,7 +361,7 @@ export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMo
       {/* ── Search bar + history ── */}
       <div className="panel search-panel">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, flex: 1, position: 'relative' }}>
-          <form className="search-form" onSubmit={handleSubmit} autoComplete="off">
+          <form className="search-form" ref={searchFormRef} onSubmit={handleSubmit} autoComplete="off">
             <div style={{ position: 'relative', flex: 1, minWidth: 0 }}>
               <input
                 className="search-input"
