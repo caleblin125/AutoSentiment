@@ -196,43 +196,126 @@ function AspectSummary({ aspects }: { aspects: NonNullable<Report['aspects']> })
   )
 }
 
-// ── Source facts ──────────────────────────────────────────────────────────
+// ── Source facts (grouped by source type with expandable subtypes) ────────
+
+import { useState as _useState } from 'react'  // already imported above; alias for clarity
+
+const SOURCE_TYPE_LABEL: Record<string, string> = {
+  reddit: 'Reddit',
+  news:   'News Media',
+  social: 'Social Media',
+  forum:  'Forums',
+  video:  'Video',
+  web:    'Web / Blogs',
+}
+
+const SOURCE_TYPE_ICON: Record<string, string> = {
+  reddit: '⬤',
+  news:   '📰',
+  social: '💬',
+  forum:  '🗣',
+  video:  '▶',
+  web:    '🌐',
+}
+
+interface SourceGroup {
+  type: string
+  label: string
+  count: number
+  positive: number
+  neutral: number
+  negative: number
+  domains: NonNullable<Report['source_facts']>
+}
+
+function groupSourceFacts(facts: NonNullable<Report['source_facts']>): SourceGroup[] {
+  const byType = new Map<string, SourceGroup>()
+  for (const f of facts) {
+    if (f.count === 0) continue  // skip zero-item sources
+    const type = f.source_type
+    if (!byType.has(type)) {
+      byType.set(type, {
+        type, label: SOURCE_TYPE_LABEL[type] ?? type,
+        count: 0, positive: 0, neutral: 0, negative: 0, domains: [],
+      })
+    }
+    const g = byType.get(type)!
+    g.count += f.count
+    g.positive += f.labels?.positive ?? 0
+    g.neutral  += f.labels?.neutral  ?? 0
+    g.negative += f.labels?.negative ?? 0
+    g.domains.push(f)
+  }
+  return [...byType.values()].sort((a, b) => b.count - a.count)
+}
+
+function SourceGroupCard({ group }: { group: SourceGroup }) {
+  const [open, setOpen] = _useState(false)
+  const total = group.positive + group.neutral + group.negative || 1
+  const icon = SOURCE_TYPE_ICON[group.type] ?? '●'
+
+  return (
+    <div className="source-group">
+      <button className="source-group-header" onClick={() => setOpen(o => !o)}>
+        <span className="source-group-icon">{icon}</span>
+        <span className="source-group-label">{group.label}</span>
+        <span className="source-group-count">{group.count} items · {group.domains.length} sources</span>
+        <div className="source-group-bar">
+          <div style={{ flex: group.positive / total, background: 'var(--positive)' }} />
+          <div style={{ flex: group.neutral  / total, background: 'var(--neutral)' }} />
+          <div style={{ flex: group.negative / total, background: 'var(--rog-red)' }} />
+        </div>
+        <span className="source-group-chevron">{open ? '▲' : '▼'}</span>
+      </button>
+
+      {open && (
+        <div className="source-group-domains">
+          {group.domains.sort((a, b) => b.count - a.count).map(fact => {
+            const fakeUrl = `https://${fact.domain}`
+            const dtotal = (fact.labels?.positive ?? 0) + (fact.labels?.neutral ?? 0) + (fact.labels?.negative ?? 0) || 1
+            return (
+              <a
+                key={fact.domain}
+                className="source-fact"
+                href={fakeUrl}
+                target="_blank"
+                rel="noreferrer"
+              >
+                <div className="source-fact-header">
+                  <img
+                    src={`https://www.google.com/s2/favicons?domain=${fact.domain}&sz=14`}
+                    alt="" width={14} height={14}
+                    onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
+                  />
+                  <strong className="clip-text" title={fact.domain}>
+                    {KNOWN_PROVIDERS[fact.domain] ?? fact.domain.replace(/^www\./, '')}
+                  </strong>
+                </div>
+                <span style={{ fontSize: 10, color: 'var(--text)', fontFamily: 'var(--mono)' }}>
+                  {fact.count} items
+                </span>
+                <div className="source-fact-bar">
+                  <div style={{ flex: (fact.labels?.positive ?? 0) / dtotal, background: 'var(--positive)' }} />
+                  <div style={{ flex: (fact.labels?.neutral  ?? 0) / dtotal, background: 'var(--neutral)' }} />
+                  <div style={{ flex: (fact.labels?.negative ?? 0) / dtotal, background: 'var(--rog-red)' }} />
+                </div>
+              </a>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
 
 function SourceFacts({ facts }: { facts: NonNullable<Report['source_facts']> }) {
+  const groups = groupSourceFacts(facts)
+  if (!groups.length) return null
   return (
     <div className="insight-section">
       <h3>Evidence sources</h3>
-      <div className="source-fact-list">
-        {facts.slice(0, 8).map(fact => {
-          const fakeUrl = `https://${fact.domain}`
-          return (
-            <a
-              key={fact.domain}
-              className="source-fact"
-              href={fakeUrl}
-              target="_blank"
-              rel="noreferrer"
-              style={{ textDecoration: 'none' }}
-            >
-              <div className="source-fact-header">
-                <img
-                  src={`https://www.google.com/s2/favicons?domain=${fact.domain}&sz=14`}
-                  alt="" width={14} height={14}
-                  onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
-                />
-                <strong className="clip-text" title={fact.domain}>
-                  {KNOWN_PROVIDERS[fact.domain] ?? fact.domain.replace(/^www\./, '')}
-                </strong>
-              </div>
-              <span>{fact.source_type} · {fact.count} items</span>
-              <div className="source-fact-bar">
-                <div style={{ flex: fact.labels?.positive ?? 0, background: 'var(--positive)' }} />
-                <div style={{ flex: fact.labels?.neutral ?? 0, background: 'var(--neutral)' }} />
-                <div style={{ flex: fact.labels?.negative ?? 0, background: 'var(--rog-red)' }} />
-              </div>
-            </a>
-          )
-        })}
+      <div className="source-group-list">
+        {groups.map(g => <SourceGroupCard key={g.type} group={g} />)}
       </div>
     </div>
   )
@@ -292,7 +375,19 @@ function EvidenceModal({ chunk, onClose }: { chunk: EvidenceChunk; onClose: () =
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
-  // Simple keyword extraction for the analysis blocks.
+  // Trim to first 3 meaningful sentences or 350 chars, whichever is shorter.
+  function trimSnippet(text: string): string {
+    const sentences = text.split(/(?<=[.!?])\s+/).filter(s => s.trim().length > 10)
+    const first3 = sentences.slice(0, 3).join(' ')
+    if (first3.length <= 350) return first3
+    const cut = text.slice(0, 350)
+    const lastPunct = Math.max(cut.lastIndexOf('.'), cut.lastIndexOf('!'), cut.lastIndexOf('?'))
+    return lastPunct > 100 ? cut.slice(0, lastPunct + 1) : cut + '…'
+  }
+
+  const displaySnippet = trimSnippet(chunk.snippet)
+
+  // Keyword extraction from the FULL snippet for accurate analysis.
   const words = chunk.snippet.toLowerCase().split(/\W+/).filter(w => w.length > 4)
   const freqMap = new Map<string, number>()
   words.forEach(w => freqMap.set(w, (freqMap.get(w) ?? 0) + 1))
@@ -327,8 +422,8 @@ function EvidenceModal({ chunk, onClose }: { chunk: EvidenceChunk; onClose: () =
           </span>
         </div>
 
-        {/* Full snippet */}
-        <p className="snippet">{chunk.snippet}</p>
+        {/* Trimmed snippet — link to full source for complete text */}
+        <p className="snippet">{displaySnippet}</p>
 
         {/* Structured analysis */}
         <div className="snippet-analysis">
@@ -444,15 +539,17 @@ export function ReportView({ runId, topic, report }: Props) {
           </tr>
         </thead>
         <tbody>
-          {Object.entries(by_source).map(([src, stats]) => (
-            <tr key={src}>
-              <td>{src}</td>
-              <td style={{ fontFamily: 'var(--mono)' }}>{stats?.count ?? 0}</td>
-              <td style={{ color: 'var(--positive)', fontFamily: 'var(--mono)' }}>{pct(stats?.positive ?? 0)}</td>
-              <td style={{ fontFamily: 'var(--mono)' }}>{pct(stats?.neutral ?? 0)}</td>
-              <td style={{ color: 'var(--rog-red)', fontFamily: 'var(--mono)' }}>{pct(stats?.negative ?? 0)}</td>
-            </tr>
-          ))}
+          {Object.entries(by_source)
+            .filter(([, stats]) => (stats?.count ?? 0) > 0)
+            .map(([src, stats]) => (
+              <tr key={src}>
+                <td>{SOURCE_TYPE_LABEL[src] ?? src}</td>
+                <td style={{ fontFamily: 'var(--mono)' }}>{stats?.count ?? 0}</td>
+                <td style={{ color: 'var(--positive)', fontFamily: 'var(--mono)' }}>{pct(stats?.positive ?? 0)}</td>
+                <td style={{ fontFamily: 'var(--mono)' }}>{pct(stats?.neutral ?? 0)}</td>
+                <td style={{ color: 'var(--rog-red)', fontFamily: 'var(--mono)' }}>{pct(stats?.negative ?? 0)}</td>
+              </tr>
+            ))}
         </tbody>
       </table>
 

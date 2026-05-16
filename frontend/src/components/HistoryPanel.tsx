@@ -5,7 +5,7 @@
  * refreshKey prop can be bumped externally to force an immediate refresh.
  */
 import { useEffect, useRef, useState } from 'react'
-import { clearHistory, listRuns, type RunSummary } from '../lib/api'
+import { cancelRun, clearHistory, listRuns, type RunSummary } from '../lib/api'
 
 interface Props {
   onOpenRun: (runId: string, topic: string) => void  // always opens in a new tab
@@ -120,46 +120,65 @@ export function HistoryPanel({ onOpenRun, refreshKey }: Props) {
             </p>
           )}
 
-          {runs.map(run => (
-            <button
-              key={run.id}
-              className="history-item"
-              onClick={() => { onOpenRun(run.id, run.topic); setOpen(false) }}
-              disabled={run.status === 'pending' || run.status === 'running'}
-              title={run.status === 'running' ? 'Currently running — wait for completion to replay' : run.topic}
-            >
-              <div className="history-item-top">
-                <span
-                  className="history-status-icon"
-                  style={{ color: STATUS_COLOR[run.status] ?? 'var(--text)' }}
+          {runs.map(run => {
+            const isActive = run.status === 'running' || run.status === 'pending'
+            return (
+              <div key={run.id} className="history-item-wrap">
+                <button
+                  className="history-item"
+                  onClick={() => { if (!isActive) { onOpenRun(run.id, run.topic); setOpen(false) } }}
+                  disabled={isActive}
+                  title={isActive ? 'Currently running' : run.topic}
                 >
-                  {run.status === 'running'
-                    ? <span className="inline-spinner" style={{ width: 8, height: 8 }} />
-                    : STATUS_ICON[run.status] ?? '?'}
-                </span>
-                <span className="history-topic" title={run.topic}>{run.topic}</span>
-                <span className="history-date">{formatDate(run.created_at)}</span>
-              </div>
+                  <div className="history-item-top">
+                    <span
+                      className="history-status-icon"
+                      style={{ color: STATUS_COLOR[run.status] ?? 'var(--text)' }}
+                    >
+                      {run.status === 'running'
+                        ? <span className="inline-spinner" style={{ width: 8, height: 8 }} />
+                        : STATUS_ICON[run.status] ?? '?'}
+                    </span>
+                    <span className="history-topic" title={run.topic}>{run.topic}</span>
+                    <span className="history-date">{formatDate(run.created_at)}</span>
+                  </div>
 
-              {run.overall && (
-                <div className="history-item-stats">
-                  <span style={{ color: 'var(--positive)', fontFamily: 'var(--mono)', fontSize: 10 }}>
-                    +{Math.round(run.overall.positive * 100)}%
-                  </span>
-                  <span style={{ color: 'var(--neutral)', fontFamily: 'var(--mono)', fontSize: 10, margin: '0 6px' }}>
-                    ~{Math.round(run.overall.neutral * 100)}%
-                  </span>
-                  <span style={{ color: 'var(--rog-red)', fontFamily: 'var(--mono)', fontSize: 10 }}>
-                    -{Math.round(run.overall.negative * 100)}%
-                  </span>
-                  <span style={{ marginLeft: 'auto', color: 'var(--text)', fontFamily: 'var(--mono)', fontSize: 10 }}>
-                    {run.overall.total} items
-                  </span>
-                </div>
-              )}
-              <MiniBar overall={run.overall} />
-            </button>
-          ))}
+                  {run.overall && (
+                    <div className="history-item-stats">
+                      <span style={{ color: 'var(--positive)', fontFamily: 'var(--mono)', fontSize: 10 }}>
+                        +{Math.round(run.overall.positive * 100)}%
+                      </span>
+                      <span style={{ color: 'var(--neutral)', fontFamily: 'var(--mono)', fontSize: 10, margin: '0 6px' }}>
+                        ~{Math.round(run.overall.neutral * 100)}%
+                      </span>
+                      <span style={{ color: 'var(--rog-red)', fontFamily: 'var(--mono)', fontSize: 10 }}>
+                        -{Math.round(run.overall.negative * 100)}%
+                      </span>
+                      <span style={{ marginLeft: 'auto', color: 'var(--text)', fontFamily: 'var(--mono)', fontSize: 10 }}>
+                        {run.overall.total} items
+                      </span>
+                    </div>
+                  )}
+                  <MiniBar overall={run.overall} />
+                </button>
+
+                {/* Cancel button for active runs */}
+                {isActive && (
+                  <button
+                    className="history-cancel-btn"
+                    title="Cancel this run"
+                    onClick={async e => {
+                      e.stopPropagation()
+                      try { await cancelRun(run.id) } catch { /* best-effort */ }
+                      await fetchRuns()
+                    }}
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+            )
+          })}
         </div>
       )}
     </div>
