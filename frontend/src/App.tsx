@@ -190,6 +190,18 @@ export default function App() {
 
   const runningCount = tabs.filter(t => t.status === 'running').length
 
+  function reorderTabs(dragId: string, dropId: string) {
+    setTabs(prev => {
+      const from = prev.findIndex(t => t.id === dragId)
+      const to   = prev.findIndex(t => t.id === dropId)
+      if (from === -1 || to === -1 || from === to) return prev
+      const next = [...prev]
+      const [moved] = next.splice(from, 1)
+      next.splice(to, 0, moved)
+      return next
+    })
+  }
+
   return (
     <div className="app">
       <header className="app-header">
@@ -225,6 +237,7 @@ export default function App() {
         onSelect={setActiveId}
         onAdd={addTab}
         onClose={closeTab}
+        onReorder={reorderTabs}
       />
 
       {tabs.map(tab => (

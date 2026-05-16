@@ -25,23 +25,26 @@ const CENTER_K = 0.003
 interface Vec2 { x: number; y: number }
 interface NodeSim { id: string; pos: Vec2; vel: Vec2; fixed: boolean }
 
-const KIND_COLOR: Record<GraphNode['kind'], string> = {
+const KIND_COLOR: Record<string, string> = {
   topic:     '#e8000d',
   theme:     '#8b5cf6',
   aspect:    '#ff6600',
   sentiment: '#4a6080',
   source:    '#00c8d4',
+  url:       '#1a9a9a',
 }
 
-const KIND_LABEL: Record<GraphNode['kind'], string> = {
+const KIND_LABEL: Record<string, string> = {
   topic: 'Search topic',
   theme: 'Theme',
   aspect: 'Directional topic',
   sentiment: 'Sentiment',
-  source: 'Source',
+  source: 'Source domain',
+  url: 'Source link',
 }
 
 function nodeRadius(node: GraphNode): number {
+  if (node.kind === 'url') return 5
   const base = node.kind === 'topic' ? 22 : node.kind === 'source' ? 12 : 13
   return Math.max(base, Math.min(base + 14, base + Math.sqrt(Math.max(0, node.weight)) * 1.5))
 }
@@ -142,7 +145,12 @@ function useForce(nodes: GraphNode[], edges: GraphEdge[], storageKey: string) {
       persistPositions(storageKey, states)
       tickRef.current += 1
       const averageSpeed = totalSpeed / Math.max(1, states.length)
-      if (tickRef.current < 180 && averageSpeed > 0.02) {
+      // Continue simulation: high-activity phase (first 240 ticks), then
+      // gentle continuation every 4 frames to respond to user drags.
+      if (tickRef.current < 240 && averageSpeed > 0.015) {
+        rafRef.current = requestAnimationFrame(tick)
+      } else if (averageSpeed > 0.001) {
+        // Keep settling slowly — no freeze on partial motion.
         rafRef.current = requestAnimationFrame(tick)
       }
     }
@@ -369,7 +377,7 @@ export function ForceGraph({ graph, runId, onNodeClick }: Props) {
 
   const visibleNodes = useMemo(() => graph.nodes.filter(node => {
     if (node.kind === 'sentiment' && node.weight <= 0) return false
-    if (hiddenKinds.has(node.kind)) return false
+    if (hiddenKinds.has(node.kind as GraphNode['kind'])) return false
     return true
   }), [graph.nodes, hiddenKinds])
 
@@ -403,7 +411,9 @@ export function ForceGraph({ graph, runId, onNodeClick }: Props) {
   function handleLeftClick(node: GraphNode, e: React.MouseEvent) {
     e.stopPropagation()
     setSelectedNode(node)
-    if (node.kind === 'source' && (node.urls?.length || node.url)) {
+    if (node.kind === 'url') {
+      if (node.url) window.open(node.url, '_blank', 'noreferrer')
+    } else if (node.kind === 'source' && (node.urls?.length || node.url)) {
       setTopicDetail(null)
       setPopover({ nodeId: node.id, x: e.clientX + 12, y: e.clientY + 4 })
     } else if (node.kind === 'theme' || node.kind === 'aspect') {
@@ -432,7 +442,7 @@ export function ForceGraph({ graph, runId, onNodeClick }: Props) {
   // Zoom via scroll wheel on the SVG
   function handleWheel(e: React.WheelEvent) {
     e.preventDefault()
-    setZoom(z => Math.max(0.3, Math.min(3, z * (e.deltaY > 0 ? 0.9 : 1.1))))
+    setZoom(z => Math.max(0.45, Math.min(4, z * (e.deltaY > 0 ? 0.88 : 1.13))))
   }
 
   // Pan via left-click drag on background (SVG element directly)
@@ -478,13 +488,13 @@ export function ForceGraph({ graph, runId, onNodeClick }: Props) {
         <button
           type="button"
           className="btn-secondary graph-ctrl-btn"
-          onClick={() => setZoom(z => Math.min(3, z * 1.25))}
+          onClick={() => setZoom(z => Math.min(4, z * 1.25))}
           title="Zoom in"
         >+</button>
         <button
           type="button"
           className="btn-secondary graph-ctrl-btn"
-          onClick={() => setZoom(z => Math.max(0.3, z * 0.8))}
+          onClick={() => setZoom(z => Math.max(0.45, z * 0.8))}
           title="Zoom out"
         >−</button>
         <button
@@ -513,6 +523,21 @@ export function ForceGraph({ graph, runId, onNodeClick }: Props) {
             <marker id="arrow" markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto">
               <path d="M0,0 L0,6 L7,3 z" fill="var(--rog-cyan)" opacity="0.35" />
             </marker>
+            {/* Per-kind radial gradients for nicer nodes */}
+            {Object.entries(KIND_COLOR).map(([kind, color]) => (
+              <radialGradient key={kind} id={`grad-${kind}`} cx="35%" cy="30%" r="70%">
+                <stop offset="0%" stopColor={color} stopOpacity="1" />
+                <stop offset="100%" stopColor={color} stopOpacity="0.6" />
+              </radialGradient>
+            ))}
+            <filter id="glow-topic" x="-50%" y="-50%" width="200%" height="200%">
+              <feGaussianBlur stdDeviation="4" result="blur" />
+              <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+            </filter>
+            <filter id="glow-node" x="-30%" y="-30%" width="160%" height="160%">
+              <feGaussianBlur stdDeviation="2.5" result="blur" />
+              <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+            </filter>
           </defs>
 
           {visibleEdges.map(edge => {
@@ -536,32 +561,57 @@ export function ForceGraph({ graph, runId, onNodeClick }: Props) {
             const pos = positions.get(node.id)
             if (!pos) return null
             const r = nodeRadius(node)
-            const color = KIND_COLOR[node.kind] ?? '#4a6080'
-            const hasLinks = node.kind === 'source' && (node.urls?.length || node.url)
+            const isUrl = node.kind === 'url'
+            const hasLinks = (node.kind === 'source' || isUrl) && (node.urls?.length || node.url)
             const isClickable = hasLinks || node.kind === 'sentiment' || node.kind === 'theme' || node.kind === 'aspect'
             const dimmed = matchingIds && !matchingIds.has(node.id)
+            const isSelected = selectedNode?.id === node.id
+            const filter = node.kind === 'topic' ? 'url(#glow-topic)' : isSelected ? 'url(#glow-node)' : undefined
+
             return (
               <g
                 key={node.id}
-                className={`graph-node${selectedNode?.id === node.id ? ' graph-node--selected' : ''}`}
-                style={{ cursor: isClickable ? 'pointer' : 'default', opacity: dimmed ? 0.2 : 1 }}
+                className={`graph-node${isSelected ? ' graph-node--selected' : ''}`}
+                style={{ cursor: isClickable ? 'pointer' : 'default', opacity: dimmed ? 0.18 : 1 }}
                 onClick={e => handleLeftClick(node, e)}
                 onContextMenu={e => onContextMenu(node.id, e)}
                 onMouseEnter={e => handleMouseEnter(node, e)}
                 onMouseLeave={handleMouseLeave}
+                filter={filter}
               >
-                <circle cx={pos.x} cy={pos.y} r={r} fill={color} stroke="var(--graph-node-stroke)" strokeWidth={2} />
-                {hasLinks && (
+                {isUrl ? (
+                  // URL nodes: small diamond shape for visual distinction
+                  <rect
+                    x={pos.x - r} y={pos.y - r} width={r * 2} height={r * 2}
+                    rx={1.5}
+                    fill={`url(#grad-url)`}
+                    stroke="var(--graph-node-stroke)" strokeWidth={1}
+                    transform={`rotate(45 ${pos.x} ${pos.y})`}
+                  />
+                ) : (
+                  <circle cx={pos.x} cy={pos.y} r={r} fill={`url(#grad-${node.kind})`}
+                    stroke={isSelected ? 'var(--rog-cyan)' : 'var(--graph-node-stroke)'}
+                    strokeWidth={isSelected ? 2.5 : node.kind === 'topic' ? 2.5 : 1.5}
+                  />
+                )}
+                {hasLinks && !isUrl && (
                   <circle cx={pos.x + r - 4} cy={pos.y - r + 4} r={3.5}
                     fill="var(--rog-cyan)" stroke="var(--graph-node-stroke)" strokeWidth={1} />
                 )}
                 {matchingIds?.has(node.id) && (
                   <circle cx={pos.x} cy={pos.y} r={r + 5} fill="none"
-                    stroke="var(--rog-cyan)" strokeWidth={2} opacity={0.7} />
+                    stroke="var(--rog-cyan)" strokeWidth={2} strokeDasharray="4 2" opacity={0.8} />
                 )}
-                <text x={pos.x + r + 5} y={pos.y + 4} className="graph-node-label">
-                  {shortLabel(node.label)}
-                </text>
+                {!isUrl && (
+                  <text x={pos.x + r + 5} y={pos.y + 4} className="graph-node-label">
+                    {shortLabel(node.label)}
+                  </text>
+                )}
+                {isUrl && isSelected && (
+                  <text x={pos.x + r + 4} y={pos.y + 3} className="graph-node-label graph-node-label--url">
+                    {shortLabel(node.label)}
+                  </text>
+                )}
               </g>
             )
           })}
@@ -600,19 +650,19 @@ export function ForceGraph({ graph, runId, onNodeClick }: Props) {
 
       {/* Interactive legend */}
       <div className="graph-legend">
-        {(Object.entries(KIND_COLOR) as [GraphNode['kind'], string][]).map(([kind, color]) => (
+        {(Object.entries(KIND_COLOR) as [string, string][]).map(([kind, color]) => (
           <button
             key={kind}
             type="button"
-            className={`graph-legend-item graph-legend-btn${hiddenKinds.has(kind) ? ' graph-legend-btn--hidden' : ''}`}
-            onClick={() => toggleKind(kind)}
-            title={hiddenKinds.has(kind) ? `Show ${kind} nodes` : `Hide ${kind} nodes`}
+            className={`graph-legend-item graph-legend-btn${hiddenKinds.has(kind as GraphNode['kind']) ? ' graph-legend-btn--hidden' : ''}`}
+            onClick={() => toggleKind(kind as GraphNode['kind'])}
+            title={hiddenKinds.has(kind as GraphNode['kind']) ? `Show ${kind} nodes` : `Hide ${kind} nodes`}
           >
-            <span className="graph-legend-dot" style={{ background: hiddenKinds.has(kind) ? 'var(--border)' : color }} />
+            <span className="graph-legend-dot" style={{ background: hiddenKinds.has(kind as GraphNode['kind']) ? 'var(--border)' : color }} />
             {KIND_LABEL[kind]}
           </button>
         ))}
-        <span className="graph-legend-hint">Click to toggle visibility</span>
+        <span className="graph-legend-hint">Right-drag pin · Scroll zoom · Click to open · Drag bg to pan</span>
       </div>
 
       {/* Source URL popover */}

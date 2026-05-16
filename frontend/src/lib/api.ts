@@ -148,6 +148,7 @@ export interface FactClaim {
   claim_type: string
   confidence: number
   supporting_domains: string[]
+  supporting_urls?: string[]
   opposing_domains: string[]
   evidence_ids: string[]
   source_types: string[]
@@ -235,7 +236,7 @@ export interface IdeaGraph {
 export interface GraphNode {
   id: string
   label: string
-  kind: 'topic' | 'sentiment' | 'theme' | 'aspect' | 'source'
+  kind: 'topic' | 'sentiment' | 'theme' | 'aspect' | 'source' | 'url'
   weight: number
   url?: string
   urls?: string[]

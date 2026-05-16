@@ -380,6 +380,7 @@ def compute_claims(chunks: list[EvidenceChunk], limit: int = 10) -> dict:
                     "claim_type": _claim_type(sentence),
                     "confidence": 0.0,
                     "supporting_domains": [],
+                    "supporting_urls": [],
                     "opposing_domains": [],
                     "evidence_ids": [],
                     "source_types": [],
@@ -389,6 +390,8 @@ def compute_claims(chunks: list[EvidenceChunk], limit: int = 10) -> dict:
             domain = urlparse(chunk.url).netloc.removeprefix("www.") or "unknown"
             if domain not in claim["supporting_domains"]:
                 claim["supporting_domains"].append(domain)
+            if chunk.url not in claim["supporting_urls"] and len(claim["supporting_urls"]) < 5:
+                claim["supporting_urls"].append(chunk.url)
             if chunk.id not in claim["evidence_ids"]:
                 claim["evidence_ids"].append(chunk.id)
             if chunk.source_type not in claim["source_types"]:
@@ -877,7 +880,7 @@ def build_idea_graph(topic: str, chunks: list[EvidenceChunk], themes: list[str],
         # Connect to every sentiment that has at least one chunk, not just the dominant.
         # This ensures minority sentiments (e.g. negative on a mostly-positive topic) still get branches.
         for label in SentimentLabel:
-            label_count = round(aspect[label.value] * aspect["count"])
+            label_count = round(aspect.get(label.value, 0) * aspect["count"])
             if label_count > 0:
                 edges.append({"source": node_id, "target": f"sentiment:{label.value}", "kind": "direction", "weight": label_count})
 
@@ -901,6 +904,20 @@ def build_idea_graph(topic: str, chunks: list[EvidenceChunk], themes: list[str],
             "urls": urls,
         })
         edges.append({"source": "topic", "target": node_id, "kind": "source", "weight": fact["count"]})
+        # Add individual URL sub-nodes (up to 3 per domain) as small satellite nodes.
+        for i, url in enumerate(urls[:3]):
+            url_id = f"url:{url[:60]}"
+            path = urlparse(url).path.rstrip("/") or "/"
+            short_path = path[:28] + "…" if len(path) > 28 else path
+            nodes.append({
+                "id": url_id,
+                "label": short_path or domain,
+                "kind": "url",
+                "weight": 1,
+                "url": url,
+                "urls": [url],
+            })
+            edges.append({"source": node_id, "target": url_id, "kind": "source", "weight": 1})
 
     return {"nodes": nodes, "edges": edges}
 

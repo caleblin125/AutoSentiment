@@ -4,7 +4,7 @@
  * All url_fetched events are merged into a single "fetch batch" row that
  * shows a progress counter and advances as URLs complete.
  */
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import type { SSEEvent } from '../lib/api'
 
 interface Props { events: SSEEvent[]; status: string }
@@ -135,12 +135,22 @@ function foldEvents(events: SSEEvent[]): FoldedEvent[] {
 
 // ── Row renderers ─────────────────────────────────────────────────────────
 
-function FetchBatchRow({ ev }: { ev: FoldedFetch }) {
-  const [expanded, setExpanded] = useState(false)
+// FetchBatchRow returns a tuple: [headerContent, expandedListOrNull]
+// EventRow renders them as separate <li> elements so the URL list
+// spans the full row width and genuinely pushes subsequent rows down.
+function useFetchExpanded() {
+  return useState(false)
+}
+
+function FetchBatchHeader({ ev, expanded, setExpanded }: {
+  ev: FoldedFetch
+  expanded: boolean
+  setExpanded: (x: boolean) => void
+}) {
   const pct = ev._totalUrls > 0 ? Math.min(100, (ev._fetchCount / ev._totalUrls) * 100) : 0
   const done = ev._fetchCount >= ev._totalUrls && ev._totalUrls > 0
   const domains = [...new Set(ev._domains)].slice(0, 6)
-  const recentUrls = ev._urls.slice(-5)
+  const recentUrls = ev._urls.slice(-3)
 
   return (
     <div className="fetch-batch-message">
@@ -161,44 +171,26 @@ function FetchBatchRow({ ev }: { ev: FoldedFetch }) {
         {ev._urls.length > 0 && (
           <button
             className="url-expand-toggle"
-            onClick={e => { e.stopPropagation(); setExpanded((x: boolean) => !x) }}
+            onClick={e => { e.stopPropagation(); setExpanded(!expanded) }}
             title={expanded ? 'Hide URLs' : 'Show fetched URLs'}
           >
             {expanded ? '▲ hide' : `▼ ${ev._urls.length} URLs`}
           </button>
         )}
       </span>
-
       {!done && (
-        <div className="fetch-progress-bar" style={{ width: '100%' }}>
+        <div className="fetch-progress-bar">
           <div className="fetch-progress-fill" style={{ width: `${pct}%` }} />
         </div>
       )}
-
-      {/* URL list — last 3 when collapsed, all when expanded */}
-      {!expanded && recentUrls.slice(-3).length > 0 && (
+      {!expanded && recentUrls.length > 0 && (
         <div className="fetch-url-live">
-          {recentUrls.slice(-3).map(u => (
+          {recentUrls.map(u => (
             <a key={u.url} href={u.url} target="_blank" rel="noreferrer" className="fetch-url-link" title={u.url}>
               <img src={faviconUrl(u.domain)} alt="" width={11} height={11}
                 onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
               <span className="fetch-url-domain">{providerName(u.domain)}</span>
               {u.item_count > 0 && <span className="url-item-badge">{u.item_count}</span>}
-            </a>
-          ))}
-        </div>
-      )}
-
-      {expanded && (
-        <div className="fetch-url-list">
-          {ev._urls.map(u => (
-            <a key={u.url} href={u.url} target="_blank" rel="noreferrer" className="fetch-url-link" title={u.url}>
-              <img src={faviconUrl(u.domain)} alt="" width={11} height={11}
-                onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
-              <span className="fetch-url-domain">{providerName(u.domain)}</span>
-              <span className="fetch-url-path">{truncatePath(u.url)}</span>
-              {u.item_count > 0 && <span className="url-item-badge">{u.item_count}</span>}
-              <span className="duration-badge">{formatDuration(u.fetch_ms)}</span>
             </a>
           ))}
         </div>
@@ -276,17 +268,47 @@ function GenericRow({ ev }: { ev: SSEEvent }) {
 }
 
 function EventRow({ ev }: { ev: FoldedEvent }) {
+  const [expanded, setExpanded] = useFetchExpanded()
   const elapsed = !isFolded(ev) ? ev.detail.elapsed_ms : ev._latestElapsed
   const received = !isFolded(ev) ? ev.detail.received_at : undefined
+
+  if (isFolded(ev)) {
+    return (
+      <Fragment>
+        <li className={`timeline-event timeline-event--${ev.type}`}>
+          <span className="event-elapsed">{formatElapsed(elapsed)}</span>
+          <time className="event-time">{formatWallTime(received)}</time>
+          <FetchBatchHeader ev={ev} expanded={expanded} setExpanded={setExpanded} />
+        </li>
+        {expanded && (
+          <li className="timeline-event timeline-event--url-list">
+            <span />
+            <span />
+            <div className="fetch-url-list">
+              {ev._urls.map(u => (
+                <a key={u.url} href={u.url} target="_blank" rel="noreferrer" className="fetch-url-link" title={u.url}>
+                  <img src={faviconUrl(u.domain)} alt="" width={11} height={11}
+                    onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
+                  <span className="fetch-url-domain">{providerName(u.domain)}</span>
+                  <span className="fetch-url-path">{truncatePath(u.url)}</span>
+                  {u.item_count > 0 && <span className="url-item-badge">{u.item_count}</span>}
+                  <span className="duration-badge">{formatDuration(u.fetch_ms)}</span>
+                </a>
+              ))}
+            </div>
+          </li>
+        )}
+      </Fragment>
+    )
+  }
 
   return (
     <li className={`timeline-event timeline-event--${ev.type}`}>
       <span className="event-elapsed">{formatElapsed(elapsed)}</span>
       <time className="event-time">{formatWallTime(received)}</time>
-      {isFolded(ev)                  ? <FetchBatchRow ev={ev} />         :
-       ev.type === 'item_analyzed'   ? <ItemAnalyzedRow ev={ev} />        :
+      {ev.type === 'item_analyzed'   ? <ItemAnalyzedRow ev={ev} />        :
        ev.type === 'search_queried'  ? <SearchRow ev={ev} />              :
-       ev.type === 'fetch_started'   ? null                               : // handled above
+       ev.type === 'fetch_started'   ? null                               :
        <GenericRow ev={ev} />}
     </li>
   )

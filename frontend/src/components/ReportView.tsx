@@ -227,7 +227,8 @@ function AspectSummary({ aspects }: { aspects: NonNullable<Report['aspects']> })
 
 // ── Source facts (grouped by source type with expandable subtypes) ────────
 
-import { useState as _useState } from 'react'  // already imported above; alias for clarity
+// useState is imported above; _useState alias preserved for clarity below
+const _useState = useState
 
 const SOURCE_TYPE_LABEL: Record<string, string> = {
   reddit: 'Reddit',
@@ -424,6 +425,15 @@ function ThreadDetail({ thread, runId, onSearchTopic }: {
 
 function TimelineSummary({ timeline }: { timeline: NonNullable<Report['timeline']> }) {
   if (!timeline.important_dates.length) return null
+  // Deduplicate by date+label to prevent repeated events from expand merges
+  const seen = new Set<string>()
+  const uniqueDates = timeline.important_dates.filter(event => {
+    const key = `${event.date}:${event.label?.slice(0, 40)}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+
   return (
     <div className="insight-section">
       <h3>Chronology</h3>
@@ -436,7 +446,7 @@ function TimelineSummary({ timeline }: { timeline: NonNullable<Report['timeline'
         </div>
         <p>{timeline.event_summary}</p>
         <div className="timeline-events">
-          {timeline.important_dates.map(event => (
+          {uniqueDates.map(event => (
             <div className="timeline-event-card" key={`${event.date}:${event.label}`}>
               <time>{event.date}</time>
               <strong>{event.label}</strong>
@@ -450,26 +460,78 @@ function TimelineSummary({ timeline }: { timeline: NonNullable<Report['timeline'
   )
 }
 
+function ClaimCard({ claim, idx }: { claim: NonNullable<Report['fact_check']>['claims'][number]; idx: number }) {
+  const [open, setOpen] = useState(false)
+  const corroboration = (claim.supporting_domains ?? []).length
+  const maxSources = 6
+  const confidence = Math.round((claim.confidence ?? 0) * 100)
+  const urls: string[] = claim.supporting_urls ?? []
+
+  return (
+    <div className={`claim-card2${claim.needs_verification ? ' claim-card2--verify' : ' claim-card2--ok'}`} key={`${claim.claim}:${idx}`}>
+      <button className="claim-card2-header" onClick={() => setOpen(o => !o)}>
+        <div className="claim-card2-meta">
+          <span className={`claim-badge claim-badge--${claim.needs_verification ? 'verify' : 'ok'}`}>
+            {claim.needs_verification ? '⚠ needs check' : '✓ corroborated'}
+          </span>
+          <span className="claim-type-badge">{claim.claim_type}</span>
+          <span className="claim-confidence">{confidence}% confidence</span>
+        </div>
+        <div className="claim-corroboration-bar" title={`${corroboration} source${corroboration !== 1 ? 's' : ''}`}>
+          {Array.from({ length: Math.max(1, Math.min(maxSources, corroboration)) }).map((_, i) => (
+            <span key={i} className={`claim-corroboration-dot${i < corroboration ? ' claim-corroboration-dot--filled' : ''}`} />
+          ))}
+          <span className="claim-source-count">{corroboration} source{corroboration !== 1 ? 's' : ''}</span>
+        </div>
+        <span className="claim-toggle-icon">{open ? '▲' : '▼'}</span>
+      </button>
+      <p className="claim-text">{claim.claim}</p>
+      {open && (
+        <div className="claim-sources">
+          {urls.length > 0 ? urls.map(url => (
+            <a key={url} href={url} target="_blank" rel="noreferrer" className="claim-source-link" title={url}>
+              <img src={faviconUrl(url)} alt="" width={12} height={12}
+                onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
+              <span className="clip-text">{providerName(url)}</span>
+              <span className="claim-source-path">{(() => { try { const u = new URL(url); return u.pathname.slice(0, 30) || '/'; } catch { return ''; } })()}</span>
+              <span className="claim-source-arrow">↗</span>
+            </a>
+          )) : (claim.supporting_domains ?? []).map((domain: string) => (
+            <a key={domain} href={`https://${domain}`} target="_blank" rel="noreferrer" className="claim-source-link">
+              <img src={`https://www.google.com/s2/favicons?domain=${domain}&sz=12`} alt="" width={12} height={12}
+                onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
+              <span>{domain}</span>
+            </a>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function FactCheckSection({ factCheck }: { factCheck: NonNullable<Report['fact_check']> }) {
+  const [showAll, setShowAll] = useState(false)
   if (!factCheck.claims.length) return null
+  const displayed = showAll ? factCheck.claims : factCheck.claims.slice(0, 4)
+  const needsCheck = factCheck.claims.filter(c => c.needs_verification).length
+  const corroborated = factCheck.claims.length - needsCheck
+
   return (
     <div className="insight-section">
-      <h3>Fact check</h3>
-      <p className="fact-check-summary">{factCheck.summary}</p>
-      <div className="claim-list">
-        {factCheck.claims.slice(0, 6).map((claim, idx) => (
-          <div className={`claim-card${claim.needs_verification ? ' claim-card--verify' : ''}`} key={`${claim.claim}:${idx}`}>
-            <div className="claim-card-header">
-              <span>{claim.claim_type}</span>
-              <strong>{Math.round(claim.confidence * 100)}%</strong>
-            </div>
-            <p>{claim.claim}</p>
-            <small>
-              {claim.supporting_domains.slice(0, 3).join(', ') || 'No supporting domains'} · {claim.needs_verification ? 'needs verification' : 'corroborated'}
-            </small>
-          </div>
-        ))}
+      <h3>Claim Corroboration</h3>
+      <div className="claim-summary-row">
+        <span className="claim-summary-stat claim-summary-stat--ok">✓ {corroborated} corroborated</span>
+        <span className="claim-summary-stat claim-summary-stat--verify">⚠ {needsCheck} need verification</span>
+        <p className="fact-check-summary">{factCheck.summary}</p>
       </div>
+      <div className="claim-list2">
+        {displayed.map((claim, idx) => <ClaimCard key={`${idx}:${claim.claim}`} claim={claim} idx={idx} />)}
+      </div>
+      {factCheck.claims.length > 4 && (
+        <button className="btn-secondary" style={{ marginTop: 8, fontSize: 11 }} onClick={() => setShowAll(a => !a)}>
+          {showAll ? '▲ Show fewer' : `▼ Show all ${factCheck.claims.length} claims`}
+        </button>
+      )}
     </div>
   )
 }
@@ -541,69 +603,209 @@ function ChartDataSection({ chartData }: { chartData: NonNullable<Report['chart_
 function SourceTimeSentimentChart({ series }: {
   series: NonNullable<Report['chart_data']>['sentiment_over_time']
 }) {
-  const rows = series.filter(row => row.date !== 'unknown').slice(-18)
-  const maxTotal = Math.max(1, ...rows.map(row => row.total))
+  const [selectedDate, setSelectedDate] = useState<string | null>(null)
+  const rows = series.filter(row => row.date !== 'unknown').slice(-20)
   if (!rows.length) return null
+
+  const maxTotal = Math.max(1, ...rows.map(r => r.total))
+  const SVG_W = 620
+  const SVG_H = 120
+  const PAD_L = 8
+  const PAD_R = 8
+  const PAD_T = 8
+  const PAD_B = 28
+
+  const plotW = SVG_W - PAD_L - PAD_R
+  const plotH = SVG_H - PAD_T - PAD_B
+  const step = rows.length > 1 ? plotW / (rows.length - 1) : plotW
+
+  // Build stacked area path data
+  const posPoints = rows.map((r, i) => ({ x: PAD_L + i * step, y: PAD_T + plotH - (r.total ? r.positive / r.total : 0) * plotH }))
+  const negPoints = rows.map((r, i) => ({ x: PAD_L + i * step, y: PAD_T + plotH - (r.total ? r.negative / r.total : 0) * plotH }))
+  const baseline = `L ${PAD_L + (rows.length - 1) * step},${PAD_T + plotH} L ${PAD_L},${PAD_T + plotH}`
+
+  const posPath = posPoints.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x},${p.y}`).join(' ') + ` ${baseline} Z`
+  const negPath = negPoints.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x},${p.y}`).join(' ') + ` ${baseline} Z`
+
+  const selectedRow = rows.find(r => r.date === selectedDate) ?? null
+
   return (
     <div className="insight-section">
       <h3>Sentiment over source time</h3>
-      <div className="source-time-chart" role="img" aria-label="Sentiment by source publication or mentioned date">
-        {rows.map(row => {
-          const pos = row.total ? row.positive / row.total : 0
-          const neu = row.total ? row.neutral / row.total : 0
-          const neg = row.total ? row.negative / row.total : 0
-          return (
-            <div className="source-time-row" key={row.date}>
-              <time>{row.date}</time>
-              <div className="source-time-stack" style={{ width: `${Math.max(8, (row.total / maxTotal) * 100)}%` }}>
-                <span style={{ flex: pos, background: 'var(--positive)' }} />
-                <span style={{ flex: neu, background: 'var(--neutral)' }} />
-                <span style={{ flex: neg, background: 'var(--rog-red)' }} />
-              </div>
-              <b>{row.total}</b>
-              <small>{row.certainty ?? 'source date'}</small>
+      <div className="source-timeline-wrap">
+        <svg
+          className="source-timeline-svg"
+          viewBox={`0 0 ${SVG_W} ${SVG_H}`}
+          aria-label="Sentiment over source dates"
+        >
+          <defs>
+            <linearGradient id="grad-pos" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="var(--positive)" stopOpacity="0.55" />
+              <stop offset="100%" stopColor="var(--positive)" stopOpacity="0.08" />
+            </linearGradient>
+            <linearGradient id="grad-neg" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="var(--rog-red)" stopOpacity="0.4" />
+              <stop offset="100%" stopColor="var(--rog-red)" stopOpacity="0.05" />
+            </linearGradient>
+          </defs>
+
+          {/* Baseline */}
+          <line x1={PAD_L} y1={PAD_T + plotH} x2={PAD_L + plotW} y2={PAD_T + plotH}
+            stroke="var(--border)" strokeWidth={1} />
+
+          {/* Positive area */}
+          <path d={posPath} fill="url(#grad-pos)" />
+          {/* Positive line */}
+          <polyline points={posPoints.map(p => `${p.x},${p.y}`).join(' ')}
+            fill="none" stroke="var(--positive)" strokeWidth={1.5} strokeLinejoin="round" />
+
+          {/* Negative area */}
+          <path d={negPath} fill="url(#grad-neg)" />
+          {/* Negative line */}
+          <polyline points={negPoints.map(p => `${p.x},${p.y}`).join(' ')}
+            fill="none" stroke="var(--rog-red)" strokeWidth={1.5} strokeLinejoin="round" />
+
+          {/* Data points + interaction */}
+          {rows.map((row, i) => {
+            const x = PAD_L + i * step
+            const yPos = PAD_T + plotH - (row.total ? row.positive / row.total : 0) * plotH
+            const r = Math.max(3, Math.min(7, 2 + (row.total / maxTotal) * 5))
+            const isSelected = row.date === selectedDate
+            return (
+              <g key={row.date} className="source-timeline-point" style={{ cursor: 'pointer' }}
+                onClick={() => setSelectedDate(d => d === row.date ? null : row.date)}>
+                <rect x={x - 10} y={PAD_T} width={20} height={plotH} fill="transparent" />
+                <circle cx={x} cy={yPos} r={isSelected ? r + 2 : r}
+                  fill={isSelected ? 'var(--rog-cyan)' : 'var(--positive)'}
+                  stroke="var(--panel)" strokeWidth={1.5} />
+                {/* X-axis label (every 3rd for space) */}
+                {(i % Math.max(1, Math.floor(rows.length / 7)) === 0 || i === rows.length - 1) && (
+                  <text x={x} y={SVG_H - 6} textAnchor="middle" className="source-timeline-label">
+                    {row.date.slice(5)}
+                  </text>
+                )}
+              </g>
+            )
+          })}
+        </svg>
+
+        {selectedRow && (
+          <div className="source-timeline-tooltip">
+            <strong>{selectedRow.date}</strong>
+            <div className="source-timeline-bars">
+              <div><span style={{ color: 'var(--positive)' }}>pos</span><b>{selectedRow.positive}</b></div>
+              <div><span style={{ color: 'var(--neutral)' }}>neu</span><b>{selectedRow.neutral}</b></div>
+              <div><span style={{ color: 'var(--rog-red)' }}>neg</span><b>{selectedRow.negative}</b></div>
+              <div><span>total</span><b>{selectedRow.total}</b></div>
             </div>
-          )
-        })}
+            <small>{selectedRow.certainty ?? 'source date'}</small>
+            <button className="source-timeline-close" onClick={() => setSelectedDate(null)}>✕</button>
+          </div>
+        )}
+
+        <div className="source-timeline-legend">
+          <span><span className="stle-dot stle-dot--pos" /> Positive</span>
+          <span><span className="stle-dot stle-dot--neg" /> Negative</span>
+          <span className="stle-hint">Click points to inspect</span>
+        </div>
       </div>
     </div>
   )
 }
 
+// Simplified world continent paths (equirectangular, 1000×500)
+// Derived from public domain Natural Earth 110m data
+const CONTINENT_PATHS = [
+  // North America
+  "M42,69 L97,83 L120,70 L156,114 L156,128 L175,161 L194,183 L250,170 L258,192 L244,208 L236,208 L250,215 L275,185 L278,183 L286,153 L306,128 L333,128 L353,103 L356,89 L322,78 L278,78 L244,50 L167,56 L111,75 L56,56 Z",
+  // Greenland
+  "M372,50 L378,83 L356,89 L353,75 L375,17 L444,14 L450,36 L436,50 Z",
+  // South America
+  "M275,181 L278,228 L286,228 L328,219 L403,264 L403,272 L389,325 L347,344 L319,403 L311,406 L292,389 L278,264 L278,250 L275,181 Z",
+  // Europe (simplified)
+  "M475,147 L486,128 L472,106 L478,97 L486,89 L500,89 L503,108 L511,108 L528,100 L522,92 L558,94 L556,100 L567,92 L583,83 L581,69 L572,50 L569,53 L550,100 L561,147 L544,144 L508,131 L475,147 Z",
+  // Africa
+  "M461,150 L453,211 L458,225 L464,239 L508,264 L533,264 L533,311 L547,347 L550,347 L542,331 L597,319 L614,264 L642,217 L617,217 L594,164 L569,158 L525,147 L508,131 L475,147 L461,150 Z",
+  // Asia (West + Central)
+  "M575,147 L581,136 L589,144 L622,139 L633,131 L658,147 L683,181 L667,69 L633,61 L583,83 L575,147 Z",
+  // South/Southeast Asia
+  "M683,181 L722,228 L753,189 L778,222 L800,222 L806,208 L839,167 L858,147 L861,69 L839,56 L800,72 L722,189 L683,181 Z",
+  // East Asia + Russia Pacific
+  "M858,147 L864,164 L892,125 L897,106 L950,106 L950,75 L906,56 L861,69 L858,147 Z",
+  // Russia/Siberia
+  "M583,83 L583,50 L667,61 L703,61 L778,36 L861,47 L897,106 L861,69 L839,56 L800,72 L722,189 L667,69 L633,61 L583,83 Z",
+  // Australia
+  "M817,311 L861,283 L878,283 L903,281 L925,322 L917,353 L906,356 L889,356 L869,342 L847,339 L819,344 L817,311 Z",
+  // Japan
+  "M864,156 L869,147 L878,150 L875,158 Z",
+  // UK/Ireland
+  "M472,106 L478,97 L486,89 L486,108 L475,111 L472,106 Z",
+]
+
 function LocationSentimentMap({ locations }: {
   locations: NonNullable<NonNullable<Report['chart_data']>['location_sentiment']>
 }) {
   const [selected, setSelected] = useState(locations[0]?.location ?? '')
+  const [zoom, setZoom] = useState(1)
+  const [pan, setPan] = useState({ x: 0, y: 0 })
+  const panRef = useRef<{ sx: number; sy: number; sp: { x: number; y: number } } | null>(null)
+  const svgRef = useRef<SVGSVGElement>(null)
+
   const points = locations.map(location => {
     const x = ((location.lon + 180) / 360) * 1000
     const y = ((90 - location.lat) / 180) * 500
     const dominant = location.negative > location.positive && location.negative >= location.neutral
-      ? 'negative'
-      : location.positive >= location.neutral ? 'positive' : 'neutral'
+      ? 'negative' : location.positive >= location.neutral ? 'positive' : 'neutral'
     return { ...location, x, y, dominant }
   })
   if (!points.length) return null
-  const minX = Math.min(...points.map(p => p.x))
-  const maxX = Math.max(...points.map(p => p.x))
-  const minY = Math.min(...points.map(p => p.y))
-  const maxY = Math.max(...points.map(p => p.y))
-  const pad = 120
-  const viewBox = [
-    Math.max(0, minX - pad),
-    Math.max(0, minY - pad),
-    Math.min(1000, maxX + pad) - Math.max(0, minX - pad),
-    Math.min(500, maxY + pad) - Math.max(0, minY - pad),
-  ].join(' ')
-  const selectedPoint = points.find(point => point.location === selected) ?? points[0]
+
+  const selectedPoint = points.find(p => p.location === selected) ?? points[0]
+
+  function handleWheel(e: React.WheelEvent) {
+    e.preventDefault()
+    setZoom(z => Math.max(0.5, Math.min(6, z * (e.deltaY > 0 ? 0.85 : 1.18))))
+  }
+
+  function handleSvgMouseDown(e: React.MouseEvent<SVGSVGElement>) {
+    if (e.button !== 0) return
+    if ((e.target as SVGElement).closest('.location-point')) return
+    panRef.current = { sx: e.clientX, sy: e.clientY, sp: pan }
+    const onMove = (me: MouseEvent) => {
+      if (!panRef.current) return
+      setPan({ x: panRef.current.sp.x + (me.clientX - panRef.current.sx) / zoom, y: panRef.current.sp.y + (me.clientY - panRef.current.sy) / zoom })
+    }
+    const onUp = () => { panRef.current = null; window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }
 
   return (
     <div className="insight-section">
       <h3>Sentiment by location</h3>
+      <div className="location-map-controls">
+        <button className="btn-secondary graph-ctrl-btn" onClick={() => setZoom(z => Math.min(6, z * 1.3))} title="Zoom in">+</button>
+        <button className="btn-secondary graph-ctrl-btn" onClick={() => setZoom(z => Math.max(0.5, z * 0.77))} title="Zoom out">−</button>
+        <button className="btn-secondary graph-ctrl-btn" onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }) }} title="Reset view">⟳</button>
+        <span style={{ fontSize: 10, color: 'var(--text)', fontFamily: 'var(--mono)' }}>Scroll to zoom · Drag to pan · Click to inspect</span>
+      </div>
       <div className="location-map-layout">
-        <svg className="location-map" viewBox={viewBox} role="img" aria-label="Geographic sentiment map">
+        <svg
+          ref={svgRef}
+          className="location-map"
+          viewBox={`${-pan.x} ${-pan.y} ${1000 / zoom} ${500 / zoom}`}
+          role="img"
+          aria-label="Geographic sentiment map"
+          onWheel={handleWheel}
+          onMouseDown={handleSvgMouseDown}
+          style={{ cursor: panRef.current ? 'grabbing' : 'grab' }}
+        >
+          {/* Grid lines */}
           {[...Array(7)].map((_, i) => <line key={`lat-${i}`} x1="0" x2="1000" y1={i * 83.3} y2={i * 83.3} />)}
           {[...Array(9)].map((_, i) => <line key={`lon-${i}`} x1={i * 125} x2={i * 125} y1="0" y2="500" />)}
-          <path d="M80 210 C170 150 260 165 330 210 C390 245 470 230 545 190 C650 130 750 170 850 215 C910 240 950 270 930 310 C880 370 760 345 680 315 C575 278 480 300 385 335 C260 380 130 340 80 290 Z" />
+          {/* World land masses */}
+          {CONTINENT_PATHS.map((d, i) => <path key={i} d={d} className="map-landmass" />)}
+          {/* Sentiment points */}
           {points.map(point => (
             <g
               key={point.location}
@@ -612,22 +814,38 @@ function LocationSentimentMap({ locations }: {
               tabIndex={0}
               aria-label={point.location}
               onClick={() => setSelected(point.location)}
-              onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') setSelected(point.location) }}
+              onKeyDown={ev => { if (ev.key === 'Enter' || ev.key === ' ') setSelected(point.location) }}
             >
-              <circle cx={point.x} cy={point.y} r={Math.max(7, Math.min(22, 6 + point.total * 2))} />
-              <text x={point.x + 10} y={point.y - 8}>{point.location}</text>
+              <circle
+                cx={point.x} cy={point.y}
+                r={Math.max(6, Math.min(18, 5 + point.total * 1.5)) / zoom}
+                strokeWidth={2 / zoom}
+                className={point.location === selected ? 'location-point-selected' : ''}
+              />
+              <text x={point.x + 11 / zoom} y={point.y - 7 / zoom} fontSize={11 / zoom} className="map-location-label">
+                {point.location}
+              </text>
             </g>
           ))}
         </svg>
         <aside className="location-map-detail">
           <strong>{selectedPoint.location}</strong>
           <span className={`sentiment-chip sentiment-chip--${selectedPoint.dominant}`}>{selectedPoint.dominant}</span>
-          <p>{selectedPoint.total} mapped item{selectedPoint.total !== 1 ? 's' : ''} · {selectedPoint.certainty === 'mentioned' ? 'location mentioned in text' : 'inferred from source domain'}</p>
-          <div className="mini-metric"><span>Positive</span><b>{selectedPoint.positive}</b></div>
+          <p>{selectedPoint.total} mapped item{selectedPoint.total !== 1 ? 's' : ''}</p>
+          <small style={{ color: 'var(--text)' }}>{selectedPoint.certainty === 'mentioned' ? 'mentioned in text' : 'inferred from domain'}</small>
+          <div className="mini-metric"><span>Positive</span><b style={{ color: 'var(--positive)' }}>{selectedPoint.positive}</b></div>
           <div className="mini-metric"><span>Neutral</span><b>{selectedPoint.neutral}</b></div>
-          <div className="mini-metric"><span>Negative</span><b>{selectedPoint.negative}</b></div>
-          {selectedPoint.source_domains.length > 0 && (
-            <small>{selectedPoint.source_domains.slice(0, 4).join(', ')}</small>
+          <div className="mini-metric"><span>Negative</span><b style={{ color: 'var(--rog-red)' }}>{selectedPoint.negative}</b></div>
+          {(selectedPoint.source_domains ?? []).length > 0 && (
+            <div className="location-source-links">
+              {(selectedPoint.source_domains ?? []).slice(0, 4).map((d: string) => (
+                <a key={d} href={`https://${d}`} target="_blank" rel="noreferrer" className="location-domain-link">
+                  <img src={`https://www.google.com/s2/favicons?domain=${d}&sz=12`} alt="" width={12} height={12}
+                    onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
+                  {d}
+                </a>
+              ))}
+            </div>
           )}
         </aside>
       </div>
@@ -905,6 +1123,9 @@ export function ReportView({ runId, topic, report, onSearchTopic }: Props) {
     }
   }
 
+  const [summaryExpanded, setSummaryExpanded] = useState(false)
+  const SUMMARY_TRUNCATE = 240
+
   return (
     <section className="panel" aria-label="Report">
       <div className="report-header">
@@ -942,7 +1163,16 @@ export function ReportView({ runId, topic, report, onSearchTopic }: Props) {
               <span className="exec-summary-label">positive</span>
             </div>
             <div className="exec-summary-body">
-              <p>{narrative.slice(0, 200)}{narrative.length > 200 ? '…' : ''}</p>
+              <p>
+                {summaryExpanded || narrative.length <= SUMMARY_TRUNCATE
+                  ? narrative
+                  : narrative.slice(0, SUMMARY_TRUNCATE) + '…'}
+                {narrative.length > SUMMARY_TRUNCATE && (
+                  <button className="summary-expand-btn" onClick={() => setSummaryExpanded(x => !x)}>
+                    {summaryExpanded ? ' Show less' : ' Read more'}
+                  </button>
+                )}
+              </p>
               <div className="exec-summary-meta">
                 <span>{overall.total} sources analyzed</span>
                 {themes.length > 0 && <span>Top: {themes.slice(0, 3).join(', ')}</span>}
