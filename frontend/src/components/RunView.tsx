@@ -452,11 +452,12 @@ export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMo
             </button>
           </form>
           <div className="budget-preview">
+            <span className={`depth-badge depth-badge--${researchDepth}`}>{selectedDepth.label}</span>
             <span>{searchPlan?.estimated_brave_queries ?? selectedDepth.queryCount} Brave queries</span>
             <span>{searchPlan?.url_budget ?? selectedDepth.urlCount} URLs</span>
             <span>{searchPlan?.item_budget ?? selectedDepth.itemCount} items</span>
             <span>{selectedDepth.synthesisSampleSize} synthesis samples</span>
-            {searchPlan && <span>{searchPlan.monthly_quota_remaining} monthly queries left</span>}
+            {searchPlan && <span>{searchPlan.monthly_quota_remaining} monthly left</span>}
           </div>
           {searchPlan?.quota_warning && <p className="quota-warning">{searchPlan.quota_warning}</p>}
           {searchPlan && (
@@ -564,7 +565,7 @@ export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMo
             <strong>{statusLabel(status, events.length)}</strong>
             {activeTopic && <p className="run-topic clip-text" title={activeTopic}>{activeTopic}</p>}
             <p className="run-topic-meta">
-              {activeDepthOption.label} depth · {activeDepthOption.queryCount} queries · {activeDepthOption.urlCount} URLs · {activeDepthOption.itemCount} items
+              <span className={`depth-dot depth-dot--${activeDepth}`} /> {activeDepthOption.label} · {activeDepthOption.queryCount} queries · {activeDepthOption.urlCount} URLs · {activeDepthOption.itemCount} items
             </p>
             {devMode && (
               <p className="muted" style={{ fontFamily: 'var(--mono)', fontSize: 10 }}>
@@ -642,6 +643,7 @@ export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMo
             topic={activeTopic}
             report={visibleReport}
             onSearchTopic={(subtopic) => { setTopic(subtopic); setCached(false); }}
+            autoScroll={status === 'completed' && !cached}
           />
         </ErrorBoundary>
       )}

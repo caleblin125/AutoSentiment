@@ -267,16 +267,43 @@ input:focus, select:focus, button:focus-visible {
   flex-wrap: wrap;
   gap: 6px;
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: 11px;
   color: var(--text);
+  align-items: center;
+  padding: 6px 0;
 }
 
 .budget-preview span {
   border: 1px solid var(--border);
   border-radius: 3px;
   background: var(--surface-muted);
-  padding: 3px 7px;
+  padding: 4px 8px;
 }
+
+.depth-badge {
+  font-weight: 700;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-width: 2px !important;
+}
+
+.depth-badge--quick       { color: #22c55e; border-color: #22c55e; background: rgba(34,197,94,0.1); }
+.depth-badge--standard    { color: #3b82f6; border-color: #3b82f6; background: rgba(59,130,246,0.1); }
+.depth-badge--deep        { color: #f59e0b; border-color: #f59e0b; background: rgba(245,158,11,0.1); }
+.depth-badge--exhaustive  { color: #ef4444; border-color: #ef4444; background: rgba(239,68,68,0.1); }
+
+.depth-dot {
+  display: inline-block;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  vertical-align: middle;
+  margin-right: 2px;
+}
+.depth-dot--quick       { background: #22c55e; }
+.depth-dot--standard    { background: #3b82f6; }
+.depth-dot--deep        { background: #f59e0b; }
+.depth-dot--exhaustive  { background: #ef4444; }
 
 .quota-warning {
   margin: -2px 0 0;
