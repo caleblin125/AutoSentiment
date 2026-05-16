@@ -92,11 +92,16 @@ function SourceGroupCard({ group }: { group: SourceGroup }) {
                   <div style={{ flex: (fact.labels?.negative ?? 0) / dtotal, background: 'var(--rog-red)' }} />
                 </div>
                 <div className="source-link-list">
-                  {(fact.urls?.length ? fact.urls : [fakeUrl]).map(url => (
-                    <a key={url} href={url} target="_blank" rel="noreferrer" title={url}>
-                      {providerName(url)}
-                    </a>
-                  ))}
+                  {(fact.urls?.length ? fact.urls : [fakeUrl]).map(url => {
+                    const path = (() => { try { const u = new URL(url); return u.pathname + u.search + u.hash } catch { return url } })()
+                    const label = path.length > 60 ? path.slice(0, 57) + '…' : path
+                    return (
+                      <a key={url} href={url} target="_blank" rel="noreferrer" title={url}>
+                        <span className="source-link-domain">{providerName(url)}</span>
+                        <span className="source-link-path">{label || '/'}</span>
+                      </a>
+                    )
+                  })}
                 </div>
               </details>
             )

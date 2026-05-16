@@ -1579,7 +1579,8 @@ button[type="submit"] {
   margin-top: 8px;
 }
 .source-link-list a {
-  display: block;
+  display: flex;
+  gap: 6px;
   padding: 4px 6px;
   border: 1px solid var(--border-dim);
   border-radius: 3px;
@@ -1587,8 +1588,28 @@ button[type="submit"] {
   font-family: var(--mono);
   font-size: 10px;
   overflow: hidden;
+  text-decoration: none;
+  align-items: baseline;
+}
+
+.source-link-domain {
+  color: var(--rog-cyan);
+  font-weight: 600;
+  flex-shrink: 0;
+  font-size: 10px;
+}
+
+.source-link-path {
+  color: var(--text);
+  overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  opacity: 0.7;
+}
+
+.source-link-list a:hover .source-link-path {
+  opacity: 1;
+  color: var(--text-strong);
 }
 
 /* Impact / Reason / Argument sections */
@@ -1711,14 +1732,81 @@ button[type="submit"] {
 
 .idea-graph--force { touch-action: none; user-select: none; }
 
-.graph-edge { stroke: var(--border); stroke-linecap: round; }
+.graph-edge { stroke: var(--border); stroke-linecap: round; fill: none; }
 .graph-edge--direction { stroke: var(--rog-cyan-dim); }
 [data-theme="light"] .graph-edge { stroke: rgba(0, 0, 0, 0.18); }
 [data-theme="light"] .graph-edge--direction { stroke: rgba(0, 138, 138, 0.2); }
 
+/* Animated flow on active (focused) edges */
+.graph-edge--active {
+  stroke: var(--rog-cyan);
+  stroke-dasharray: 6 10;
+  animation: graph-edge-flow 1.2s linear infinite;
+}
+.graph-edge--active.graph-edge--direction { stroke: var(--rog-cyan); }
+@keyframes graph-edge-flow {
+  from { stroke-dashoffset: 16; }
+  to   { stroke-dashoffset: 0; }
+}
+
+/* Pulsing ring on selected node */
+@keyframes graph-pulse {
+  0%   { opacity: 0.5; r: var(--pulse-start, 16); }
+  100% { opacity: 0;   r: var(--pulse-end, 30); }
+}
+.graph-pulse-ring {
+  animation: graph-pulse-anim 1.6s ease-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+@keyframes graph-pulse-anim {
+  0%   { opacity: 0.55; transform: scale(1); }
+  100% { opacity: 0;    transform: scale(1.9); }
+}
+
 .graph-node { transition: filter 0.12s; }
 .graph-node:hover { filter: drop-shadow(0 0 8px rgba(0, 212, 232, 0.5)); }
 .graph-node--selected { filter: drop-shadow(0 0 10px rgba(0, 212, 232, 0.55)); }
+
+/* Focus mode indicator button */
+.graph-ctrl-btn--focus {
+  background: rgba(0, 212, 232, 0.12);
+  border-color: var(--rog-cyan);
+  color: var(--rog-cyan);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.graph-ctrl-btn--active {
+  background: rgba(0, 212, 232, 0.1);
+  border-color: var(--rog-cyan);
+}
+.graph-focus-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--rog-cyan);
+  flex-shrink: 0;
+  animation: graph-focus-blink 1.2s ease-in-out infinite alternate;
+}
+@keyframes graph-focus-blink {
+  from { opacity: 0.4; }
+  to   { opacity: 1; }
+}
+
+/* Minimap overlay */
+.graph-minimap {
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+  background: var(--surface-elevated);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px;
+  opacity: 0.85;
+  transition: opacity 0.15s;
+  z-index: 10;
+}
+.graph-minimap:hover { opacity: 1; }
+[data-theme="light"] .graph-minimap { background: var(--surface); }
 
 .graph-workspace {
   display: grid;

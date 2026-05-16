@@ -545,8 +545,8 @@ _LOCATION_GAZETTEER = {
     "germany": (51.2, 10.5, ("germany", "german", "berlin")),
     "france": (46.2, 2.2, ("france", "french", "paris")),
     "brazil": (-14.2, -51.9, ("brazil", "brazilian")),
-    "california": (36.8, -119.4, ("california", "los angeles", "san francisco", "silicon valley")),
-    "new york": (43.0, -75.0, ("new york", "nyc", "manhattan")),
+    "california": (36.8, -119.4, ("california",)),
+    "new york": (43.0, -75.0, ("new york", "nyc")),
     "texas": (31.0, -99.9, ("texas", "houston", "austin", "dallas")),
 }
 
@@ -614,7 +614,13 @@ def compute_location_sentiment(chunks: list[EvidenceChunk]) -> list[dict]:
     results = []
     for bucket in buckets.values():
         total = sum(bucket[label] for label in labels)
-        if total == 0:
+        # Require at least 2 evidence items to filter noise — a single
+        # mention of "California" in a globally-focused article shouldn't
+        # create a map dot.
+        if total < 2:
+            continue
+        # TLD-only matches (no text mention) need higher bar.
+        if bucket["certainty"] == "source_domain" and total < 3:
             continue
         results.append({
             **bucket,

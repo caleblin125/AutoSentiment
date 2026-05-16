@@ -375,6 +375,8 @@ export function ForceGraph({ graph, runId, onNodeClick }: Props) {
   const svgRef = useRef<SVGSVGElement>(null)
 
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(() => graph.nodes[0] ?? null)
+  const [focusMode, setFocusMode] = useState(false)
+  const [showMinimap, setShowMinimap] = useState(true)
 
   const visibleNodes = useMemo(() => graph.nodes.filter(node => {
     if (node.kind === 'sentiment' && node.weight <= 0) return false
@@ -398,6 +400,17 @@ export function ForceGraph({ graph, runId, onNodeClick }: Props) {
     return new Set(visibleNodes.filter(n => n.label.toLowerCase().includes(searchLower)).map(n => n.id))
   }, [visibleNodes, searchLower])
 
+  // Focus mode: when active, only the selected node and its direct neighbors are visible.
+  const neighborIds = useMemo(() => {
+    if (!focusMode || !selectedNode) return null
+    const ids = new Set([selectedNode.id])
+    for (const e of visibleEdges) {
+      if (e.source === selectedNode.id) ids.add(e.target)
+      if (e.target === selectedNode.id) ids.add(e.source)
+    }
+    return ids
+  }, [focusMode, selectedNode, visibleEdges])
+
   const popoverNode = popover ? graph.nodes.find(n => n.id === popover.nodeId) : null
 
   function toggleKind(kind: GraphNode['kind']) {
@@ -411,7 +424,12 @@ export function ForceGraph({ graph, runId, onNodeClick }: Props) {
 
   function handleLeftClick(node: GraphNode, e: React.MouseEvent) {
     e.stopPropagation()
-    setSelectedNode(node)
+    setSelectedNode(prev => {
+      // Clicking the same node again toggles focus mode off
+      if (prev?.id === node.id) { setFocusMode(f => !f); return node }
+      setFocusMode(true)
+      return node
+    })
     if (node.kind === 'url') {
       if (node.url) window.open(node.url, '_blank', 'noreferrer')
     } else if (node.kind === 'source' && (node.urls?.length || node.url)) {
@@ -450,6 +468,7 @@ export function ForceGraph({ graph, runId, onNodeClick }: Props) {
   function handleSvgMouseDown(e: React.MouseEvent<SVGSVGElement>) {
     if (e.button !== 0) return
     if ((e.target as SVGElement).closest('.graph-node')) return
+    setFocusMode(false)
     panRef.current = { startX: e.clientX, startY: e.clientY, startPan: pan }
     setIsPanning(true)
     const onMove = (me: MouseEvent) => {
@@ -473,6 +492,19 @@ export function ForceGraph({ graph, runId, onNodeClick }: Props) {
     setZoom(1)
     setPan({ x: 0, y: 0 })
     resetLayout()
+  }
+
+  function handleFitView() {
+    if (!positions.size) return
+    const posArr = Array.from(positions.values())
+    const xs = posArr.map(p => p.x)
+    const ys = posArr.map(p => p.y)
+    const minX = Math.min(...xs) - 60, maxX = Math.max(...xs) + 60
+    const minY = Math.min(...ys) - 50, maxY = Math.max(...ys) + 50
+    const newZoom = Math.max(0.3, Math.min(2.5, Math.min(W / (maxX - minX), H / (maxY - minY))))
+    const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2
+    setZoom(newZoom)
+    setPan({ x: W / (2 * newZoom) - cx, y: H / (2 * newZoom) - cy })
   }
 
   return (
@@ -503,15 +535,38 @@ export function ForceGraph({ graph, runId, onNodeClick }: Props) {
         <button
           type="button"
           className="btn-secondary graph-ctrl-btn"
+          onClick={handleFitView}
+          title="Fit all nodes in view"
+        >⊡</button>
+        <button
+          type="button"
+          className="btn-secondary graph-ctrl-btn"
           onClick={handleResetView}
           title="Reset zoom and layout"
         >⟳</button>
-        <span className="graph-hint" title="Right-drag to pin nodes · Scroll to zoom · Drag background to pan">
-          Right-drag to pin · Scroll to zoom · Drag background to pan · Click nodes to explore
+        {focusMode && (
+          <button
+            type="button"
+            className="btn-secondary graph-ctrl-btn graph-ctrl-btn--focus"
+            onClick={() => setFocusMode(false)}
+            title="Exit focus mode (Escape)"
+          >
+            <span className="graph-focus-dot" />Focus
+          </button>
+        )}
+        <button
+          type="button"
+          className={`btn-secondary graph-ctrl-btn${showMinimap ? ' graph-ctrl-btn--active' : ''}`}
+          onClick={() => setShowMinimap(v => !v)}
+          title="Toggle minimap"
+        >⊞</button>
+        <span className="graph-hint">
+          Click to focus · Right-drag pin · Scroll zoom · Drag bg to pan
         </span>
       </div>
 
       <div className="graph-workspace">
+        <div style={{ position: 'relative', minWidth: 0 }}>
         <svg
           ref={svgRef}
           className="idea-graph idea-graph--force"
@@ -547,16 +602,27 @@ export function ForceGraph({ graph, runId, onNodeClick }: Props) {
             const s = positions.get(edge.source)
             const t = positions.get(edge.target)
             if (!s || !t) return null
-            const dimmed = matchingIds && !matchingIds.has(edge.source) && !matchingIds.has(edge.target)
+            const dimmedBySearch = matchingIds && !matchingIds.has(edge.source) && !matchingIds.has(edge.target)
+            const dimmedByFocus = neighborIds && !neighborIds.has(edge.source) && !neighborIds.has(edge.target)
+            const dimmed = dimmedBySearch || dimmedByFocus
+            const isActive = focusMode && selectedNode && (edge.source === selectedNode.id || edge.target === selectedNode.id)
+            // Quadratic bezier — slight perpendicular curve for organic look
+            const mx = (s.x + t.x) / 2 - (t.y - s.y) * 0.1
+            const my = (s.y + t.y) / 2 + (t.x - s.x) * 0.1
+            const d = `M ${s.x} ${s.y} Q ${mx} ${my} ${t.x} ${t.y}`
+            const sw = Math.max(1, Math.min(4, edge.weight / 10))
             return (
-              <line
+              <path
                 key={`${edge.source}→${edge.target}`}
-                className={`graph-edge graph-edge--${edge.kind}`}
-                x1={s.x} y1={s.y} x2={t.x} y2={t.y}
-                strokeWidth={Math.max(1, Math.min(4, edge.weight / 10))}
+                className={`graph-edge graph-edge--${edge.kind}${isActive ? ' graph-edge--active' : ''}`}
+                d={d}
+                fill="none"
+                strokeWidth={isActive ? sw + 0.5 : sw}
                 markerEnd={edge.kind === 'direction' ? 'url(#arrow)' : undefined}
-                opacity={dimmed ? 0.15 : 1}
-              />
+                opacity={dimmed ? 0.1 : 1}
+              >
+                <title>{edge.kind} · weight {edge.weight}</title>
+              </path>
             )
           })}
 
@@ -567,7 +633,9 @@ export function ForceGraph({ graph, runId, onNodeClick }: Props) {
             const isUrl = node.kind === 'url'
             const hasLinks = (node.kind === 'source' || isUrl) && (node.urls?.length || node.url)
             const isClickable = hasLinks || node.kind === 'sentiment' || node.kind === 'theme' || node.kind === 'aspect'
-            const dimmed = matchingIds && !matchingIds.has(node.id)
+            const dimmedBySearch = matchingIds && !matchingIds.has(node.id)
+            const dimmedByFocus = neighborIds && !neighborIds.has(node.id)
+            const dimmed = dimmedBySearch || dimmedByFocus
             const isSelected = selectedNode?.id === node.id
             const filter = node.kind === 'topic' ? 'url(#glow-topic)' : isSelected ? 'url(#glow-node)' : undefined
 
@@ -575,13 +643,24 @@ export function ForceGraph({ graph, runId, onNodeClick }: Props) {
               <g
                 key={node.id}
                 className={`graph-node${isSelected ? ' graph-node--selected' : ''}`}
-                style={{ cursor: isClickable ? 'pointer' : 'default', opacity: dimmed ? 0.18 : 1 }}
+                style={{ cursor: isClickable ? 'pointer' : 'default', opacity: dimmed ? 0.14 : 1 }}
                 onClick={e => handleLeftClick(node, e)}
                 onContextMenu={e => onContextMenu(node.id, e)}
                 onMouseEnter={e => handleMouseEnter(node, e)}
                 onMouseLeave={handleMouseLeave}
                 filter={filter}
               >
+                {/* Pulsing ring on selected node */}
+                {isSelected && (
+                  <circle
+                    className="graph-pulse-ring"
+                    cx={pos.x} cy={pos.y}
+                    r={r + 7}
+                    fill="none"
+                    stroke={KIND_COLOR[node.kind] ?? 'var(--rog-cyan)'}
+                    strokeWidth={1.5}
+                  />
+                )}
                 {isUrl ? (
                   // URL nodes: small diamond shape for visual distinction
                   <rect
@@ -619,6 +698,50 @@ export function ForceGraph({ graph, runId, onNodeClick }: Props) {
             )
           })}
         </svg>
+
+        {/* Minimap — corner thumbnail showing full graph + current viewport */}
+        {showMinimap && positions.size > 0 && (() => {
+          const MM_W = 160, MM_H = 96
+          const scX = MM_W / W, scY = MM_H / H
+          const vpX = -pan.x, vpY = -pan.y
+          const vpW = W / zoom, vpH = H / zoom
+          return (
+            <div className="graph-minimap" title="Minimap — click to close">
+              <svg
+                width={MM_W} height={MM_H}
+                onClick={() => setShowMinimap(false)}
+                style={{ cursor: 'pointer', display: 'block' }}
+              >
+                {visibleEdges.map(edge => {
+                  const s = positions.get(edge.source), t = positions.get(edge.target)
+                  if (!s || !t) return null
+                  return <line key={`mm-${edge.source}-${edge.target}`}
+                    x1={s.x * scX} y1={s.y * scY} x2={t.x * scX} y2={t.y * scY}
+                    stroke="var(--border)" strokeWidth={0.5} opacity={0.6} />
+                })}
+                {visibleNodes.map(node => {
+                  const pos = positions.get(node.id)
+                  if (!pos) return null
+                  const isFocused = !neighborIds || neighborIds.has(node.id)
+                  return <circle key={`mm-${node.id}`}
+                    cx={pos.x * scX} cy={pos.y * scY}
+                    r={node.kind === 'topic' ? 4 : node.kind === 'url' ? 1 : 2.5}
+                    fill={KIND_COLOR[node.kind] ?? '#888'}
+                    opacity={isFocused ? (node.id === selectedNode?.id ? 1 : 0.75) : 0.2} />
+                })}
+                {/* Viewport rectangle */}
+                <rect
+                  x={Math.max(0, vpX * scX)} y={Math.max(0, vpY * scY)}
+                  width={Math.min(MM_W - Math.max(0, vpX * scX), vpW * scX)}
+                  height={Math.min(MM_H - Math.max(0, vpY * scY), vpH * scY)}
+                  fill="var(--rog-cyan)" fillOpacity={0.07}
+                  stroke="var(--rog-cyan)" strokeWidth={1} strokeOpacity={0.5}
+                />
+              </svg>
+            </div>
+          )
+        })()}
+        </div>
 
         {selectedNode && (
           <aside className="graph-detail-panel">

@@ -221,7 +221,7 @@ def test_use_case_insights_and_chart_data_support_entertainment_mode() -> None:
             run_id="r",
             url="https://trade.example/review",
             source_type="news",
-            snippet="The film was released on March 5, 2026 and box office tracking increased.",
+            snippet="The film was released on March 5, 2026 and box office tracking increased in California.",
             label="positive",
             summary="tracking increased",
         ),
@@ -247,25 +247,28 @@ def test_chart_data_falls_back_to_source_domain_location_and_retrieved_time() ->
 
     from app.reports.builder import compute_chart_data
 
-    chunk = EvidenceChunk(
-        id="loc1",
-        run_id="r",
-        url="https://example.co.uk/story",
-        source_type="news",
-        snippet="Analysts said demand improved without naming a location.",
-        label="positive",
-        summary="demand improved",
-        retrieved_at=datetime(2026, 4, 8, 12, 0, 0),
-    )
+    chunks = [
+        EvidenceChunk(
+            id=f"loc{i}",
+            run_id="r",
+            url=f"https://example{i}.co.uk/story",
+            source_type="news",
+            snippet="Analysts said demand improved without naming a location.",
+            label="positive",
+            summary="demand improved",
+            retrieved_at=datetime(2026, 4, 8, 12, 0, 0),
+        )
+        for i in range(3)
+    ]
 
-    chart_data = compute_chart_data([chunk], [], {"claims": []})
+    chart_data = compute_chart_data(chunks, [], {"claims": []})
 
     assert chart_data["sentiment_over_time"] == [{
         "date": "2026-04-08",
-        "positive": 1,
+        "positive": 3,
         "neutral": 0,
         "negative": 0,
-        "total": 1,
+        "total": 3,
         "certainty": "retrieved_at",
     }]
     assert chart_data["location_sentiment"][0]["location"] == "United Kingdom"
