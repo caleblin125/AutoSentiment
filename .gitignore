@@ -55,3 +55,11 @@ backend/data/*
 # --- OS ---
 .DS_Store
 Thumbs.db
+
+# --- Agent coordination (runtime dev files, not project code) ---
+AGENT_ACTIVE.md
+AGENT_LOG.md
+AGENT_MAILBOX.md
+agent-run
+agent-relay
+prompt.txt
