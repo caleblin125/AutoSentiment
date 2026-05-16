@@ -683,6 +683,19 @@ export function ForceGraph({ graph, runId, onNodeClick }: Props) {
                     strokeWidth={isSelected ? 2.5 : node.kind === 'topic' ? 2.5 : 1.5}
                   />
                 )}
+                {/* Favicon on source nodes */}
+                {node.kind === 'source' && node.url && (() => {
+                  const fv = (() => { try { return `https://www.google.com/s2/favicons?domain=${new URL(node.url!).hostname}&sz=14` } catch { return '' } })()
+                  if (!fv) return null
+                  return (
+                    <image
+                      href={fv}
+                      x={pos.x - r + 2} y={pos.y - r + 2}
+                      width={r * 2 - 4} height={r * 2 - 4}
+                      onError={e => { (e.target as SVGImageElement).style.display = 'none' }}
+                    />
+                  )
+                })()}
                 {hasLinks && !isUrl && (
                   <circle cx={pos.x + r - 4} cy={pos.y - r + 4} r={3.5}
                     fill="var(--rog-cyan)" stroke="var(--graph-node-stroke)" strokeWidth={1} />

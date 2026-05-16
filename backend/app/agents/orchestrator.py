@@ -17,7 +17,7 @@ from app.api.event_bus import clear_cancel, is_cancelled, request_cancel as _req
 from app.agents.light_queue import SentimentQueue
 from app.agents.nemoclaw import expand_queries, synthesize_report, synthesize_report_streaming
 from app.agents.ollama import GenerationCancelled
-from app.agents.types import SSEEventType, SentimentLabel
+from app.agents.types import SSEEventType, SentimentLabel, SentimentResult
 from app.db.session import AsyncSessionLocal
 from app.ingest.fetch import classify_source_type, fetch_items, batch_read_url_cache, read_url_cache, write_url_cache
 from app.models import EvidenceChunk, Run, RunEvent
@@ -479,7 +479,7 @@ async def run_research(
                         "url": chunk.url,
                         "domain": _domain_from_url(chunk.url),
                         "source_type": chunk.source_type,
-                        "duration_ms": round(duration_ms, 1),
+                        "duration_ms": 0,
                         "confidence": confidence_map[chunk.id],
                     },
                 )
@@ -498,8 +498,8 @@ async def run_research(
                 await db.flush()
 
             timings["sentiment_ms"] = _elapsed_ms(stage_started)
-            timings["sentiment_model_calls"] = float(len(sentiment_tasks))
-            timings["sentiment_cache_hits"] = float(max(0, len(fetched_items) - len(sentiment_tasks)))
+            timings["sentiment_model_calls"] = float(len(uncached_indices))
+            timings["sentiment_cache_hits"] = float(max(0, len(fetched_items) - len(uncached_indices)))
 
             # ── Stage 5: synthesis ──────────────────────────────────────────
             # Expanded and similar-topic runs can seed existing evidence before

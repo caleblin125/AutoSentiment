@@ -343,11 +343,9 @@ async def suggest_topics(
     model: Optional[str] = Query(default=None, max_length=120),
     settings: Settings = Depends(get_settings),
 ) -> dict:
-    """Use the small model to generate research angle suggestions for a query."""
+    """Return instant research-angle suggestions for a query (template-based, no LLM)."""
     from app.agents.nemoclaw import suggest_angles
-    effective_settings = settings.model_copy(update={"suggestion_model": model}) if model else settings
-    suggestions = await suggest_angles(q, settings=effective_settings)
-    return {"suggestions": suggestions}
+    return {"suggestions": suggest_angles(q)}
 
 
 @router.get("/search-plan")

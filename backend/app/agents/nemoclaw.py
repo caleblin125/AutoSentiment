@@ -10,39 +10,23 @@ from app.agents.ollama import ollama_generate, ollama_generate_streaming
 if TYPE_CHECKING:
     from app.core.config import Settings
 
-async def suggest_angles(query: str, *, settings: Settings) -> list[str]:
-    """Return 5 refined research-angle suggestions for the given query string.
+_ANGLE_POOLS: list[list[str]] = [
+    ["{q} user reviews", "{q} problems and complaints", "{q} vs alternatives", "{q} expert analysis", "{q} recent news"],
+    ["{q} public opinion", "{q} reliability issues", "{q} worth it", "{q} pros and cons", "{q} controversy"],
+    ["{q} community feedback", "{q} common criticisms", "{q} best features", "{q} safety concerns", "{q} market position"],
+    ["{q} long term experience", "{q} hidden costs", "{q} customer service", "{q} quality issues", "{q} competitor comparison"],
+]
 
-    Uses the fast small model for sub-second latency when the user is typing.
+
+def suggest_angles(query: str, *, settings: "Settings | None" = None) -> list[str]:
+    """Return 5 research-angle suggestions for the given query.
+
+    Template-based — instant, no LLM round trip needed.
+    Rotates through angle pools so repeated calls on varied queries feel diverse.
     """
-    system = "You generate research topic suggestions. Respond with JSON only, no markdown."
-    prompt = (
-        f"The user is researching: \"{query}\"\n"
-        "Suggest 5 specific, searchable research angles or related sub-topics "
-        "that would yield useful public-sentiment data. Be concise and concrete.\n"
-        "Return exactly: {\"suggestions\": [\"...\", \"...\", \"...\", \"...\", \"...\"]}"
-    )
-    fallback = [
-        f"{query} public opinion",
-        f"{query} user reviews",
-        f"{query} expert analysis",
-        f"{query} recent controversy",
-        f"{query} market sentiment",
-    ]
-    try:
-        payload = await ollama_generate(
-            prompt,
-            system=system,
-            model=settings.suggestion_model,
-            base_url=settings.ollama_base_url,
-        )
-        suggestions = payload.get("suggestions", [])
-        if isinstance(suggestions, list):
-            cleaned = [str(s).strip() for s in suggestions if str(s).strip()]
-            return cleaned[:5] or fallback
-    except Exception:
-        pass
-    return fallback
+    q = query.strip()
+    pool = _ANGLE_POOLS[hash(q) % len(_ANGLE_POOLS)]
+    return [t.format(q=q) for t in pool]
 
 
 async def expand_queries(
