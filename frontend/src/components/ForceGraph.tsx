@@ -4,7 +4,6 @@
  * Interaction:
  *   Left-click source node → link popover with all URLs from that domain
  *   Left-click theme/aspect node → topic detail popover (evidence + links)
- *   Left-click sentiment node → calls onNodeClick to scroll to quotes
  *   Right-click + drag → reposition / pin node
  *   Scroll wheel → zoom
  *   Left-drag background → pan
@@ -30,7 +29,6 @@ const KIND_COLOR: Record<string, string> = {
   topic:     '#e8000d',
   theme:     '#8b5cf6',
   aspect:    '#ff6600',
-  sentiment: '#4a6080',
   source:    '#00c8d4',
   url:       '#1a9a9a',
 }
@@ -39,7 +37,6 @@ const KIND_LABEL: Record<string, string> = {
   topic: 'Search topic',
   theme: 'Theme',
   aspect: 'Directional topic',
-  sentiment: 'Sentiment',
   source: 'Source domain',
   url: 'Source link',
 }

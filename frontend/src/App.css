@@ -3438,6 +3438,15 @@ button[type="submit"] {
   min-width: 260px;
 }
 
+.model-select-field {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  color: var(--text);
+  font-size: 10px;
+  font-family: var(--mono);
+}
+
 .model-settings-grid input {
   min-width: 0;
   height: 28px;
@@ -4357,3 +4366,4 @@ button[type="submit"] {
 [data-theme="light"] .compare-form-input,
 [data-theme="light"] .compare-topic-input { color: var(--text); }
 [data-theme="light"] .compare-slot { background: var(--surface); }
+.model-select { width: 100%; font-size: 12px; padding: 4px 6px; }

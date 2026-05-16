@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   cancelRun, createRun, createSavedSearch, deleteSavedSearch, expandRun,
-  getRun, listSavedSearches, previewSearchPlan, startNemoClaw, suggestAngles,
+  getAvailableModels, getRun, listSavedSearches, previewSearchPlan, startNemoClaw, suggestAngles,
   type Report, type ResearchDepth, type RunRequest, type SavedSearch, type SearchPlan, type UseCase,
 } from '../lib/api'
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts'
@@ -77,6 +77,7 @@ export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMo
   const [suggestLoading, setSuggestLoading] = useState(false)
   const [searchPlan, setSearchPlan] = useState<SearchPlan | null>(null)
   const [showModelSettings, setShowModelSettings] = useState(false)
+  const [availableModels, setAvailableModels] = useState<string[]>([])
   const [nemoclawModel, setNemoclawModel] = useState('')
   const [sentimentModel, setSentimentModel] = useState('')
   const [suggestionModel, setSuggestionModel] = useState('')
@@ -110,6 +111,16 @@ export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMo
   )]
   const expandDepthOption = selectedDepthIndex > activeDepthIndex ? selectedDepth : nextDepthOption
   const isAtMaxDepth = activeDepthIndex >= DEPTH_OPTIONS.length - 1
+
+  // Fetch available Ollama models for the dropdown.
+  useEffect(() => {
+    getAvailableModels().then(({ models, defaults }) => {
+      setAvailableModels(models)
+      if (!nemoclawModel && defaults.nemoclaw) setNemoclawModel(defaults.nemoclaw)
+      if (!sentimentModel && defaults.lightweight) setSentimentModel(defaults.lightweight)
+      if (!suggestionModel && defaults.suggestion) setSuggestionModel(defaults.suggestion)
+    }).catch(() => {})
+  }, [])  // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const trimmedTopic = topic.trim()
@@ -523,9 +534,9 @@ export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMo
             </button>
             {showModelSettings && (
               <div className="model-settings-grid">
-                <input value={nemoclawModel} onChange={e => setNemoclawModel(e.target.value)} placeholder="NemoClaw model" aria-label="NemoClaw model override" />
-                <input value={sentimentModel} onChange={e => setSentimentModel(e.target.value)} placeholder="Sentiment model" aria-label="Sentiment model override" />
-                <input value={suggestionModel} onChange={e => setSuggestionModel(e.target.value)} placeholder="Suggestions model" aria-label="Suggestions model override" />
+                <ModelSelect label="NemoClaw" value={nemoclawModel} onChange={setNemoclawModel} models={availableModels} placeholder="Synthesis model" />
+                <ModelSelect label="Sentiment" value={sentimentModel} onChange={setSentimentModel} models={availableModels} placeholder="Per-item model" />
+                <ModelSelect label="Suggestions" value={suggestionModel} onChange={setSuggestionModel} models={availableModels} placeholder="Suggestion model" />
               </div>
             )}
           </div>
@@ -702,6 +713,31 @@ export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMo
   )
 }
 
+function ModelSelect({ label, value, onChange, models, placeholder }: {
+  label: string
+  value: string
+  onChange: (value: string) => void
+  models: string[]
+  placeholder: string
+}) {
+  const listId = `autosentiment-models-${label.toLowerCase()}`
+  return (
+    <label className="model-select-field">
+      <span>{label}</span>
+      <input
+        list={listId}
+        value={value}
+        onChange={event => onChange(event.target.value)}
+        placeholder={placeholder}
+        aria-label={`${label} model override`}
+      />
+      <datalist id={listId}>
+        {models.map(model => <option value={model} key={model} />)}
+      </datalist>
+    </label>
+  )
+}
+
 function statusLabel(status: string, eventCount: number): string {
   if (status === 'completed') return 'Analysis complete'
   if (status === 'cancelled') return 'Analysis cancelled'
@@ -753,3 +789,4 @@ function LoadingStage({ events, status }: { events: LoadEvent[]; status: string 
     </div>
   )
 }
+

@@ -9,7 +9,7 @@ The LLM path is tried first and falls back to templates on failure.
 
 from __future__ import annotations
 
-import json
+import asyncio
 import logging
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
@@ -163,9 +163,12 @@ async def generate_smart_queries(
     # Try LLM generation.
     try:
         from app.agents.ollama import ollama_generate
-        payload = await ollama_generate(
-            prompt, system=system, model=settings.nemoclaw_model,
-            base_url=settings.ollama_base_url,
+        payload = await asyncio.wait_for(
+            ollama_generate(
+                prompt, system=system, model=settings.nemoclaw_model,
+                base_url=settings.ollama_base_url,
+            ),
+            timeout=5.0,
         )
         raw = payload.get("queries", [])
         if isinstance(raw, list):
@@ -194,6 +197,15 @@ async def generate_smart_queries(
         deduped.append(q)
         if len(deduped) >= max(budget.query_count, budget.source_diversity_target):
             break
+    if len(deduped) < budget.query_count:
+        for q in _purpose_queries(topic, use_case):
+            key = " ".join(q.query.casefold().split())
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(q)
+            if len(deduped) >= budget.query_count:
+                break
     return deduped
 
 
@@ -245,6 +257,7 @@ def _purpose_queries(topic: str, use_case: UseCase) -> list[PlannedQuery]:
             PlannedQuery(f"{topic} critic review", "expert analysis", "reviews"),
             PlannedQuery(f"{topic} box office streaming", "commercial data", "news"),
             PlannedQuery(f"{topic} controversy backlash", "controversy", "social"),
+            PlannedQuery(f"{topic} audience complaints", "conversion blockers", "public opinion"),
             *generic,
         ]
     if use_case == "public_current_event":

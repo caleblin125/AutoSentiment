@@ -409,6 +409,12 @@ export async function suggestAngles(q: string, model?: string): Promise<string[]
   return data.suggestions ?? []
 }
 
+export async function getAvailableModels(): Promise<{ models: string[]; defaults: Record<string, string> }> {
+  const res = await fetch(`${API_BASE_URL}/api/models`)
+  if (!res.ok) return { models: [], defaults: {} }
+  return res.json()
+}
+
 export async function getDevStats(): Promise<Record<string, unknown>> {
   const res = await fetch(`${API_BASE_URL}/api/dev/stats`)
   if (!res.ok) return {}

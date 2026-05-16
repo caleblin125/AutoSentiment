@@ -263,6 +263,28 @@ async def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@router.get("/models")
+async def list_models(settings: Settings = Depends(get_settings)) -> dict:
+    """Return available Ollama models for the dropdown selector."""
+    import httpx
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.get(f"{settings.ollama_base_url.rstrip('/')}/api/tags")
+            resp.raise_for_status()
+            data = resp.json()
+            models = [m["name"] for m in data.get("models", []) if m.get("name")]
+    except Exception:
+        models = []
+    return {
+        "models": models,
+        "defaults": {
+            "nemoclaw": settings.nemoclaw_model,
+            "lightweight": settings.lightweight_model,
+            "suggestion": getattr(settings, "suggestion_model", "deepseek-r1:14b"),
+        },
+    }
+
+
 @router.get("/diagnostics")
 async def diagnostics(
     db: AsyncSession = Depends(get_db),

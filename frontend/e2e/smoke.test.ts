@@ -142,13 +142,10 @@ const MOCK_REPORT = {
   graph: {
     nodes: [
       { id: 'topic', label: 'test product', kind: 'topic', weight: 20, urls: [] },
-      { id: 'sentiment:positive', label: 'Positive', kind: 'sentiment', weight: 12, urls: [] },
-      { id: 'sentiment:negative', label: 'Negative', kind: 'sentiment', weight: 3, urls: [] },
       { id: 'theme:performance', label: 'performance', kind: 'theme', weight: 8, urls: [], evidence_ids: ['ev-1'] },
-      { id: 'source:example.com', label: 'example.com', kind: 'source', weight: 10, urls: ['https://example.com/article-1'] },
+      { id: 'source:example.com', label: 'example.com', kind: 'source', weight: 10, urls: ['https://example.com/article-1'], sentiment: 'positive' },
     ],
     edges: [
-      { source: 'topic', target: 'sentiment:positive', kind: 'sentiment', weight: 12 },
       { source: 'topic', target: 'theme:performance', kind: 'theme', weight: 8 },
       { source: 'theme:performance', target: 'source:example.com', kind: 'source', weight: 4 },
     ],
