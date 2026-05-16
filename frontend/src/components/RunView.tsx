@@ -387,12 +387,10 @@ export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMo
         </div>
       )}
 
-      {/* Skeleton while waiting */}
-      {runId && events.length === 0 && status !== 'error' && (
+      {/* Loading / stage indicator */}
+      {runId && !report && status !== 'error' && status !== 'cancelled' && (
         <div className="panel">
-          <div className="skeleton skeleton-line skeleton-line--short" style={{ marginBottom: 12 }} />
-          <div className="skeleton skeleton-line skeleton-line--full" />
-          <div className="skeleton skeleton-line skeleton-line--medium" />
+          <LoadingStage events={events} status={status} />
         </div>
       )}
 
@@ -419,4 +417,47 @@ function statusLabel(status: string, eventCount: number): string {
   if (status === 'error')    return 'Analysis stopped with an error'
   if (eventCount === 0)      return 'Initialising…'
   return 'Analysis in progress'
+}
+
+// ── Loading stage indicator ────────────────────────────────────────────
+
+interface LoadEvent { type: string }
+
+const STAGE_INFO: Record<string, { label: string; pct: number; detail: string }> = {
+  run_started: { label: 'Planning search', pct: 5, detail: 'Expanding queries and planning search strategy' },
+  search_queried: { label: 'Searching', pct: 15, detail: 'Querying Brave Search (rate-limited to 1/s)' },
+  fetch_started: { label: 'Fetching sources', pct: 35, detail: 'Downloading and extracting article text' },
+  url_fetched: { label: 'Fetching sources', pct: 55, detail: 'Processing retrieved articles' },
+  item_analyzed: { label: 'Analyzing sentiment', pct: 70, detail: 'Running per-item sentiment analysis via LLM' },
+  synthesis_started: { label: 'Synthesizing report', pct: 90, detail: 'Generating themes, narrative, and graph' },
+}
+
+function LoadingStage({ events, status }: { events: LoadEvent[]; status: string }) {
+  const lastEvent = events.length > 0 ? events[events.length - 1].type : null
+  const stage = lastEvent ? STAGE_INFO[lastEvent] : null
+  const pct = stage?.pct ?? 0
+  const label = stage?.label ?? (status === 'running' ? 'Starting…' : 'Initializing…')
+  const detail = stage?.detail ?? 'Preparing analysis pipeline'
+
+  return (
+    <div className="loading-stage">
+      <div className="loading-stage-header">
+        <span className="status-spinner" style={{ width: 16, height: 16, borderWidth: 2 }} />
+        <strong>{label}</strong>
+        <span style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--text)', marginLeft: 'auto' }}>
+          {pct}%
+        </span>
+      </div>
+      <div className="loading-stage-bar">
+        <div className="loading-stage-fill" style={{ width: `${pct}%` }} />
+      </div>
+      <p className="loading-stage-detail">{detail}</p>
+      {events.length < 2 && (
+        <>
+          <div className="skeleton skeleton-line skeleton-line--medium" style={{ marginBottom: 8 }} />
+          <div className="skeleton skeleton-line skeleton-line--full" />
+        </>
+      )}
+    </div>
+  )
 }
