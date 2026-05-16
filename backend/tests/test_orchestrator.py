@@ -566,6 +566,61 @@ async def test_run_research_skips_cache_when_ttl_zero(monkeypatch, session_facto
     assert len(fetch_calls) == 2
 
 
+@pytest.mark.asyncio
+async def test_run_completes_when_one_sentiment_call_fails(monkeypatch, session_factory) -> None:
+    """A transient failure in one item's sentiment analysis must not crash the run.
+    The remaining items should still be analyzed and the run should complete."""
+    settings = Settings(brave_api_key="test", max_urls_per_run=1, max_items_per_run=3)
+    call_count = 0
+
+    monkeypatch.setattr(orchestrator, "supplemental_media_search", lambda *_a, **_kw: _async([]))
+    monkeypatch.setattr(orchestrator, "AsyncSessionLocal", session_factory)
+    monkeypatch.setattr(orchestrator, "expand_queries", lambda *_a, **_kw: _async(["q"]))
+    monkeypatch.setattr(orchestrator, "brave_search", lambda *_a, **_kw: _async(["https://news.example/1"]))
+    monkeypatch.setattr(
+        orchestrator,
+        "fetch_items",
+        lambda _url, **_kw: _async([
+            FetchedItem(snippet="good item 1", url="https://news.example/1", source_type=SourceType.NEWS),
+            FetchedItem(snippet="boom item",   url="https://news.example/1", source_type=SourceType.NEWS),
+            FetchedItem(snippet="good item 2", url="https://news.example/1", source_type=SourceType.NEWS),
+        ]),
+    )
+
+    async def flaky_analyze(_self, snippet: str) -> SentimentResult:
+        nonlocal call_count
+        call_count += 1
+        if "boom" in snippet:
+            raise RuntimeError("Ollama timeout on this snippet")
+        return SentimentResult(label=SentimentLabel.POSITIVE, summary="ok")
+
+    monkeypatch.setattr(orchestrator.SentimentQueue, "analyze", flaky_analyze)
+    monkeypatch.setattr(orchestrator, "synthesize_report", lambda *_a, **_kw: _async({"themes": [], "narrative": ""}))
+
+    async with session_factory() as db:
+        run = Run(topic="flaky-test", freshness=None, status="pending")
+        db.add(run)
+        await db.commit()
+        await db.refresh(run)
+        run_id = run.id
+
+    queue = event_bus.register(run_id)
+    await orchestrator.run_research(run_id, "flaky-test", None, settings)
+    while await queue.get() is not None:
+        pass
+    event_bus.deregister(run_id)
+
+    async with session_factory() as db:
+        stored = await db.get(Run, run_id)
+        chunks = (await db.execute(EvidenceChunk.__table__.select())).all()
+
+    assert stored is not None
+    # Run must complete despite the failing item.
+    assert stored.status == "completed"
+    # Two good items should have been stored (the boom item was skipped).
+    assert len(chunks) == 2
+
+
 async def _async(value):
     return value
 

@@ -215,6 +215,7 @@ export interface EvidenceChunk {
   snippet: string
   label: 'positive' | 'neutral' | 'negative'
   summary: string
+  confidence?: number
   retrieved_at: string
   related?: {
     timeline_events: TimelineEvent[]

@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import React, { useEffect } from 'react'
 import type { EvidenceChunk } from '../lib/api'
 import { faviconUrl, providerName } from '../lib/providers'
 
@@ -14,6 +14,23 @@ function trimSnippet(text: string): string {
   const cut = text.slice(0, 350)
   const lastPunct = Math.max(cut.lastIndexOf('.'), cut.lastIndexOf('!'), cut.lastIndexOf('?'))
   return lastPunct > 100 ? cut.slice(0, lastPunct + 1) : cut + '…'
+}
+
+/** Highlight keyword occurrences in text with <mark> tags. */
+function highlightTerms(text: string, keywords: string[]): (string | React.JSX.Element)[] {
+  if (!keywords.length) return [text]
+  const pattern = new RegExp(`\\b(${keywords.map(k => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})\\b`, 'gi')
+  const parts: (string | React.JSX.Element)[] = []
+  let last = 0
+  let match: RegExpExecArray | null
+  const re = new RegExp(pattern.source, 'gi')
+  while ((match = re.exec(text)) !== null) {
+    if (match.index > last) parts.push(text.slice(last, match.index))
+    parts.push(<mark key={match.index}>{match[0]}</mark>)
+    last = match.index + match[0].length
+  }
+  if (last < text.length) parts.push(text.slice(last))
+  return parts
 }
 
 export function EvidenceModal({ chunk, onClose }: Props) {
@@ -32,6 +49,12 @@ export function EvidenceModal({ chunk, onClose }: Props) {
     .slice(0, 6)
     .map(([w]) => w)
   const sentenceCount = chunk.snippet.split(/[.!?]+/).filter(s => s.trim().length > 10).length
+  const confidence = chunk.confidence != null ? Math.round(chunk.confidence * 100) : null
+
+  // Sentiment justification from the model summary.
+  const justification = chunk.summary
+    ? `Model classified as ${chunk.label} — summary: "${chunk.summary}"`
+    : `Model classified as ${chunk.label}`
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -51,12 +74,23 @@ export function EvidenceModal({ chunk, onClose }: Props) {
             {providerName(chunk.url)}
           </a>
           <span className={`sentiment-chip sentiment-chip--${chunk.label}`}>{chunk.label}</span>
+          {confidence != null && (
+            <span className="confidence-badge" title={`Model confidence: ${confidence}%`}>
+              {confidence}% sure
+            </span>
+          )}
           <span className="modal-date">
             {new Date(chunk.retrieved_at).toLocaleDateString()}
           </span>
         </div>
 
-        <p className="snippet">{displaySnippet}</p>
+        {/* Snippet with term highlighting */}
+        <p className="snippet">{highlightTerms(displaySnippet, keywords)}</p>
+
+        {/* Why this classification */}
+        <div className="snippet-justification">
+          {justification}
+        </div>
 
         <div className="snippet-analysis">
           <div className="snippet-analysis-block">
@@ -75,6 +109,7 @@ export function EvidenceModal({ chunk, onClose }: Props) {
             <h4>Sentiment</h4>
             <p className={`snippet-sentiment snippet-sentiment--${chunk.label}`}>
               {chunk.label.toUpperCase()}
+              {confidence != null && <span className="snippet-confidence">{confidence}% confidence</span>}
             </p>
           </div>
         </div>
