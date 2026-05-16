@@ -1,4 +1,5 @@
 import logging
+import signal
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -18,12 +19,40 @@ async def lifespan(_app: FastAPI):
     recovered = await recover_stale_runs()
     if recovered:
         logger.info("Recovered %d stale runs on startup", recovered)
+
+    # Graceful shutdown: cancel all active runs on SIGTERM/SIGINT.
+    from app.api import event_bus
+    shutdown_event = event_bus._shutdown
+
+    async def _handle_shutdown():
+        await shutdown_event.wait()
+        logger.info("Shutting down — cancelling active SSE queues")
+        event_bus.shutdown_all()
+
+    import asyncio
+    shutdown_task = asyncio.create_task(_handle_shutdown())
+
     yield
+
+    shutdown_task.cancel()
+    try:
+        await shutdown_task
+    except asyncio.CancelledError:
+        pass
+
+    logger.info("Shutdown complete")
 
 
 def create_app() -> FastAPI:
     settings = get_settings()
-    app = FastAPI(title="AutoSentiment API", lifespan=lifespan)
+    app = FastAPI(
+        title="AutoSentiment API",
+        description="Multi-source public sentiment intelligence — search, fetch, analyze, and synthesize web opinion at scale.",
+        version="0.2.0",
+        lifespan=lifespan,
+        docs_url="/docs",
+        redoc_url="/redoc",
+    )
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins_list,

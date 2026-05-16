@@ -1,5 +1,14 @@
 import { API_BASE_URL } from './config'
 
+// Auth: read API key from env (Vite exposes VITE_ prefixed vars).
+const API_KEY = import.meta.env.VITE_API_KEY as string | undefined
+
+function authHeaders(): Record<string, string> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (API_KEY) headers['X-API-Key'] = API_KEY
+  return headers
+}
+
 // ── Request / response types ────────────────────────────────────────────────
 
 export interface RunRequest {
@@ -310,13 +319,16 @@ export async function listRuns(topic?: string, limit = 20): Promise<RunSummary[]
 }
 
 export async function cancelRun(runId: string): Promise<void> {
-  await fetch(`${API_BASE_URL}/api/runs/${encodeURIComponent(runId)}/cancel`, { method: 'POST' })
+  await fetch(`${API_BASE_URL}/api/runs/${encodeURIComponent(runId)}/cancel`, {
+    method: 'POST',
+    headers: API_KEY ? { 'X-API-Key': API_KEY } : undefined,
+  })
 }
 
 export async function expandRun(runId: string, req?: { research_depth?: ResearchDepth; freshness?: RunRequest['freshness'] }): Promise<RunCreated> {
   const res = await fetch(`${API_BASE_URL}/api/runs/${encodeURIComponent(runId)}/expand`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: authHeaders(),
     body: req ? JSON.stringify(req) : undefined,
   })
   if (!res.ok) throw new Error(`POST /expand failed: ${res.status}`)
@@ -324,7 +336,10 @@ export async function expandRun(runId: string, req?: { research_depth?: Research
 }
 
 export async function startNemoClaw(runId: string): Promise<RunCreated> {
-  const res = await fetch(`${API_BASE_URL}/api/runs/${encodeURIComponent(runId)}/nemoclaw`, { method: 'POST' })
+  const res = await fetch(`${API_BASE_URL}/api/runs/${encodeURIComponent(runId)}/nemoclaw`, {
+    method: 'POST',
+    headers: API_KEY ? { 'X-API-Key': API_KEY } : undefined,
+  })
   if (!res.ok) throw new Error(`POST /nemoclaw failed: ${res.status}`)
   return res.json()
 }

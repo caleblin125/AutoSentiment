@@ -11,6 +11,7 @@ import asyncio
 
 _queues: dict[str, asyncio.Queue] = {}
 _cancelled_runs: set[str] = set()
+_shutdown: asyncio.Event = asyncio.Event()
 
 
 def register(run_id: str) -> asyncio.Queue:
@@ -38,3 +39,14 @@ def is_cancelled(run_id: str) -> bool:
 
 def clear_cancel(run_id: str) -> None:
     _cancelled_runs.discard(run_id)
+
+
+def shutdown_all() -> None:
+    """Cancel all active runs and close all SSE queues."""
+    for run_id in list(_queues.keys()):
+        _cancelled_runs.add(run_id)
+        q = _queues.get(run_id)
+        if q:
+            q.put_nowait(None)
+    _queues.clear()
+    _shutdown.set()
