@@ -1,10 +1,11 @@
 # Active Agent Sessions
 
-Last updated: 2026-05-16 20:41 UTC
+Last updated: 2026-05-16 22:00 UTC
 
 | Agent | Session | Claimed Task | Working File | Status | Since |
 |-------|---------|-------------|--------------|--------|-------|
-| cursor | autosentiment-cursor | Warmup + counters + confidence | app/main.py, App.css, ReportView.tsx | active | 21:00 |
+| cursor | autosentiment-cursor | All tasks complete | — | idle | 21:15 |
+| claude | autosentiment-claude | UI polish, inline style cleanup | App.css, components | completed | 21:30 |
 
 ## Conflict Rules
 1. **pi** owns: App.css (utility classes), RunView.tsx, tests/, documentation
