@@ -1,54 +1,53 @@
 # Agent Task Queue
 
-Last updated: 2026-05-16 20:28 UTC (audited against git log)
+Last updated: 2026-05-16 20:30 UTC (re-audited — Claude did search tasks too)
 
-## 🔴 PI Agent (me) — COMPLETE
-- [x] [pi]       Fix orchestrator tests (supplemental_media_search monkeypatch)
-- [x] [pi]       Fix mobile layout: report tabs stack vertically on <768px
-- [x] [pi]       Add @media print CSS for PDF export
-- [x] [pi]       Add keyboard shortcuts: Ctrl+Enter submit, 1-7 tab switch, Esc close modal
-- [x] [pi]       Fix hardcoded colors → CSS variables (nemoclaw-purple, #fff, #ffffff)
-- [x] [pi]       Add page title updates: "AutoSentiment — {topic} ({status})"
+## ✅ COMPLETED — PI Agent
+- [x] [pi]       Fix orchestrator tests
+- [x] [pi]       Mobile layout (<768px stacked)
+- [x] [pi]       Print CSS (@media print)
+- [x] [pi]       Keyboard shortcuts (Ctrl+Enter, 1-7 tabs, Esc, ?)
+- [x] [pi]       Hardcoded colors → CSS variables
+- [x] [pi]       Page title updates
+- [x] [pi]       Agent coordination system + task auditing
 
-## 🟡 Claude Agent — IN PROGRESS
-- [x] [claude]   Split ReportView.tsx into sub-components (EvidenceModal, SourceFacts, ClaimsSection)
-- [x] [claude]   Create shared CSS utility classes, tab animations, CSS variable expansion
-- [x] [claude]   World map with continental SVG, draggable tabs, graph improvements
+## ✅ COMPLETED — Claude Agent
+- [x] [claude]   ReportView → sub-components (EvidenceModal, SourceFacts, ClaimsSection)
+- [x] [claude]   CSS utility classes, tab animations, CSS variable expansion
+- [x] [claude]   World map SVG, draggable tabs, graph gradient/glow improvements
 - [x] [claude]   Claim corroboration rework, sentiment area chart
-- [ ] [claude]   Fix light theme: ensure all remaining hardcoded colors have light equivalents
+- [x] [claude]   Parallelized media APIs (asyncio.gather + round-robin interleaving)
+- [x] [claude]   Batch FetchedURLCache reads (SELECT IN query)
+- [x] [claude]   _FETCH_CONCURRENCY 8→12 with per-domain caps
+- [x] [claude]   Search dedup scoring + cross-source tracking
+- [x] [claude]   Search timing breakdown (brave_ms, media_ms, cache hits)
+- [x] [claude]   URL quality ranking (_url_quality_score + _select_diverse_urls)
+- [x] [claude]   Degraded mode (works without Brave API key)
+- [x] [claude]   Multi-tab keyboard shortcut + page title fix
+
+## 🔴 IN PROGRESS — Claude Agent
+- [ ] [claude]   Fix remaining light theme hardcoded colors
 - [ ] [claude]   Add useEffect cleanup functions (SSE disconnect, timers)
 - [ ] [claude]   Add error boundary wrappers to ForceGraph, EventTimeline, HistoryPanel
 
-## 🔴 Codex Agent — CRASHED (ran out of credits, did zero work)
-- [ ] [FREE]     Parallelize supplemental_media_search: asyncio.gather instead of sequential
-- [ ] [FREE]     Pre-queue Brave searches: batch cache hit check first, then dispatch
-- [ ] [FREE]     Batch FetchedURLCache reads: single SELECT IN query
-- [ ] [FREE]     Increase _FETCH_CONCURRENCY from 8 → 12 with adaptive backoff
-- [ ] [FREE]     Add search dedup scoring + source diversity metric
-- [ ] [FREE]     Add search-stage timing breakdown in timings dict
-- [ ] [FREE]     Implement search result quality ranking
-- [ ] [FREE]     Test degraded mode (no API keys) end-to-end
-- [ ] [FREE]     Test cache hit rate with repeated searches
+## 🔴 CRASHED — Codex Agent (zero work done, all tasks done by Claude)
+- [x] [claude]   ~Parallelize media APIs~
+- [x] [claude]   ~Pre-queue Brave searches~
+- [x] [claude]   ~Batch cache reads~
+- [x] [claude]   ~_FETCH_CONCURRENCY increase~
+- [x] [claude]   ~Search dedup + diversity~
+- [x] [claude]   ~Search timing breakdown~
+- [x] [claude]   ~Quality ranking~
+- [x] [claude]   ~Degraded mode~
 
 ## Next Tasks (unclaimed)
-- [ ] [FREE]     Per-URL fetch timeout hardening in orchestrator
+- [ ] [FREE]     Per-URL fetch timeout hardening
 - [ ] [FREE]     FetchedURLCache TTL eviction on startup
 - [ ] [FREE]     Graph position persistence to localStorage per run_id
-- [ ] [FREE]     Multi-topic compare mode (2-3 topics side by side)
-- [ ] [FREE]     Saved searches UI wiring (model exists, frontend panel needed)
-- [ ] [FREE]     Shareable run URLs (/?run=<id> loads read-only report)
-- [ ] [FREE]     Add Playwright tests for saved searches, thread clicks, report tabs
-- [ ] [FREE]     Backend linting: add ruff + pre-commit hooks
-- [ ] [FREE]     CI/CD pipeline config (.github/workflows/ci.yml)
-- [ ] [FREE]     Ollama model warm-up on backend startup
-
-## Completed (verified against git log)
-- [x] [pi]       2026-05-16 20:26  Fix orchestrator test hangs
-- [x] [claude]   2026-05-16 20:24  Multi-tab keyboard shortcut + page title fix
-- [x] [claude]   2026-05-16 20:15  Refactor ReportView sub-components + CSS utilities + tab animations
-- [x] [pi]       2026-05-16 20:08  Keyboard shortcuts, page title, mobile+print CSS, color fixes
-- [x] [pi]       2026-05-16 20:07  Orchestrator test fix
-- [x] [pi]       2026-05-16 04:50  Multi-agent coordination system
-- [x] [claude]   2026-05-16 04:55  Massive UI overhaul (timeline, world map, draggable tabs, graph, claims)
-- [x] [pi]       2026-05-16 04:40  Graceful shutdown, auth, streaming synthesis, Docker, theme toggle
-- [x] [pi]       2026-05-16 04:30  Persistent caches, credibility scoring, E2E tests, thread extraction
+- [ ] [FREE]     Multi-topic compare mode
+- [ ] [FREE]     Saved searches frontend wiring
+- [ ] [FREE]     Shareable run URLs (/?run=<id>)
+- [ ] [FREE]     More Playwright tests (saved search, thread click, report tabs)
+- [ ] [FREE]     Backend linting: ruff + pre-commit
+- [ ] [FREE]     CI/CD pipeline config
+- [ ] [FREE]     Ollama model warm-up on startup
