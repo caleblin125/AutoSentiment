@@ -10,6 +10,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { TabBar } from './components/TabBar'
 import { RunView } from './components/RunView'
+import { CompareView } from './components/CompareView'
 import { DevOverlay } from './components/DevOverlay'
 import type { Tab } from './components/TabBar'
 import { cancelRun, getRun } from './lib/api'
@@ -77,12 +78,16 @@ function TabPanel({
       aria-labelledby={`tab-${tab.id}`}
       style={tab.id !== activeId ? { display: 'none' } : undefined}
     >
-      <RunView
-        onStatusChange={onStatusChange}
-        onOpenRunInNewTab={openRunInNewTab}
-        initialRunId={tab.runId}
-        devMode={devMode}
-      />
+      {tab.type === 'compare' ? (
+        <CompareView />
+      ) : (
+        <RunView
+          onStatusChange={onStatusChange}
+          onOpenRunInNewTab={openRunInNewTab}
+          initialRunId={tab.runId}
+          devMode={devMode}
+        />
+      )}
     </div>
   )
 }
@@ -187,6 +192,14 @@ export default function App() {
     setActiveId(tab.id)
   }
 
+  function addCompareTab() {
+    const tab = newTab()
+    tab.label = 'Compare'
+    tab.type = 'compare'
+    setTabs(prev => [...prev, tab])
+    setActiveId(tab.id)
+  }
+
   async function closeTab(id: string) {
     // Cancel any running task on this tab before removing it.
     const tab = tabs.find(t => t.id === id)
@@ -228,6 +241,13 @@ export default function App() {
         </div>
         <p className="app-lede">Multi-source public sentiment intelligence</p>
         <div style={{ display: 'flex', gap: 6, marginLeft: 'auto', alignItems: 'center' }}>
+          <button
+            className="btn-secondary compare-open-btn"
+            onClick={addCompareTab}
+            title="Compare 2-3 topics side by side"
+          >
+            ⊞ Compare
+          </button>
           <button
             className="theme-toggle-btn"
             onClick={() => setTheme(t => t === 'dark' ? 'light' : 'dark')}

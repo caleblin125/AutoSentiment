@@ -5,6 +5,7 @@ export interface Tab {
   label: string
   status: 'idle' | 'running' | 'expanding' | 'completed' | 'cancelled' | 'error' | 'cached'
   runId?: string   // tracks active runId so close can cancel the task
+  type?: 'search' | 'compare'
 }
 
 interface Props {
