@@ -992,6 +992,160 @@ button[type="submit"] {
   font-family: var(--mono);
 }
 
+/* ── Cancel / Expand / Cancelled ────────────────────────────────────────── */
+
+.btn-cancel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 14px;
+  font-size: 12px;
+  border-color: var(--rog-red);
+  background: var(--rog-red-dim);
+  color: var(--rog-red);
+  letter-spacing: 0.8px;
+}
+
+.btn-cancel:hover:not(:disabled) {
+  background: var(--rog-red);
+  color: #fff;
+  box-shadow: var(--rog-red-glow);
+}
+
+.btn-expand {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 14px;
+  font-size: 12px;
+  border-color: rgba(0, 212, 232, 0.4);
+  background: var(--rog-cyan-dim);
+  color: var(--rog-cyan);
+  letter-spacing: 0.8px;
+}
+
+.btn-expand:hover:not(:disabled) {
+  background: var(--rog-cyan);
+  color: #000;
+  box-shadow: var(--rog-cyan-glow);
+}
+
+.cancelled-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 2px 8px;
+  background: var(--surface-muted);
+  font-family: var(--mono);
+  letter-spacing: 0.5px;
+}
+
+/* ── History panel ───────────────────────────────────────────────────────── */
+
+.history-panel {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.history-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  font-size: 12px;
+  height: 40px;
+  padding: 0 14px;
+  border-color: var(--border);
+  color: var(--text-strong);
+}
+
+.history-toggle:hover:not(:disabled) {
+  border-color: var(--rog-cyan);
+  color: var(--rog-cyan);
+  background: var(--rog-cyan-dim);
+  box-shadow: none;
+}
+
+.history-icon { font-size: 15px; }
+.history-chevron { font-size: 9px; color: var(--text); }
+
+.history-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 50;
+  width: 340px;
+  max-height: 420px;
+  overflow-y: auto;
+  background: var(--surface-elevated);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.6);
+}
+
+.history-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 10px 16px;
+  border: none;
+  border-radius: 0;
+  border-bottom: 1px solid var(--border-dim);
+  background: transparent;
+  min-height: unset;
+  cursor: pointer;
+  transition: background 0.1s;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text-strong);
+}
+
+.history-item:last-child { border-bottom: none; }
+
+.history-item:hover:not(:disabled) {
+  background: var(--surface-hover);
+  color: var(--text-bright);
+  box-shadow: none;
+  border-left: 2px solid var(--rog-cyan);
+  padding-left: 14px;
+}
+
+.history-item-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.history-topic {
+  font-size: 13px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.history-date {
+  flex-shrink: 0;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text);
+}
+
+.history-item-stats {
+  display: flex;
+  align-items: center;
+  margin-top: 4px;
+}
+
 /* ── Text clipping utility ──────────────────────────────────────────────── */
 
 .clip-text {

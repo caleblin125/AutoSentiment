@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
 from app.api import event_bus
+from app.api.event_bus import clear_cancel, is_cancelled, request_cancel as _request_cancel  # noqa: F401
 from app.agents.light_queue import SentimentQueue
 from app.agents.nemoclaw import expand_queries, synthesize_report
 from app.agents.types import SSEEventType, SentimentLabel
@@ -23,8 +24,11 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Max simultaneous HTTP fetches (search is separately rate-limited to 1/sec).
 _FETCH_CONCURRENCY = 8
+
+
+class _CancelledByUser(Exception):
+    """Raised internally when a user cancels the run; triggers a clean shutdown."""
 
 
 async def run_research(run_id: str, topic: str, freshness: str | None, settings: Settings) -> None:
@@ -92,12 +96,18 @@ async def run_research(run_id: str, topic: str, freshness: str | None, settings:
             queries = _expand_platform_queries(await expand_queries(topic, settings=settings), topic)
             timings["query_expansion_ms"] = _elapsed_ms(stage_started)
 
+            if is_cancelled(run_id):
+                raise _CancelledByUser()
+
             # ── Stage 2: Brave search (rate-limited, sequential) ────────────
             urls: list[str] = []
             seen_urls: set[str] = set()
 
             stage_started = perf_counter()
             for query in queries:
+                if is_cancelled(run_id):
+                    raise _CancelledByUser()
+
                 await emit(SSEEventType.SEARCH_QUERIED, "Search queried", {"query": query})
                 await db.commit()
 
@@ -113,6 +123,9 @@ async def run_research(run_id: str, topic: str, freshness: str | None, settings:
                     if len(urls) >= settings.max_urls_per_run:
                         break
             timings["search_ms"] = _elapsed_ms(stage_started)
+
+            if is_cancelled(run_id):
+                raise _CancelledByUser()
 
             # ── Stage 3: parallel URL fetch ─────────────────────────────────
             await emit(SSEEventType.FETCH_STARTED, f"Fetching {len(urls)} URLs", {"url_count": len(urls)})
@@ -161,6 +174,10 @@ async def run_research(run_id: str, topic: str, freshness: str | None, settings:
                 for item in fetched_items
             ]
             for future in asyncio.as_completed(analyze_tasks):
+                if is_cancelled(run_id):
+                    for t in analyze_tasks:
+                        t.cancel()
+                    raise _CancelledByUser()
                 item, result, duration_ms = await future
                 chunk = EvidenceChunk(
                     run_id=run_id,
@@ -227,6 +244,13 @@ async def run_research(run_id: str, topic: str, freshness: str | None, settings:
             await emit(SSEEventType.RUN_COMPLETED, "Run completed", {"report": report})
             await db.commit()
 
+        except _CancelledByUser:
+            logger.info("Run cancelled by user: %s", run_id)
+            run = await db.get(Run, run_id)
+            if run is not None:
+                run.status = "cancelled"
+            await emit(SSEEventType.RUN_CANCELLED, "Run cancelled")
+            await db.commit()
         except Exception as exc:
             logger.exception("Run failed: %s", run_id)
             run = await db.get(Run, run_id)
@@ -235,6 +259,7 @@ async def run_research(run_id: str, topic: str, freshness: str | None, settings:
             await emit(SSEEventType.RUN_ERROR, "Run error", {"message": str(exc)})
             await db.commit()
         finally:
+            clear_cancel(run_id)
             if queue is not None:
                 queue.put_nowait(None)
 

@@ -120,6 +120,7 @@ export type SSEEventType =
   | 'item_analyzed'
   | 'synthesis_started'
   | 'run_completed'
+  | 'run_cancelled'
   | 'run_error'
 
 export interface SSEEvent {
@@ -165,5 +166,15 @@ export async function listRuns(topic?: string, limit = 20): Promise<RunSummary[]
   if (topic) params.set('topic', topic)
   const res = await fetch(`${API_BASE_URL}/api/runs?${params}`)
   if (!res.ok) throw new Error(`GET /api/runs failed: ${res.status}`)
+  return res.json()
+}
+
+export async function cancelRun(runId: string): Promise<void> {
+  await fetch(`${API_BASE_URL}/api/runs/${encodeURIComponent(runId)}/cancel`, { method: 'POST' })
+}
+
+export async function expandRun(runId: string): Promise<RunCreated> {
+  const res = await fetch(`${API_BASE_URL}/api/runs/${encodeURIComponent(runId)}/expand`, { method: 'POST' })
+  if (!res.ok) throw new Error(`POST /expand failed: ${res.status}`)
   return res.json()
 }

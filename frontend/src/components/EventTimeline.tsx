@@ -165,7 +165,8 @@ function SearchRow({ ev }: { ev: SSEEvent }) {
 
 function GenericRow({ ev }: { ev: SSEEvent }) {
   const prefixMap: Record<string, string> = {
-    run_started: 'Start', synthesis_started: 'Synthesis', run_completed: 'Done', run_error: 'Error',
+    run_started: 'Start', synthesis_started: 'Synthesis',
+    run_completed: 'Done', run_cancelled: 'Cancelled', run_error: 'Error',
   }
   const prefix = prefixMap[ev.type] ?? ev.type
   const msg = ev.type === 'run_error' && typeof ev.detail.message === 'string'

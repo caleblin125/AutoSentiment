@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { getEventsUrl, type SSEEvent } from '../lib/api'
 
-type StreamStatus = 'idle' | 'running' | 'completed' | 'error'
+type StreamStatus = 'idle' | 'running' | 'completed' | 'cancelled' | 'error'
 interface StreamState {
   runId: string | null
   events: SSEEvent[]
@@ -33,11 +33,9 @@ export function useRunStream(runId: string | null): { events: SSEEvent[]; status
         },
       }
       const nextStatus: StreamStatus =
-        event.type === 'run_completed'
-          ? 'completed'
-          : event.type === 'run_error'
-            ? 'error'
-            : 'running'
+        event.type === 'run_completed' ? 'completed' :
+        event.type === 'run_cancelled' ? 'cancelled' :
+        event.type === 'run_error'     ? 'error'     : 'running'
 
       setStreamState(prev => ({
         runId,
@@ -45,7 +43,7 @@ export function useRunStream(runId: string | null): { events: SSEEvent[]; status
         status: nextStatus,
       }))
 
-      if (nextStatus === 'completed' || nextStatus === 'error') {
+      if (nextStatus === 'completed' || nextStatus === 'error' || nextStatus === 'cancelled') {
         eventSource.close()
       }
     }

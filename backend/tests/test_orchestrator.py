@@ -253,6 +253,57 @@ async def test_parallel_fetch_respects_item_cap_and_emits_events(monkeypatch, se
     assert fetch_started_idx < first_url_fetched_idx
 
 
+@pytest.mark.asyncio
+async def test_cancel_during_search_stops_run_and_emits_cancelled(monkeypatch, session_factory) -> None:
+    """Requesting cancel while searches are queued must stop the pipeline,
+    set status='cancelled', and emit run_cancelled as the final event."""
+    from app.api import event_bus
+
+    settings = Settings(max_urls_per_run=10, max_items_per_run=10)
+    monkeypatch.setattr(orchestrator, "AsyncSessionLocal", session_factory)
+    monkeypatch.setattr(orchestrator, "expand_queries", lambda *_a, **_kw: _async(["q1", "q2", "q3"]))
+
+    call_count = 0
+
+    async def cancelling_search(*_a, **_kw):
+        nonlocal call_count
+        call_count += 1
+        # Signal cancel on the first search call.
+        if call_count == 1:
+            event_bus.request_cancel(run_id)
+        return []
+
+    monkeypatch.setattr(orchestrator, "brave_search", cancelling_search)
+
+    async with session_factory() as db:
+        run = Run(topic="cancel-me", freshness=None, status="pending")
+        db.add(run)
+        await db.commit()
+        await db.refresh(run)
+        run_id = run.id
+
+    queue = event_bus.register(run_id)
+    await orchestrator.run_research(run_id, "cancel-me", None, settings)
+
+    events: list[dict] = []
+    while True:
+        ev = await queue.get()
+        if ev is None:
+            break
+        events.append(ev)
+    event_bus.deregister(run_id)
+
+    async with session_factory() as db:
+        run = await db.get(Run, run_id)
+
+    assert run is not None
+    assert run.status == "cancelled"
+    event_types = [e["type"] for e in events]
+    assert event_types[-1] == "run_cancelled"
+    # Pipeline should have stopped — not all queries ran.
+    assert call_count < 3
+
+
 def test_domain_from_url_strips_www() -> None:
     assert orchestrator._domain_from_url("https://www.reddit.com/r/foo") == "www.reddit.com".removeprefix("www.")
     assert orchestrator._domain_from_url("https://news.ycombinator.com/item?id=1") == "news.ycombinator.com"

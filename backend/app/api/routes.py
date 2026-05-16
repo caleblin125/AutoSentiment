@@ -186,6 +186,51 @@ async def stream_events(run_id: str, db: AsyncSession = Depends(get_db)) -> Stre
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
+@router.post("/runs/{run_id}/cancel")
+async def cancel_run(run_id: str, db: AsyncSession = Depends(get_db)) -> dict:
+    """Signal the orchestrator to stop at its next stage boundary."""
+    run = await db.get(Run, run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="Run not found")
+    if run.status not in ("pending", "running"):
+        return {"cancelled": False, "status": run.status}
+    event_bus.request_cancel(run_id)
+    return {"cancelled": True, "run_id": run_id}
+
+
+@router.post("/runs/{run_id}/expand")
+async def expand_run(
+    run_id: str,
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> RunResponse:
+    """Create a wider follow-up run for the same topic.
+
+    The expanded run uses double the URL/item limits and drops the freshness
+    restriction (any time) so it casts a broader net than the original.
+    """
+    original = await db.get(Run, run_id)
+    if original is None:
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    expanded_settings = Settings(
+        **{
+            **settings.model_dump(),
+            "max_urls_per_run": settings.max_urls_per_run * 2,
+            "max_items_per_run": settings.max_items_per_run * 2,
+        }
+    )
+    run = Run(topic=original.topic, freshness=None, status="pending")
+    db.add(run)
+    await db.commit()
+    await db.refresh(run)
+
+    event_bus.register(run.id)
+    asyncio.create_task(run_research(run.id, run.topic, None, expanded_settings))
+
+    return RunResponse(run_id=run.id)
+
+
 @router.get("/runs/{run_id}/evidence/{chunk_id}")
 async def get_evidence(
     run_id: str, chunk_id: str, db: AsyncSession = Depends(get_db)

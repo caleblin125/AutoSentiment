@@ -32,6 +32,7 @@ class SSEEventType(StrEnum):
     ITEM_ANALYZED = "item_analyzed"
     SYNTHESIS_STARTED = "synthesis_started"
     RUN_COMPLETED = "run_completed"
+    RUN_CANCELLED = "run_cancelled"
     RUN_ERROR = "run_error"
 
 

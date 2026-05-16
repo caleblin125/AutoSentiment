@@ -3,11 +3,16 @@
 The SSE endpoint registers a queue before starting the agent task.
 The orchestrator pushes serialised event dicts into the queue.
 A None sentinel signals end-of-stream to the SSE endpoint.
+
+Cancellation is signalled via a cooperative set: the orchestrator checks
+_cancelled_runs at each stage boundary and exits cleanly if the run_id
+is present.
 """
 
 import asyncio
 
 _queues: dict[str, asyncio.Queue] = {}
+_cancelled_runs: set[str] = set()
 
 
 def register(run_id: str) -> asyncio.Queue:
@@ -22,3 +27,16 @@ def get(run_id: str) -> asyncio.Queue | None:
 
 def deregister(run_id: str) -> None:
     _queues.pop(run_id, None)
+
+
+def request_cancel(run_id: str) -> None:
+    """Signal the orchestrator to stop at its next stage boundary."""
+    _cancelled_runs.add(run_id)
+
+
+def is_cancelled(run_id: str) -> bool:
+    return run_id in _cancelled_runs
+
+
+def clear_cancel(run_id: str) -> None:
+    _cancelled_runs.discard(run_id)
