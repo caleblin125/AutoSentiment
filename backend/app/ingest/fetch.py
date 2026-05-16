@@ -34,18 +34,52 @@ def is_reddit_url(url: str) -> bool:
 
 
 def classify_source_type(url: str) -> SourceType:
-    """Map common opinion platforms to broad source buckets."""
+    """Map common platforms to broad source buckets with domain-aware heuristics."""
     host = urlparse(url).netloc.lower()
+    # Remove www/m prefixes for cleaner matching.
+    host_clean = host.removeprefix("www.").removeprefix("m.").removeprefix("old.")
+
     if "reddit.com" in host:
         return SourceType.REDDIT
-    if any(domain in host for domain in ("youtube.com", "youtu.be", "tiktok.com")):
+    if any(d in host for d in ("youtube.com", "youtu.be", "tiktok.com", "twitch.tv", "vimeo.com")):
         return SourceType.VIDEO
-    if any(domain in host for domain in ("x.com", "twitter.com", "facebook.com", "instagram.com")):
+    if any(d in host for d in ("x.com", "twitter.com", "threads.net", "facebook.com",
+                                "instagram.com", "linkedin.com", "tumblr.com", "bsky.app")):
         return SourceType.SOCIAL
-    if any(domain in host for domain in ("news.ycombinator.com", "quora.com", "stackexchange.com", "stackoverflow.com")):
+
+    # Known forums and community sites.
+    _forum_domains = {
+        "news.ycombinator.com", "quora.com", "stackexchange.com", "stackoverflow.com",
+        "medium.com", "substack.com", "discourse.org", "lemmy.world", "lemmy.ml",
+        "stocktwits.com", "seekingalpha.com",  # financial discussion
+        "trustpilot.com", "sitejabber.com", "g2.com", "capterra.com",  # review forums
+        "producthunt.com", "slant.co",
+        "groups.google.com",
+    }
+    if host_clean in _forum_domains or any(host_clean.endswith(f".{d}") for d in _forum_domains):
         return SourceType.FORUM
-    if any(term in host for term in ("news", "nytimes", "reuters", "apnews", "bbc", "cnn", "wsj", "bloomberg", "insideevs")):
+
+    # Known news / journalistic domains.
+    _news_domains = {
+        "reuters.com", "apnews.com", "bbc.com", "bbc.co.uk", "nytimes.com",
+        "wsj.com", "bloomberg.com", "cnn.com", "washingtonpost.com",
+        "theguardian.com", "economist.com", "ft.com", "politico.com",
+        "npr.org", "aljazeera.com", "dw.com", "france24.com",
+        "nature.com", "science.org", "sciencedirect.com", "techcrunch.com",
+        "theverge.com", "wired.com", "arstechnica.com", "engadget.com",
+        "variety.com", "hollywoodreporter.com", "deadline.com",  # entertainment trade
+        "ign.com", "gamespot.com", "pcgamer.com", "eurogamer.net",  # gaming press
+        "marketwatch.com", "cnbc.com", "barrons.com", "investopedia.com",  # financial news
+    }
+    if host_clean in _news_domains or any(host_clean.endswith(f".{d}") for d in _news_domains):
         return SourceType.NEWS
+
+    # Generic keyword fallback for uncategorized domains.
+    if any(term in host for term in ("news", "press", "journal", "times", "post", "daily")):
+        return SourceType.NEWS
+    if any(term in host for term in ("forum", "community", "discuss", "board")):
+        return SourceType.FORUM
+
     return SourceType.WEB
 
 
