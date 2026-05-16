@@ -10,7 +10,7 @@ export interface RunRequest {
 }
 
 export type ResearchDepth = 'quick' | 'standard' | 'deep' | 'exhaustive'
-export type UseCase = 'generic' | 'entertainment_product' | 'public_current_event' | 'brand_product' | 'policy_civic'
+export type UseCase = 'generic' | 'entertainment_product' | 'public_current_event' | 'brand_product' | 'policy_civic' | 'financial_market'
 
 export interface DepthBudget {
   query_count: number

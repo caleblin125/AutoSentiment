@@ -394,6 +394,15 @@ def compute_use_case_insights(
             "what_changed_recently": "Use the chronology section to inspect dated developments and source links.",
             "source_warning": _source_warning(chunks),
         }
+    elif use_case == "financial_market":
+        sections = {
+            "market_pulse": _pulse_sentence(positive_share, negative_share),
+            "key_drivers": _aspect_sentence(top_aspects, fallback="No dominant market themes identified."),
+            "analyst_sentiment": _source_pulse(chunks, {"news", "web"}),
+            "retail_sentiment": _source_pulse(chunks, {"reddit", "social", "forum"}),
+            "risk_signals": _risk_sentence(negative_share, needs_verification),
+            "verification_notes": f"{needs_verification} claim(s) need verification against SEC filings and primary financial data.",
+        }
     else:
         sections = {
             "audience_pulse": _pulse_sentence(positive_share, negative_share),

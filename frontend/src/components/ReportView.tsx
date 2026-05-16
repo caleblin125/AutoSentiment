@@ -23,6 +23,12 @@ const KNOWN_PROVIDERS: Record<string, string> = {
   'theverge.com': 'The Verge', 'techcrunch.com': 'TechCrunch', 'wired.com': 'Wired',
   'bloomberg.com': 'Bloomberg', 'reuters.com': 'Reuters', 'wsj.com': 'WSJ',
   'apnews.com': 'AP News', 'cnn.com': 'CNN', 'insideevs.com': 'InsideEVs',
+  'finance.yahoo.com': 'Yahoo Finance', 'seekingalpha.com': 'Seeking Alpha',
+  'marketwatch.com': 'MarketWatch', 'fool.com': 'Motley Fool', 'cnbc.com': 'CNBC',
+  'investopedia.com': 'Investopedia', 'benzinga.com': 'Benzinga', 'barrons.com': "Barron's",
+  'ft.com': 'Financial Times', 'economist.com': 'The Economist',
+  'sec.gov': 'SEC Filing', 'investors.com': "Investor's Business Daily",
+  'tipranks.com': 'TipRanks', 'stocktwits.com': 'StockTwits',
 }
 
 function domainFromUrl(url: string): string {

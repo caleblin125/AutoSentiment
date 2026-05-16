@@ -16,6 +16,7 @@ UseCase = Literal[
     "public_current_event",
     "brand_product",
     "policy_civic",
+    "financial_market",
 ]
 
 VALID_USE_CASES: tuple[UseCase, ...] = (
@@ -24,6 +25,7 @@ VALID_USE_CASES: tuple[UseCase, ...] = (
     "public_current_event",
     "brand_product",
     "policy_civic",
+    "financial_market",
 )
 
 BRAVE_MONTHLY_FREE_QUOTA = 2000
@@ -223,6 +225,23 @@ def _purpose_queries(topic: str, use_case: UseCase) -> list[PlannedQuery]:
             PlannedQuery(f"{topic} customer reviews complaints", "customer experience", "reviews"),
             PlannedQuery(f"{topic} pricing value competitors", "market position", "market"),
             PlannedQuery(f"{topic} support warranty issues", "support risk", "reviews"),
+            *generic,
+        ]
+    if use_case == "financial_market":
+        return [
+            PlannedQuery(f"{topic} stock price analyst rating", "market data and ratings", "financial data"),
+            PlannedQuery(f"{topic} earnings report financial results", "earnings and fundamentals", "financial data"),
+            PlannedQuery(f"{topic} Seeking Alpha analysis", "investor analysis", "financial news"),
+            PlannedQuery(f"{topic} Yahoo Finance discussion", "retail investor sentiment", "financial forum"),
+            PlannedQuery(f"{topic} SEC filing regulatory", "regulatory filings", "official"),
+            PlannedQuery(f"{topic} MarketWatch Bloomberg coverage", "financial news coverage", "financial news"),
+            PlannedQuery(f"{topic} investor presentation guidance", "company outlook", "official"),
+            PlannedQuery(f"{topic} WallStreetBets Reddit discussion", "retail sentiment", "reddit"),
+            PlannedQuery(f"{topic} market cap valuation competitors", "competitive positioning", "market data"),
+            PlannedQuery(f"{topic} insider trading institutional ownership", "ownership activity", "financial data"),
+            PlannedQuery(f"{topic} risk factors controversy legal", "risk assessment", "news"),
+            PlannedQuery(f"{topic} dividend buyback capital return", "shareholder returns", "financial data"),
+            PlannedQuery(f"{topic} sector industry outlook macro", "macro context", "expert"),
             *generic,
         ]
     return generic

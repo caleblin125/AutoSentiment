@@ -43,6 +43,7 @@ const USE_CASE_OPTIONS: Array<{ value: UseCase; label: string }> = [
   { value: 'public_current_event', label: 'Current event' },
   { value: 'brand_product', label: 'Brand/product' },
   { value: 'policy_civic', label: 'Policy/civic' },
+  { value: 'financial_market', label: 'Financial' },
 ]
 
 interface Props {
