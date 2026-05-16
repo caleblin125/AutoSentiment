@@ -10,7 +10,11 @@ import {
   type Report,
   type ThreadItem,
 } from '../lib/api'
-import { KNOWN_PROVIDERS, providerName, faviconUrl } from '../lib/providers'
+import { providerName, faviconUrl } from '../lib/providers'
+import { ErrorBoundary } from './ErrorBoundary'
+import { EvidenceModal } from './EvidenceModal'
+import { FactCheckSection } from './ClaimsSection'
+import { SourceFacts, SOURCE_TYPE_LABEL } from './SourceFacts'
 import { ForceGraph } from './ForceGraph'
 
 interface Props { runId: string; topic: string; report: Report; onSearchTopic?: (topic: string) => void }
@@ -113,7 +117,7 @@ function SentimentBar({ label, value, color }: { label: string; value: number; c
     <div className="sentiment-row">
       <div className="sentiment-row__label">
         <span>{label}</span>
-        <strong style={{ fontFamily: 'var(--mono)' }}>{pct(value)}</strong>
+        <strong className="mono">{pct(value)}</strong>
       </div>
       <div className="sentiment-track">
         <div className="sentiment-fill" style={{ width: pct(value), background: color }} />
@@ -188,141 +192,6 @@ function AspectSummary({ aspects }: { aspects: NonNullable<Report['aspects']> })
             <span>{a.sentiment} · {a.count} mentions</span>
           </div>
         ))}
-      </div>
-    </div>
-  )
-}
-
-// ── Source facts (grouped by source type with expandable subtypes) ────────
-
-// useState is imported above; _useState alias preserved for clarity below
-const _useState = useState
-
-const SOURCE_TYPE_LABEL: Record<string, string> = {
-  reddit: 'Reddit',
-  news:   'News Media',
-  social: 'Social Media',
-  forum:  'Forums',
-  video:  'Video',
-  web:    'Web / Blogs',
-}
-
-const SOURCE_TYPE_ICON: Record<string, string> = {
-  reddit: '⬤',
-  news:   '📰',
-  social: '💬',
-  forum:  '🗣',
-  video:  '▶',
-  web:    '🌐',
-}
-
-interface SourceGroup {
-  type: string
-  label: string
-  count: number
-  positive: number
-  neutral: number
-  negative: number
-  domains: NonNullable<Report['source_facts']>
-}
-
-function groupSourceFacts(facts: NonNullable<Report['source_facts']>): SourceGroup[] {
-  const byType = new Map<string, SourceGroup>()
-  for (const f of facts) {
-    if (f.count === 0) continue  // skip zero-item sources
-    const type = f.source_type
-    if (!byType.has(type)) {
-      byType.set(type, {
-        type, label: SOURCE_TYPE_LABEL[type] ?? type,
-        count: 0, positive: 0, neutral: 0, negative: 0, domains: [],
-      })
-    }
-    const g = byType.get(type)!
-    g.count += f.count
-    g.positive += f.labels?.positive ?? 0
-    g.neutral  += f.labels?.neutral  ?? 0
-    g.negative += f.labels?.negative ?? 0
-    g.domains.push(f)
-  }
-  return [...byType.values()].sort((a, b) => b.count - a.count)
-}
-
-function SourceGroupCard({ group }: { group: SourceGroup }) {
-  const [open, setOpen] = _useState(false)
-  const total = group.positive + group.neutral + group.negative || 1
-  const icon = SOURCE_TYPE_ICON[group.type] ?? '●'
-
-  return (
-    <div className="source-group">
-      <button className="source-group-header" onClick={() => setOpen(o => !o)}>
-        <span className="source-group-icon">{icon}</span>
-        <span className="source-group-label">{group.label}</span>
-        <span className="source-group-count">{group.count} items · {group.domains.length} sources</span>
-        <div className="source-group-bar">
-          <div style={{ flex: group.positive / total, background: 'var(--positive)' }} />
-          <div style={{ flex: group.neutral  / total, background: 'var(--neutral)' }} />
-          <div style={{ flex: group.negative / total, background: 'var(--rog-red)' }} />
-        </div>
-        <span className="source-group-chevron">{open ? '▲' : '▼'}</span>
-      </button>
-
-      {open && (
-        <div className="source-group-domains">
-          {group.domains.sort((a, b) => b.count - a.count).map(fact => {
-            const fakeUrl = `https://${fact.domain}`
-            const dtotal = (fact.labels?.positive ?? 0) + (fact.labels?.neutral ?? 0) + (fact.labels?.negative ?? 0) || 1
-            return (
-              <details
-                key={fact.domain}
-                className="source-fact"
-              >
-                <summary className="source-fact-header">
-                  <img
-                    src={`https://www.google.com/s2/favicons?domain=${fact.domain}&sz=14`}
-                    alt="" width={14} height={14}
-                    onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
-                  />
-                  <strong className="clip-text" title={fact.domain}>
-                    {KNOWN_PROVIDERS[fact.domain] ?? fact.domain.replace(/^www\./, '')}
-                  </strong>
-                </summary>
-                <span style={{ fontSize: 10, color: 'var(--text)', fontFamily: 'var(--mono)' }}>
-                  {fact.count} items
-                  {fact.credibility !== undefined && (
-                    <span style={{ marginLeft: 6, color: fact.credibility >= 0.7 ? 'var(--positive)' : fact.credibility >= 0.4 ? 'var(--neutral)' : 'var(--rog-red)' }}>
-                      {Math.round(fact.credibility * 100)}% cred
-                    </span>
-                  )}
-                </span>
-                <div className="source-fact-bar">
-                  <div style={{ flex: (fact.labels?.positive ?? 0) / dtotal, background: 'var(--positive)' }} />
-                  <div style={{ flex: (fact.labels?.neutral  ?? 0) / dtotal, background: 'var(--neutral)' }} />
-                  <div style={{ flex: (fact.labels?.negative ?? 0) / dtotal, background: 'var(--rog-red)' }} />
-                </div>
-                <div className="source-link-list">
-                  {(fact.urls?.length ? fact.urls : [fakeUrl]).map(url => (
-                    <a key={url} href={url} target="_blank" rel="noreferrer" title={url}>
-                      {providerName(url)}
-                    </a>
-                  ))}
-                </div>
-              </details>
-            )
-          })}
-        </div>
-      )}
-    </div>
-  )
-}
-
-function SourceFacts({ facts }: { facts: NonNullable<Report['source_facts']> }) {
-  const groups = groupSourceFacts(facts)
-  if (!groups.length) return null
-  return (
-    <div className="insight-section">
-      <h3>Source mix</h3>
-      <div className="source-group-list">
-        {groups.map(g => <SourceGroupCard key={g.type} group={g} />)}
       </div>
     </div>
   )
@@ -424,82 +293,6 @@ function TimelineSummary({ timeline }: { timeline: NonNullable<Report['timeline'
           ))}
         </div>
       </div>
-    </div>
-  )
-}
-
-function ClaimCard({ claim, idx }: { claim: NonNullable<Report['fact_check']>['claims'][number]; idx: number }) {
-  const [open, setOpen] = useState(false)
-  const corroboration = (claim.supporting_domains ?? []).length
-  const maxSources = 6
-  const confidence = Math.round((claim.confidence ?? 0) * 100)
-  const urls: string[] = claim.supporting_urls ?? []
-
-  return (
-    <div className={`claim-card2${claim.needs_verification ? ' claim-card2--verify' : ' claim-card2--ok'}`} key={`${claim.claim}:${idx}`}>
-      <button className="claim-card2-header" onClick={() => setOpen(o => !o)}>
-        <div className="claim-card2-meta">
-          <span className={`claim-badge claim-badge--${claim.needs_verification ? 'verify' : 'ok'}`}>
-            {claim.needs_verification ? '⚠ needs check' : '✓ corroborated'}
-          </span>
-          <span className="claim-type-badge">{claim.claim_type}</span>
-          <span className="claim-confidence">{confidence}% confidence</span>
-        </div>
-        <div className="claim-corroboration-bar" title={`${corroboration} source${corroboration !== 1 ? 's' : ''}`}>
-          {Array.from({ length: Math.max(1, Math.min(maxSources, corroboration)) }).map((_, i) => (
-            <span key={i} className={`claim-corroboration-dot${i < corroboration ? ' claim-corroboration-dot--filled' : ''}`} />
-          ))}
-          <span className="claim-source-count">{corroboration} source{corroboration !== 1 ? 's' : ''}</span>
-        </div>
-        <span className="claim-toggle-icon">{open ? '▲' : '▼'}</span>
-      </button>
-      <p className="claim-text">{claim.claim}</p>
-      {open && (
-        <div className="claim-sources">
-          {urls.length > 0 ? urls.map(url => (
-            <a key={url} href={url} target="_blank" rel="noreferrer" className="claim-source-link" title={url}>
-              <img src={faviconUrl(url)} alt="" width={12} height={12}
-                onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
-              <span className="clip-text">{providerName(url)}</span>
-              <span className="claim-source-path">{(() => { try { const u = new URL(url); return u.pathname.slice(0, 30) || '/'; } catch { return ''; } })()}</span>
-              <span className="claim-source-arrow">↗</span>
-            </a>
-          )) : (claim.supporting_domains ?? []).map((domain: string) => (
-            <a key={domain} href={`https://${domain}`} target="_blank" rel="noreferrer" className="claim-source-link">
-              <img src={`https://www.google.com/s2/favicons?domain=${domain}&sz=12`} alt="" width={12} height={12}
-                onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
-              <span>{domain}</span>
-            </a>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
-
-function FactCheckSection({ factCheck }: { factCheck: NonNullable<Report['fact_check']> }) {
-  const [showAll, setShowAll] = useState(false)
-  if (!factCheck.claims.length) return null
-  const displayed = showAll ? factCheck.claims : factCheck.claims.slice(0, 4)
-  const needsCheck = factCheck.claims.filter(c => c.needs_verification).length
-  const corroborated = factCheck.claims.length - needsCheck
-
-  return (
-    <div className="insight-section">
-      <h3>Claim Corroboration</h3>
-      <div className="claim-summary-row">
-        <span className="claim-summary-stat claim-summary-stat--ok">✓ {corroborated} corroborated</span>
-        <span className="claim-summary-stat claim-summary-stat--verify">⚠ {needsCheck} need verification</span>
-        <p className="fact-check-summary">{factCheck.summary}</p>
-      </div>
-      <div className="claim-list2">
-        {displayed.map((claim, idx) => <ClaimCard key={`${idx}:${claim.claim}`} claim={claim} idx={idx} />)}
-      </div>
-      {factCheck.claims.length > 4 && (
-        <button className="btn-secondary" style={{ marginTop: 8, fontSize: 11 }} onClick={() => setShowAll(a => !a)}>
-          {showAll ? '▲ Show fewer' : `▼ Show all ${factCheck.claims.length} claims`}
-        </button>
-      )}
     </div>
   )
 }
@@ -847,15 +640,8 @@ function QuoteList({ title, quotes, onCite, highlightedId, sectionRef }: {
               <a href={q.url} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()}>
                 <SourceLogo url={q.url} />
               </a>
-              <div style={{ display: 'flex', gap: 6 }}>
-                <a
-                  href={q.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="cite-btn"
-                  style={{ textDecoration: 'none' }}
-                  title="Open source in new tab"
-                >
+              <div className="quote-actions">
+                <a href={q.url} target="_blank" rel="noreferrer" className="cite-btn cite-btn--link" title="Open source in new tab">
                   ↗ source
                 </a>
                 <button className="cite-btn" onClick={() => onCite(q)}>inspect</button>
@@ -863,118 +649,6 @@ function QuoteList({ title, quotes, onCite, highlightedId, sectionRef }: {
             </div>
           </article>
         ))}
-      </div>
-    </div>
-  )
-}
-
-// ── Evidence modal ────────────────────────────────────────────────────────
-
-function EvidenceModal({ chunk, onClose }: { chunk: EvidenceChunk; onClose: () => void }) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
-
-  // Trim to first 3 meaningful sentences or 350 chars, whichever is shorter.
-  function trimSnippet(text: string): string {
-    const sentences = text.split(/(?<=[.!?])\s+/).filter(s => s.trim().length > 10)
-    const first3 = sentences.slice(0, 3).join(' ')
-    if (first3.length <= 350) return first3
-    const cut = text.slice(0, 350)
-    const lastPunct = Math.max(cut.lastIndexOf('.'), cut.lastIndexOf('!'), cut.lastIndexOf('?'))
-    return lastPunct > 100 ? cut.slice(0, lastPunct + 1) : cut + '…'
-  }
-
-  const displaySnippet = trimSnippet(chunk.snippet)
-
-  // Keyword extraction from the FULL snippet for accurate analysis.
-  const words = chunk.snippet.toLowerCase().split(/\W+/).filter(w => w.length > 4)
-  const freqMap = new Map<string, number>()
-  words.forEach(w => freqMap.set(w, (freqMap.get(w) ?? 0) + 1))
-  const keywords = [...freqMap.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 6)
-    .map(([w]) => w)
-
-  const sentenceCount = chunk.snippet.split(/[.!?]+/).filter(s => s.trim().length > 10).length
-
-  return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div
-        className="evidence-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-label="Evidence snippet"
-        onClick={e => e.stopPropagation()}
-      >
-        <button className="modal-close" onClick={onClose} aria-label="Close">✕</button>
-
-        {/* Source header */}
-        <div className="modal-source-header">
-          <img src={faviconUrl(chunk.url)} alt="" width={16} height={16}
-            onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
-          <a className="modal-source-link" href={chunk.url} target="_blank" rel="noreferrer">
-            {providerName(chunk.url)}
-          </a>
-          <span className={`sentiment-chip sentiment-chip--${chunk.label}`}>{chunk.label}</span>
-          <span style={{ marginLeft: 'auto', color: 'var(--text)', fontFamily: 'var(--mono)', fontSize: 11 }}>
-            {new Date(chunk.retrieved_at).toLocaleDateString()}
-          </span>
-        </div>
-
-        {/* Trimmed snippet — link to full source for complete text */}
-        <p className="snippet">{displaySnippet}</p>
-
-        {/* Structured analysis */}
-        <div className="snippet-analysis">
-          <div className="snippet-analysis-block">
-            <h4>Key terms</h4>
-            <p>{keywords.join(', ') || '—'}</p>
-          </div>
-          <div className="snippet-analysis-block">
-            <h4>Scope</h4>
-            <p>{sentenceCount} sentence{sentenceCount !== 1 ? 's' : ''} · {chunk.source_type} · {chunk.snippet.split(' ').length} words</p>
-          </div>
-          <div className="snippet-analysis-block">
-            <h4>Model summary</h4>
-            <p>{chunk.summary}</p>
-          </div>
-          <div className="snippet-analysis-block">
-            <h4>Sentiment</h4>
-            <p style={{ color: chunk.label === 'positive' ? 'var(--positive)' : chunk.label === 'negative' ? 'var(--rog-red)' : 'var(--neutral)', fontWeight: 700 }}>
-              {chunk.label.toUpperCase()}
-            </p>
-          </div>
-        </div>
-
-        {chunk.related && (
-          <div className="snippet-related">
-            {chunk.related.timeline_events.length > 0 && (
-              <div>
-                <h4>Related dates</h4>
-                <p>{chunk.related.timeline_events.map(event => event.date).join(', ')}</p>
-              </div>
-            )}
-            {chunk.related.claims.length > 0 && (
-              <div>
-                <h4>Related claims</h4>
-                <p>{chunk.related.claims.map(claim => claim.claim).join(' · ')}</p>
-              </div>
-            )}
-            {chunk.related.aspects.length > 0 && (
-              <div>
-                <h4>Related topics</h4>
-                <p>{chunk.related.aspects.map(aspect => aspect.name).join(', ')}</p>
-              </div>
-            )}
-          </div>
-        )}
-
-        <a href={chunk.url} target="_blank" rel="noreferrer" className="view-source-link">
-          View full source ↗
-        </a>
       </div>
     </div>
   )
@@ -1164,18 +838,14 @@ export function ReportView({ runId, topic, report, onSearchTopic }: Props) {
             <SentimentBar label="Positive" value={overall.positive} color="var(--positive)" />
             <SentimentBar label="Neutral"  value={overall.neutral}  color="var(--neutral)" />
             <SentimentBar label="Negative" value={overall.negative} color="var(--rog-red)" />
-            <p className="muted" style={{ fontFamily: 'var(--mono)', fontSize: 11 }}>
-              {overall.total} items analyzed
-            </p>
+            <p className="muted mono text-xs">{overall.total} items analyzed</p>
           </div>
 
           {use_case_insights && <UseCaseInsightsSection insights={use_case_insights} />}
 
           {themes.length > 0 && (
             <div className="themes">
-              <strong style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--rog-cyan)', textTransform: 'uppercase', letterSpacing: 1 }}>
-                Key themes:
-              </strong>{' '}
+              <strong className="themes-label">Key themes:</strong>{' '}
               {themes.join(' · ')}
             </div>
           )}
@@ -1301,7 +971,9 @@ export function ReportView({ runId, topic, report, onSearchTopic }: Props) {
       {activeTab === 'graph' && (
         <div className="report-tab-panel" role="tabpanel">
           {graph && graph.nodes.length > 0 ? (
-            <ForceGraph graph={graph} runId={runId} onNodeClick={handleGraphNodeClick} />
+            <ErrorBoundary>
+              <ForceGraph graph={graph} runId={runId} onNodeClick={handleGraphNodeClick} />
+            </ErrorBoundary>
           ) : (
             <p className="empty-tab-msg">No graph data available for this run.</p>
           )}
@@ -1314,9 +986,9 @@ export function ReportView({ runId, topic, report, onSearchTopic }: Props) {
           {timings ? (
             <>
               <TimingSummary timings={timings} />
-              <div style={{ marginTop: 16, padding: '12px 16px', background: 'var(--panel)', borderRadius: 6 }}>
-                <h4 style={{ margin: '0 0 8px' }}>Run metadata</h4>
-                <div style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--text)', display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '4px 12px' }}>
+              <div className="run-metadata-box">
+                <h4 className="run-metadata-title">Run metadata</h4>
+                <div className="run-metadata-grid">
                   <span>Topic:</span><span>{topic}</span>
                   {report.metadata?.research_depth && <><span>Depth:</span><span>{report.metadata.research_depth}</span></>}
                   {report.metadata?.use_case && <><span>Use case:</span><span>{report.metadata.use_case}</span></>}

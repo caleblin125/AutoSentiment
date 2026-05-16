@@ -3664,3 +3664,66 @@ button[type="submit"] {
   .evidence-modal { position: static; width: auto; max-height: none; box-shadow: none; }
   .modal-backdrop { position: static; background: none; }
 }
+
+/* ── Shared utility classes ──────────────────────────────────────────────── */
+.mono { font-family: var(--mono); }
+.text-xs { font-size: 11px; }
+.text-muted { color: var(--text); }
+.flex-row { display: flex; gap: 8px; align-items: center; }
+.flex-col { display: flex; flex-direction: column; gap: 6px; }
+
+/* ── Component CSS classes to replace inline styles ─────────────────────── */
+.themes-label {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--rog-cyan);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.run-metadata-box {
+  margin-top: 16px;
+  padding: 12px 16px;
+  background: var(--panel);
+  border-radius: 6px;
+}
+.run-metadata-title { margin: 0 0 8px; }
+.run-metadata-grid {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text);
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+}
+
+.modal-date {
+  margin-left: auto;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.snippet-sentiment--positive { color: var(--positive); font-weight: 700; }
+.snippet-sentiment--negative { color: var(--rog-red); font-weight: 700; }
+.snippet-sentiment--neutral  { color: var(--neutral); font-weight: 700; }
+
+.show-all-btn { margin-top: 8px; font-size: 11px; }
+
+.source-cred { margin-left: 6px; font-size: 10px; }
+.source-cred--high { color: var(--positive); }
+.source-cred--mid  { color: var(--neutral); }
+.source-cred--low  { color: var(--rog-red); }
+.source-fact-count { font-size: 10px; color: var(--text); font-family: var(--mono); }
+
+.quote-actions { display: flex; gap: 6px; }
+.cite-btn--link { text-decoration: none; }
+
+/* ── Report tab animated transitions ─────────────────────────────────────── */
+@keyframes tab-fadein {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.report-tab-panel {
+  animation: tab-fadein 0.15s ease-out;
+}

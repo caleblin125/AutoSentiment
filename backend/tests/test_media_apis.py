@@ -137,8 +137,8 @@ async def test_supplemental_media_search_caps_reddit(monkeypatch) -> None:
     async def empty(*_a, **_kw) -> list[str]:
         return []
 
-    async def many_reddit(*_a, **_kw) -> list[str]:
-        return [f"https://www.reddit.com/r/t/{i}" for i in range(20)]
+    async def many_reddit(_client, _query, limit: int) -> list[str]:
+        return [f"https://www.reddit.com/r/t/{i}" for i in range(20)][:limit]
 
     monkeypatch.setattr(media_apis, "_search_gdelt", empty)
     monkeypatch.setattr(media_apis, "_search_hacker_news", empty)

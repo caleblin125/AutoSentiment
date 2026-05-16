@@ -543,7 +543,9 @@ export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMo
           {formError && <p className="error-msg">{formError}</p>}
         </div>
 
-        <HistoryPanel onOpenRun={onOpenRunInNewTab} refreshKey={historyKey} />
+        <ErrorBoundary>
+          <HistoryPanel onOpenRun={onOpenRunInNewTab} refreshKey={historyKey} />
+        </ErrorBoundary>
       </div>
 
       {/* ── Run status strip ── */}
@@ -618,7 +620,11 @@ export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMo
       {/* NemoClaw sidebar — shown when activated */}
       {ncRunId && <NemoClawPanel ncRunId={ncRunId} topic={activeTopic ?? ''} />}
 
-      {runId && events.length > 0 && <EventTimeline events={events} status={status} />}
+      {runId && events.length > 0 && (
+        <ErrorBoundary>
+          <EventTimeline events={events} status={status} />
+        </ErrorBoundary>
+      )}
 
       {visibleReport && runId && activeTopic && (
         <ErrorBoundary>

@@ -630,11 +630,10 @@ async def test_run_research_degraded_mode_uses_media_apis(monkeypatch, session_f
         max_items_per_run=2,
         enable_media_api_search=True,
     )
-    media_called = []
+    media_called: list[str] = []
 
     monkeypatch.setattr(orchestrator, "AsyncSessionLocal", session_factory)
     monkeypatch.setattr(orchestrator, "expand_queries", lambda *_a, **_kw: _async(["q"]))
-    monkeypatch.setattr(orchestrator, "build_search_plan", _async_build_plan)
 
     async def mock_media(topic, *, limit=12, include_source_map=False):
         media_called.append(topic)
@@ -654,7 +653,11 @@ async def test_run_research_degraded_mode_uses_media_apis(monkeypatch, session_f
         "analyze",
         lambda _self, _s: _async(SentimentResult(label=SentimentLabel.NEUTRAL, summary="ok")),
     )
-    monkeypatch.setattr(orchestrator, "synthesize_report_streaming", lambda *_a, **_kw: _async({"themes": [], "narrative": ""}))
+    monkeypatch.setattr(
+        orchestrator,
+        "synthesize_report_streaming",
+        lambda *_a, **_kw: _async({"themes": [], "narrative": ""}),
+    )
 
     async with session_factory() as db:
         run = Run(topic="degraded", freshness=None, status="pending")
@@ -677,12 +680,6 @@ async def test_run_research_degraded_mode_uses_media_apis(monkeypatch, session_f
         assert stored.status == "completed"
 
 
-async def _async_build_plan(*_a, **_kw):
-    """Minimal search-plan stub for tests that don't care about plan details."""
-    from app.search_planner import SearchPlan, PlannedQuery
-    return SearchPlan(queries=[PlannedQuery(query="q", reason="test", quota_cost=1)])
-
-
 # ── Timing breakdown tests ────────────────────────────────────────────────────
 
 
@@ -692,7 +689,6 @@ async def test_run_research_report_includes_search_timing_breakdown(monkeypatch,
 
     monkeypatch.setattr(orchestrator, "AsyncSessionLocal", session_factory)
     monkeypatch.setattr(orchestrator, "expand_queries", lambda *_a, **_kw: _async(["q"]))
-    monkeypatch.setattr(orchestrator, "build_search_plan", _async_build_plan)
     monkeypatch.setattr(orchestrator, "brave_search", lambda *_a, **_kw: _async(["https://news.example/t"]))
 
     async def mock_media(topic, *, limit=12, include_source_map=False):
@@ -711,7 +707,11 @@ async def test_run_research_report_includes_search_timing_breakdown(monkeypatch,
         "analyze",
         lambda _self, _s: _async(SentimentResult(label=SentimentLabel.NEUTRAL, summary="ok")),
     )
-    monkeypatch.setattr(orchestrator, "synthesize_report_streaming", lambda *_a, **_kw: _async({"themes": [], "narrative": ""}))
+    monkeypatch.setattr(
+        orchestrator,
+        "synthesize_report_streaming",
+        lambda *_a, **_kw: _async({"themes": [], "narrative": ""}),
+    )
 
     async with session_factory() as db:
         run = Run(topic="timing-test", freshness=None, status="pending")

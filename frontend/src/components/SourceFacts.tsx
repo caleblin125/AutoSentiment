@@ -2,7 +2,7 @@ import { useState } from 'react'
 import type { SourceFact } from '../lib/api'
 import { KNOWN_PROVIDERS, providerName } from '../lib/providers'
 
-const SOURCE_TYPE_LABEL: Record<string, string> = {
+export const SOURCE_TYPE_LABEL: Record<string, string> = {
   reddit: 'Reddit',
   news:   'News Media',
   social: 'Social Media',
