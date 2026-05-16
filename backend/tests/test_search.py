@@ -55,6 +55,32 @@ async def test_brave_search_sends_expected_request_and_parses_web_results(monkey
 
 
 @pytest.mark.asyncio
+async def test_brave_search_clamps_count_to_brave_max(monkeypatch) -> None:
+    captured = {}
+
+    async def no_sleep(_seconds: int) -> None:
+        return None
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["url"] = str(request.url)
+        return httpx.Response(200, json={"web": {"results": []}})
+
+    async_client = httpx.AsyncClient
+    monkeypatch.setattr(search.asyncio, "sleep", no_sleep)
+    monkeypatch.setattr(
+        search.httpx,
+        "AsyncClient",
+        lambda **kwargs: async_client(
+            **{**kwargs, "transport": httpx.MockTransport(handler)}
+        ),
+    )
+
+    await search.brave_search("topic", count=30, settings=Settings(brave_api_key="dummy-test-token"))
+
+    assert "count=20" in captured["url"]
+
+
+@pytest.mark.asyncio
 async def test_brave_search_fails_fast_when_api_key_missing(monkeypatch) -> None:
     async def no_sleep(_seconds: int) -> None:
         return None
@@ -62,7 +88,7 @@ async def test_brave_search_fails_fast_when_api_key_missing(monkeypatch) -> None
     monkeypatch.setattr(search.asyncio, "sleep", no_sleep)
 
     with pytest.raises(RuntimeError, match="BRAVE_API_KEY is not configured"):
-        await search.brave_search("topic", settings=Settings())
+        await search.brave_search("topic", settings=Settings(brave_api_key=""))
 
 
 def test_extract_result_urls_supports_legacy_top_level_shape() -> None:

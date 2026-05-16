@@ -10,6 +10,7 @@ import httpx
 from app.core.config import Settings
 
 _BRAVE_SEARCH_URL = "https://api.search.brave.com/res/v1/web/search"
+_BRAVE_MAX_COUNT = 20
 _rate_sem = asyncio.Semaphore(1)
 
 
@@ -31,7 +32,10 @@ async def brave_search(
         "Accept": "application/json",
         "X-Subscription-Token": settings.brave_api_key,
     }
-    params = {"q": query, "count": count}
+    # Brave rejects count values above 20 with HTTP 422, even if our run-level
+    # URL budget is higher. Clamp per request and let the orchestrator gather
+    # more URLs across multiple queued searches.
+    params = {"q": query, "count": max(1, min(count, _BRAVE_MAX_COUNT))}
     if freshness:
         params["freshness"] = freshness
 
