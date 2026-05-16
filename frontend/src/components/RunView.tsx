@@ -467,10 +467,16 @@ export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMo
             <select
               className="depth-select"
               value={researchDepth}
-              onChange={e => setResearchDepth(e.target.value as ResearchDepth)}
+              onChange={e => {
+                const newDepth = e.target.value as ResearchDepth
+                setResearchDepth(newDepth)
+                // When a report is visible and user changes depth, remind them
+                // this is for the NEXT search, not retroactive.
+                if (visibleReport) setCached(false)
+              }}
               disabled={loading}
               aria-label="Research depth"
-              title="Research depth controls query, URL, item, and synthesis budgets"
+              title={visibleReport ? 'Depth for your NEXT search. Current report used ' + (activeDepthOption?.label ?? 'unknown') + '.' : 'Research depth controls query, URL, item, and synthesis budgets'}
             >
               {DEPTH_OPTIONS.map(o => (
                 <option key={o.value} value={o.value}>{o.label}</option>
