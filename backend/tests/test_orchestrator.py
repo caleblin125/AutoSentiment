@@ -26,7 +26,7 @@ async def session_factory():
 
 @pytest.mark.asyncio
 async def test_run_research_completes_and_persists_report(monkeypatch, session_factory) -> None:
-    settings = Settings(max_urls_per_run=3, max_items_per_run=2)
+    settings = Settings(brave_api_key="test", max_urls_per_run=3, max_items_per_run=2)
 
     monkeypatch.setattr(orchestrator, "supplemental_media_search", lambda *_a, **_kw: _async([]))
     monkeypatch.setattr(orchestrator, "AsyncSessionLocal", session_factory)
@@ -105,7 +105,7 @@ async def test_run_research_completes_and_persists_report(monkeypatch, session_f
 
 @pytest.mark.asyncio
 async def test_run_research_marks_run_error_and_emits_sentinel(monkeypatch, session_factory) -> None:
-    settings = Settings()
+    settings = Settings(brave_api_key="test")
 
     monkeypatch.setattr(orchestrator, "AsyncSessionLocal", session_factory)
     monkeypatch.setattr(orchestrator, "expand_queries", lambda *_args, **_kwargs: _async(["q1"]))
@@ -211,7 +211,7 @@ async def test_parallel_fetch_respects_item_cap_and_emits_events(monkeypatch, se
     Each URL returns 3 items; with 4 URLs and a cap of 5, exactly 5 chunks should
     be stored regardless of which fetch tasks complete first.
     """
-    settings = Settings(max_urls_per_run=4, max_items_per_run=5)
+    settings = Settings(brave_api_key="test", max_urls_per_run=4, max_items_per_run=5)
 
     monkeypatch.setattr(orchestrator, "supplemental_media_search", lambda *_a, **_kw: _async([]))
     monkeypatch.setattr(orchestrator, "AsyncSessionLocal", session_factory)
@@ -295,7 +295,7 @@ async def test_cancel_during_search_stops_run_and_emits_cancelled(monkeypatch, s
     set status='cancelled', and emit run_cancelled as the final event."""
     from app.api import event_bus
 
-    settings = Settings(max_urls_per_run=10, max_items_per_run=10)
+    settings = Settings(brave_api_key="test", max_urls_per_run=10, max_items_per_run=10)
     monkeypatch.setattr(orchestrator, "AsyncSessionLocal", session_factory)
     monkeypatch.setattr(orchestrator, "expand_queries", lambda *_a, **_kw: _async(["q1", "q2", "q3"]))
 
@@ -342,7 +342,7 @@ async def test_cancel_during_search_stops_run_and_emits_cancelled(monkeypatch, s
 
 @pytest.mark.asyncio
 async def test_run_research_respects_query_budget(monkeypatch, session_factory) -> None:
-    settings = Settings(max_urls_per_run=20, max_items_per_run=10)
+    settings = Settings(brave_api_key="test", max_urls_per_run=20, max_items_per_run=10)
     searched: list[str] = []
 
     monkeypatch.setattr(orchestrator, "AsyncSessionLocal", session_factory)
@@ -373,7 +373,7 @@ async def test_run_research_respects_query_budget(monkeypatch, session_factory) 
 
 @pytest.mark.asyncio
 async def test_run_research_deduplicates_identical_sentiment_snippets(monkeypatch, session_factory) -> None:
-    settings = Settings(max_queries_per_run=1, max_urls_per_run=2, max_items_per_run=4)
+    settings = Settings(brave_api_key="test", max_queries_per_run=1, max_urls_per_run=2, max_items_per_run=4)
     analyze_calls = 0
 
     monkeypatch.setattr(orchestrator, "AsyncSessionLocal", session_factory)
@@ -478,7 +478,7 @@ def test_domain_from_url_strips_www() -> None:
 @pytest.mark.asyncio
 async def test_run_research_reuses_fetched_url_cache_across_runs(monkeypatch, session_factory) -> None:
     """A second run for the same URL must hit FetchedURLCache and skip fetch_items."""
-    settings = Settings(max_queries_per_run=1, max_urls_per_run=1, max_items_per_run=4)
+    settings = Settings(brave_api_key="test", max_queries_per_run=1, max_urls_per_run=1, max_items_per_run=4)
     fetch_calls: list[str] = []
 
     monkeypatch.setattr(orchestrator, "supplemental_media_search", lambda *_a, **_kw: _async([]))
@@ -527,7 +527,7 @@ async def test_run_research_reuses_fetched_url_cache_across_runs(monkeypatch, se
 @pytest.mark.asyncio
 async def test_run_research_skips_cache_when_ttl_zero(monkeypatch, session_factory) -> None:
     """ttl=0 disables the cache so every run re-fetches."""
-    settings = Settings(max_queries_per_run=1, max_urls_per_run=1, max_items_per_run=4, fetched_url_cache_ttl_seconds=0)
+    settings = Settings(brave_api_key="test", max_queries_per_run=1, max_urls_per_run=1, max_items_per_run=4, fetched_url_cache_ttl_seconds=0)
     fetch_calls: list[str] = []
 
     monkeypatch.setattr(orchestrator, "AsyncSessionLocal", session_factory)
