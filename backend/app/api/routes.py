@@ -3,7 +3,7 @@ import json
 from datetime import UTC, datetime, timedelta
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, field_validator
 from sqlalchemy import desc, select
@@ -26,6 +26,18 @@ from app.search_planner import build_search_plan, normalize_use_case
 router = APIRouter()
 
 VALID_FRESHNESS = {"pd", "pw", "pm", "py"}
+
+
+# ── Auth dependency (disabled when AUTH_API_KEY is empty) ───────────────
+
+async def require_auth(
+    settings: Settings = Depends(get_settings),
+    x_api_key: str = Header(default="", alias="X-API-Key"),
+) -> None:
+    if not settings.auth_api_key:
+        return  # auth disabled — localhost mode
+    if x_api_key != settings.auth_api_key:
+        raise HTTPException(status_code=401, detail="Invalid or missing API key")
 
 
 class RunRequest(BaseModel):
@@ -281,6 +293,7 @@ async def create_run(
     body: RunRequest,
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
+    _auth: None = Depends(require_auth),
 ) -> RunResponse:
     depth_budget = get_depth_budget(body.research_depth, settings)
 
@@ -389,7 +402,8 @@ async def stream_events(run_id: str, db: AsyncSession = Depends(get_db)) -> Stre
 
 
 @router.post("/runs/{run_id}/cancel")
-async def cancel_run(run_id: str, db: AsyncSession = Depends(get_db)) -> dict:
+async def cancel_run(run_id: str, db: AsyncSession = Depends(get_db),
+                     _auth: None = Depends(require_auth)) -> dict:
     """Signal the orchestrator to stop at its next stage boundary."""
     run = await db.get(Run, run_id)
     if run is None:
@@ -406,6 +420,7 @@ async def expand_run(
     body: ExpandRunRequest | None = None,
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
+    _auth: None = Depends(require_auth),
 ) -> RunResponse:
     """Create an expanded run that builds on top of existing evidence.
 
@@ -493,6 +508,7 @@ async def start_nemoclaw(
     run_id: str,
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
+    _auth: None = Depends(require_auth),
 ) -> RunResponse:
     """Launch NemoClaw as an autonomous research agent alongside the main run.
 

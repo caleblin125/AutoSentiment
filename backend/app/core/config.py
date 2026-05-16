@@ -30,6 +30,10 @@ class Settings(BaseSettings):
     max_urls_per_run: int = Field(default=30, validation_alias="MAX_URLS_PER_RUN")
     max_items_per_run: int = Field(default=100, validation_alias="MAX_ITEMS_PER_RUN")
 
+    # Auth: when set, all API requests must include X-API-Key header.
+    # Leave empty to disable auth (default for localhost use).
+    auth_api_key: str = Field(default="", validation_alias="AUTH_API_KEY")
+
     @property
     def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]

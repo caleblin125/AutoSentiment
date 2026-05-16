@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from enum import Enum
 from time import perf_counter
 from typing import TYPE_CHECKING
 from urllib.parse import urlparse
@@ -37,7 +38,32 @@ from app.tools.search import brave_search, is_cached_search
 if TYPE_CHECKING:
     from app.core.config import Settings
 
+
+class ErrorCode(str, Enum):
+    """Explicit error codes for client-facing messages."""
+    BRAVE_KEY_MISSING = "brave_key_missing"
+    BRAVE_QUOTA_EXCEEDED = "brave_quota_exceeded"
+    BRAVE_RATE_LIMITED = "brave_rate_limited"
+    MODEL_UNAVAILABLE = "model_unavailable"
+    FETCH_TIMEOUT = "fetch_timeout"
+    SYNTHESIS_FAILED = "synthesis_failed"
+    CANCELLED_BY_USER = "cancelled_by_user"
+    INTERNAL_ERROR = "internal_error"
+
+
+class StructuredLogger(logging.LoggerAdapter):
+    """Logger adapter that prefixes every message with the run ID."""
+    def process(self, msg, kwargs):
+        extra = self.extra or {}
+        run_id = extra.get("run_id", "unknown")
+        return f"[run={run_id}] {msg}", kwargs
+
+
 logger = logging.getLogger(__name__)
+
+
+def _get_logger(run_id: str) -> StructuredLogger:
+    return StructuredLogger(logger, {"run_id": run_id})
 
 _FETCH_CONCURRENCY = 8
 _FETCH_TIMEOUT_SECONDS = 15.0
@@ -350,19 +376,22 @@ async def run_research(
             await db.commit()
 
         except (_CancelledByUser, GenerationCancelled):
-            logger.info("Run cancelled: %s", run_id)
+            _get_logger(run_id).info("Run cancelled by user")
             run = await db.get(Run, run_id)
             if run is not None:
                 run.status = "cancelled"
-            await emit(SSEEventType.RUN_CANCELLED, "Run cancelled")
+            await emit(SSEEventType.RUN_CANCELLED, "Run cancelled",
+                       {"error_code": ErrorCode.CANCELLED_BY_USER.value})
             await db.commit()
 
         except Exception as exc:
-            logger.exception("Run failed: %s", run_id)
+            _get_logger(run_id).exception("Run failed")
             run = await db.get(Run, run_id)
             if run is not None:
                 run.status = "error"
-            await emit(SSEEventType.RUN_ERROR, "Run error", {"message": str(exc)})
+            error_code = _classify_error(exc)
+            await emit(SSEEventType.RUN_ERROR, "Run error",
+                       {"message": str(exc), "error_code": error_code.value})
             await db.commit()
 
         finally:
@@ -375,6 +404,46 @@ async def run_research(
 
 def _elapsed_ms(started_at: float) -> float:
     return round((perf_counter() - started_at) * 1000, 2)
+
+
+def _classify_error(exc: Exception) -> ErrorCode:
+    """Map common exception types to explicit error codes."""
+    msg = str(exc).lower()
+    if "brave" in msg and ("key" in msg or "401" in msg):
+        return ErrorCode.BRAVE_KEY_MISSING
+    if "429" in msg or "rate" in msg:
+        return ErrorCode.BRAVE_RATE_LIMITED
+    if "quota" in msg or "exceeded" in msg:
+        return ErrorCode.BRAVE_QUOTA_EXCEEDED
+    if "connect" in msg or "refused" in msg or "timeout" in msg:
+        return ErrorCode.MODEL_UNAVAILABLE
+    if "timeout" in msg:
+        return ErrorCode.FETCH_TIMEOUT
+    if "synthesis" in msg or "synthesize" in msg:
+        return ErrorCode.SYNTHESIS_FAILED
+    return ErrorCode.INTERNAL_ERROR
+
+
+async def recover_stale_runs() -> int:
+    """Mark any runs still in 'running' state as 'error' on startup.
+
+    Returns the number of recovered runs. This ensures the database
+    reflects reality after an unclean shutdown.
+    """
+    from sqlalchemy import update
+    async with AsyncSessionLocal() as db:
+        result = await db.execute(
+            update(Run)
+            .where(Run.status == "running")
+            .values(status="error")
+        )
+        await db.commit()
+        count = result.rowcount
+        if count:
+            logging.getLogger(__name__).info(
+                "Recovered %d stale running run(s) after restart", count
+            )
+        return count
 
 
 def _domain_from_url(url: str) -> str:
