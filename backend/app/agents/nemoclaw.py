@@ -1,4 +1,4 @@
-"""120B model (nemotron-3-super via Ollama) — query expansion and final synthesis."""
+"""NemoClaw — query expansion, synthesis, and search-angle suggestions."""
 
 from __future__ import annotations
 
@@ -8,6 +8,44 @@ from app.agents.ollama import ollama_generate
 
 if TYPE_CHECKING:
     from app.core.config import Settings
+
+# Fastest available model for low-latency suggestion generation.
+_SUGGEST_MODEL = "deepseek-r1:14b"
+
+
+async def suggest_angles(query: str, *, settings: Settings) -> list[str]:
+    """Return 5 refined research-angle suggestions for the given query string.
+
+    Uses the fast small model for sub-second latency when the user is typing.
+    """
+    system = "You generate research topic suggestions. Respond with JSON only, no markdown."
+    prompt = (
+        f"The user is researching: \"{query}\"\n"
+        "Suggest 5 specific, searchable research angles or related sub-topics "
+        "that would yield useful public-sentiment data. Be concise and concrete.\n"
+        "Return exactly: {\"suggestions\": [\"...\", \"...\", \"...\", \"...\", \"...\"]}"
+    )
+    fallback = [
+        f"{query} public opinion",
+        f"{query} user reviews",
+        f"{query} expert analysis",
+        f"{query} recent controversy",
+        f"{query} market sentiment",
+    ]
+    try:
+        payload = await ollama_generate(
+            prompt,
+            system=system,
+            model=_SUGGEST_MODEL,
+            base_url=settings.ollama_base_url,
+        )
+        suggestions = payload.get("suggestions", [])
+        if isinstance(suggestions, list):
+            cleaned = [str(s).strip() for s in suggestions if str(s).strip()]
+            return cleaned[:5] or fallback
+    except Exception:
+        pass
+    return fallback
 
 
 async def expand_queries(topic: str, *, settings: Settings) -> list[str]:

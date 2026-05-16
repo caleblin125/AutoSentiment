@@ -9,6 +9,19 @@ import type { SSEEvent } from '../lib/api'
 
 interface Props { events: SSEEvent[]; status: string }
 
+// Domains considered highly credible for the credibility badge.
+const HIGH_CREDIBILITY = new Set([
+  'reuters.com', 'apnews.com', 'bbc.com', 'bbc.co.uk', 'nytimes.com',
+  'wsj.com', 'bloomberg.com', 'ft.com', 'theguardian.com', 'economist.com',
+  'nature.com', 'science.org', 'sciencedirect.com', 'pubmed.ncbi.nlm.nih.gov',
+  'gov', 'who.int', 'cdc.gov', 'europa.eu', 'un.org',
+  'mit.edu', 'stanford.edu', 'harvard.edu', 'ieee.org', 'acm.org',
+])
+
+function isHighCredibility(domain: string): boolean {
+  return HIGH_CREDIBILITY.has(domain) || [...HIGH_CREDIBILITY].some(d => domain.endsWith(`.${d}`))
+}
+
 const KNOWN_PROVIDERS: Record<string, string> = {
   'reddit.com': 'Reddit', 'news.ycombinator.com': 'HN', 'youtube.com': 'YouTube',
   'x.com': 'X', 'twitter.com': 'X', 'threads.net': 'Threads', 'quora.com': 'Quora',
@@ -187,20 +200,17 @@ function ItemAnalyzedRow({ ev }: { ev: SSEEvent }) {
   const label = ev.detail.label as string
   const domain = ev.detail.domain as string | undefined
   const summary = ev.detail.summary as string
+  const credible = domain ? isHighCredibility(domain) : false
   return (
     <span className="timeline-message">
-      <span
-        className={`sentiment-chip sentiment-chip--${label}`}
-        style={{ background: undefined }}
-      >
-        {label}
-      </span>
+      <span className={`sentiment-chip sentiment-chip--${label}`}>{label}</span>
       <span className="event-body" title={summary}>{summary}</span>
       {domain && (
-        <span className="event-source-badge" title={domain}>
+        <span className={`event-source-badge${credible ? ' event-source-badge--credible' : ''}`} title={domain}>
           <img src={faviconUrl(domain)} alt="" width={12} height={12}
             onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
           {providerName(domain)}
+          {credible && <span className="credibility-star" title="High-credibility source">★</span>}
         </span>
       )}
       {typeof ev.detail.duration_ms === 'number' && (
@@ -260,24 +270,51 @@ function EventRow({ ev, isLast }: { ev: FoldedEvent; isLast: boolean }) {
 }
 
 export function EventTimeline({ events, status }: Props) {
+  const [collapsed, setCollapsed] = useState(false)
   const folded = foldEvents(events)
+  const credibleCount = events.filter(e =>
+    e.type === 'item_analyzed' && isHighCredibility((e.detail.domain as string | undefined) ?? '')
+  ).length
+
   return (
     <section className="panel" aria-label="Run timeline">
-      <h2>Timeline</h2>
-      {folded.length === 0 && (
-        <div className="timeline-empty">
-          {status === 'error' ? (
-            <span>No events received before the stream closed.</span>
-          ) : (
-            <><span className="inline-spinner" aria-hidden="true" /><span>Waiting for backend…</span></>
+      <div className="timeline-header">
+        <h2>Timeline</h2>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          {credibleCount > 0 && (
+            <span className="credibility-count" title="Items from high-credibility sources">
+              ★ {credibleCount} credible
+            </span>
           )}
+          <span className="timeline-count">{folded.length} events</span>
+          <button
+            className="timeline-collapse-btn"
+            onClick={() => setCollapsed(c => !c)}
+            title={collapsed ? 'Expand timeline' : 'Collapse timeline'}
+          >
+            {collapsed ? '▶ expand' : '▼ collapse'}
+          </button>
         </div>
+      </div>
+
+      {!collapsed && (
+        <>
+          {folded.length === 0 && (
+            <div className="timeline-empty">
+              {status === 'error' ? (
+                <span>No events received before the stream closed.</span>
+              ) : (
+                <><span className="inline-spinner" aria-hidden="true" /><span>Waiting for backend…</span></>
+              )}
+            </div>
+          )}
+          <ul className="timeline">
+            {folded.map((ev, i) => (
+              ev !== null && <EventRow key={ev.seq} ev={ev} isLast={i === folded.length - 1} />
+            ))}
+          </ul>
+        </>
       )}
-      <ul className="timeline">
-        {folded.map((ev, i) => (
-          ev !== null && <EventRow key={ev.seq} ev={ev} isLast={i === folded.length - 1} />
-        ))}
-      </ul>
     </section>
   )
 }

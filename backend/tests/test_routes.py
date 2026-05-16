@@ -226,6 +226,54 @@ async def test_stream_events_replays_stored_events_for_cancelled_run(db_session)
 
 
 @pytest.mark.asyncio
+async def test_list_runs_returns_all_statuses(db_session) -> None:
+    """GET /api/runs must return runs in all statuses, not just completed."""
+    for st in ("running", "completed", "cancelled", "error"):
+        db_session.add(Run(topic=f"topic-{st}", freshness=None, status=st))
+    await db_session.commit()
+
+    result = await routes.list_runs(topic=None, status=None, limit=40, db=db_session)
+    statuses = {r["status"] for r in result}
+    assert statuses >= {"running", "completed", "cancelled", "error"}
+    assert all("status" in r for r in result)
+
+
+@pytest.mark.asyncio
+async def test_start_nemoclaw_creates_sub_run(monkeypatch, db_session) -> None:
+    """POST /api/runs/{id}/nemoclaw must create a linked NemoClaw run and start it."""
+    launched: list[tuple] = []
+
+    async def fake_run_nemoclaw(*args, **_kw) -> None:
+        launched.append(args)
+
+    monkeypatch.setattr(routes, "run_research", lambda *_a, **_kw: None)
+    import app.api.routes as _routes_mod
+    import importlib
+    import app.agents.nemoclaw_agent as nc_mod
+    monkeypatch.setattr(nc_mod, "run_nemoclaw", fake_run_nemoclaw)
+
+    parent = Run(topic="AI safety", freshness=None, status="running")
+    db_session.add(parent)
+    await db_session.commit()
+    await db_session.refresh(parent)
+
+    settings = Settings()
+    response = await routes.start_nemoclaw(parent.id, db_session, settings)
+    nc_run = await db_session.get(Run, response.run_id)
+    assert nc_run is not None
+    assert "[NemoClaw]" in nc_run.topic
+    assert "AI safety" in nc_run.topic
+
+    await asyncio.sleep(0)
+    assert len(launched) == 1
+    _, topic, parent_id, _ = launched[0]
+    assert topic == "AI safety"
+    assert parent_id == parent.id
+
+    event_bus.deregister(response.run_id)
+
+
+@pytest.mark.asyncio
 async def test_stream_events_replays_stored_events_for_completed_run(db_session) -> None:
     """The SSE endpoint must replay stored RunEvent rows for completed runs
     so cached runs deliver their full event history to the frontend."""

@@ -1,26 +1,31 @@
 /**
- * Collapsible history panel showing recent completed runs.
- * Clicking a run loads it into the current tab by replaying stored events.
+ * Collapsible history panel showing all recent runs in all statuses.
+ *
+ * Auto-polls every 5s when open so running searches update in real time.
+ * refreshKey prop can be bumped externally to force an immediate refresh.
  */
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { listRuns, type RunSummary } from '../lib/api'
 
 interface Props {
-  /** Called when the user picks a historical run to reload. */
   onLoadRun: (runId: string, topic: string) => void
-  /** Bump this to force a history refresh (e.g. when a new run completes). */
   refreshKey?: number
 }
 
-function sentimentBar(overall: RunSummary['overall']) {
-  if (!overall) return null
-  return (
-    <div style={{ display: 'flex', height: 4, borderRadius: 2, overflow: 'hidden', background: 'var(--surface-muted)', marginTop: 4 }}>
-      <div style={{ flex: overall.positive, background: 'var(--positive)' }} />
-      <div style={{ flex: overall.neutral,  background: 'var(--neutral)' }} />
-      <div style={{ flex: overall.negative, background: 'var(--rog-red)' }} />
-    </div>
-  )
+const STATUS_ICON: Record<string, string> = {
+  completed: '✓',
+  running:   '●',
+  pending:   '○',
+  cancelled: '⊘',
+  error:     '⚠',
+}
+
+const STATUS_COLOR: Record<string, string> = {
+  completed: 'var(--positive)',
+  running:   'var(--rog-cyan)',
+  pending:   'var(--neutral)',
+  cancelled: 'var(--text)',
+  error:     'var(--rog-red)',
 }
 
 function formatDate(iso: string) {
@@ -30,19 +35,49 @@ function formatDate(iso: string) {
   }).format(new Date(iso))
 }
 
+function MiniBar({ overall }: { overall: RunSummary['overall'] }) {
+  if (!overall) return null
+  return (
+    <div style={{ display: 'flex', height: 3, borderRadius: 2, overflow: 'hidden', background: 'var(--surface-muted)', marginTop: 4 }}>
+      <div style={{ flex: overall.positive, background: 'var(--positive)' }} />
+      <div style={{ flex: overall.neutral,  background: 'var(--neutral)' }} />
+      <div style={{ flex: overall.negative, background: 'var(--rog-red)' }} />
+    </div>
+  )
+}
+
 export function HistoryPanel({ onLoadRun, refreshKey }: Props) {
   const [open, setOpen] = useState(false)
   const [runs, setRuns] = useState<RunSummary[]>([])
   const [loading, setLoading] = useState(false)
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  async function fetchRuns() {
+    setLoading(true)
+    try {
+      const data = await listRuns(undefined, 40)
+      setRuns(data)
+    } catch { /* ignore */ }
+    finally { setLoading(false) }
+  }
 
   useEffect(() => {
-    if (!open) return
-    setLoading(true)
-    listRuns(undefined, 30)
-      .then(data => setRuns(data))
-      .catch(() => {})
-      .finally(() => setLoading(false))
-  }, [open, refreshKey])
+    if (!open) {
+      if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
+      return
+    }
+    fetchRuns()
+    // Poll every 5s while open — catches status changes for running searches.
+    pollRef.current = setInterval(fetchRuns, 5000)
+    return () => { if (pollRef.current) clearInterval(pollRef.current) }
+  }, [open])
+
+  // Immediate refresh when refreshKey changes (e.g. a search just completed).
+  useEffect(() => {
+    if (open && refreshKey !== undefined) fetchRuns()
+  }, [refreshKey, open])
+
+  const hasRunning = runs.some(r => r.status === 'running' || r.status === 'pending')
 
   return (
     <div className="history-panel">
@@ -53,12 +88,13 @@ export function HistoryPanel({ onLoadRun, refreshKey }: Props) {
       >
         <span className="history-icon">◷</span>
         History
+        {hasRunning && <span className="history-running-dot" />}
         <span className="history-chevron">{open ? '▲' : '▼'}</span>
       </button>
 
       {open && (
         <div className="history-dropdown">
-          {loading && (
+          {loading && runs.length === 0 && (
             <div style={{ padding: '12px 16px' }}>
               <div className="skeleton skeleton-line skeleton-line--medium" />
               <div className="skeleton skeleton-line skeleton-line--full" style={{ marginTop: 8 }} />
@@ -67,20 +103,31 @@ export function HistoryPanel({ onLoadRun, refreshKey }: Props) {
 
           {!loading && runs.length === 0 && (
             <p style={{ padding: '12px 16px', color: 'var(--text)', fontSize: 13, margin: 0 }}>
-              No past searches yet.
+              No searches yet.
             </p>
           )}
 
-          {!loading && runs.map(run => (
+          {runs.map(run => (
             <button
               key={run.id}
               className="history-item"
               onClick={() => { onLoadRun(run.id, run.topic); setOpen(false) }}
+              disabled={run.status === 'pending' || run.status === 'running'}
+              title={run.status === 'running' ? 'Currently running — wait for completion to replay' : run.topic}
             >
               <div className="history-item-top">
+                <span
+                  className="history-status-icon"
+                  style={{ color: STATUS_COLOR[run.status] ?? 'var(--text)' }}
+                >
+                  {run.status === 'running'
+                    ? <span className="inline-spinner" style={{ width: 8, height: 8 }} />
+                    : STATUS_ICON[run.status] ?? '?'}
+                </span>
                 <span className="history-topic" title={run.topic}>{run.topic}</span>
                 <span className="history-date">{formatDate(run.created_at)}</span>
               </div>
+
               {run.overall && (
                 <div className="history-item-stats">
                   <span style={{ color: 'var(--positive)', fontFamily: 'var(--mono)', fontSize: 10 }}>
@@ -97,7 +144,7 @@ export function HistoryPanel({ onLoadRun, refreshKey }: Props) {
                   </span>
                 </div>
               )}
-              {sentimentBar(run.overall)}
+              <MiniBar overall={run.overall} />
             </button>
           ))}
         </div>

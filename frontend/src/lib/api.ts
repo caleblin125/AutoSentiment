@@ -108,6 +108,7 @@ export interface GraphEdge {
 export interface RunSummary {
   id: string
   topic: string
+  status: 'pending' | 'running' | 'completed' | 'cancelled' | 'error'
   created_at: string
   overall: { positive: number; neutral: number; negative: number; total: number } | null
 }
@@ -178,5 +179,24 @@ export async function cancelRun(runId: string): Promise<void> {
 export async function expandRun(runId: string): Promise<RunCreated> {
   const res = await fetch(`${API_BASE_URL}/api/runs/${encodeURIComponent(runId)}/expand`, { method: 'POST' })
   if (!res.ok) throw new Error(`POST /expand failed: ${res.status}`)
+  return res.json()
+}
+
+export async function startNemoClaw(runId: string): Promise<RunCreated> {
+  const res = await fetch(`${API_BASE_URL}/api/runs/${encodeURIComponent(runId)}/nemoclaw`, { method: 'POST' })
+  if (!res.ok) throw new Error(`POST /nemoclaw failed: ${res.status}`)
+  return res.json()
+}
+
+export async function suggestAngles(q: string): Promise<string[]> {
+  const res = await fetch(`${API_BASE_URL}/api/suggest?q=${encodeURIComponent(q)}`)
+  if (!res.ok) return []
+  const data = await res.json()
+  return data.suggestions ?? []
+}
+
+export async function getDevStats(): Promise<Record<string, unknown>> {
+  const res = await fetch(`${API_BASE_URL}/api/dev/stats`)
+  if (!res.ok) return {}
   return res.json()
 }

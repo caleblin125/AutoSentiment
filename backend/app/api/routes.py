@@ -79,32 +79,42 @@ async def health() -> dict[str, str]:
 @router.get("/runs")
 async def list_runs(
     topic: Optional[str] = Query(default=None),
-    limit: int = Query(default=20, ge=1, le=100),
+    status: Optional[str] = Query(default=None),
+    limit: int = Query(default=40, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
 ) -> list[dict]:
-    """Return recent completed runs, optionally filtered by exact topic match.
+    """Return recent runs in all statuses for the history panel.
 
-    Used by the frontend to build the historical sentiment chart.
+    Accepts optional `topic` (substring match) and `status` filters.
     """
-    stmt = (
-        select(Run)
-        .where(Run.status == "completed")
-        .order_by(desc(Run.created_at))
-        .limit(limit)
-    )
+    stmt = select(Run).order_by(desc(Run.created_at)).limit(limit)
     if topic:
-        stmt = stmt.where(Run.topic == topic)
+        stmt = stmt.where(Run.topic.ilike(f"%{topic}%"))
+    if status:
+        stmt = stmt.where(Run.status == status)
     result = await db.execute(stmt)
     runs = result.scalars().all()
     return [
         {
             "id": run.id,
             "topic": run.topic,
+            "status": run.status,
             "created_at": run.created_at.isoformat(),
             "overall": run.report.get("overall") if run.report else None,
         }
         for run in runs
     ]
+
+
+@router.get("/suggest")
+async def suggest_topics(
+    q: str = Query(min_length=1, max_length=200),
+    settings: Settings = Depends(get_settings),
+) -> dict:
+    """Use the small model to generate research angle suggestions for a query."""
+    from app.agents.nemoclaw import suggest_angles
+    suggestions = await suggest_angles(q, settings=settings)
+    return {"suggestions": suggestions}
 
 
 @router.post("/runs", response_model=RunResponse)
@@ -226,6 +236,52 @@ async def expand_run(
     asyncio.create_task(run_research(run.id, run.topic, None, expanded_settings))
 
     return RunResponse(run_id=run.id)
+
+
+@router.post("/runs/{run_id}/nemoclaw")
+async def start_nemoclaw(
+    run_id: str,
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> RunResponse:
+    """Launch NemoClaw as an autonomous research agent alongside the main run.
+
+    NemoClaw generates its own unique analytical queries, fetches targeted URLs,
+    and synthesises expert-level insights independent of the standard pipeline.
+    """
+    parent = await db.get(Run, run_id)
+    if parent is None:
+        raise HTTPException(status_code=404, detail="Parent run not found")
+
+    nc_run = Run(
+        topic=f"[NemoClaw] {parent.topic}",
+        freshness=None,
+        status="pending",
+    )
+    db.add(nc_run)
+    await db.commit()
+    await db.refresh(nc_run)
+
+    event_bus.register(nc_run.id)
+    from app.agents.nemoclaw_agent import run_nemoclaw
+    asyncio.create_task(run_nemoclaw(nc_run.id, parent.topic, parent.id, settings))
+
+    return RunResponse(run_id=nc_run.id)
+
+
+@router.get("/dev/stats")
+async def dev_stats(db: AsyncSession = Depends(get_db)) -> dict:
+    """Lightweight stats endpoint for the dev-mode overlay."""
+    from sqlalchemy import func as sqlfunc
+    run_counts = {}
+    for st in ("pending", "running", "completed", "cancelled", "error"):
+        result = await db.execute(select(sqlfunc.count()).where(Run.status == st))
+        run_counts[st] = result.scalar_one()
+    active_queues = len(event_bus._queues)
+    return {
+        "run_counts": run_counts,
+        "active_sse_queues": active_queues,
+    }
 
 
 @router.get("/runs/{run_id}/evidence/{chunk_id}")

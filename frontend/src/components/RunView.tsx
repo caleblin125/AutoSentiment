@@ -1,45 +1,49 @@
 /**
  * Self-contained run view for one search tab.
  *
- * Features:
- *  - Search form (topic + freshness)
- *  - History panel (past runs, click to replay)
- *  - Cancel button (shown while running)
- *  - Expand search button (shown when completed)
- *  - Live event timeline + report
+ * Accepts `initialRunId` for session restoration on reload.
+ * Propagates current `runId` up so the parent can cancel it on tab close.
  */
-import { useEffect, useMemo, useState } from 'react'
-import { cancelRun, createRun, expandRun, type RunRequest } from '../lib/api'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  cancelRun, createRun, expandRun, startNemoClaw, suggestAngles,
+  type Report, type RunRequest,
+} from '../lib/api'
 import { useRunStream } from '../hooks/useRunStream'
 import { EventTimeline } from './EventTimeline'
 import { ReportView } from './ReportView'
 import { HistoryPanel } from './HistoryPanel'
-import type { Report } from '../lib/api'
+import { NemoClawPanel } from './NemoClawPanel'
 
 const FRESHNESS_OPTIONS = [
   { value: 'pm', label: 'Past month' },
   { value: 'pw', label: 'Past week' },
   { value: 'pd', label: 'Past 24 h' },
   { value: 'py', label: 'Past year' },
-  { value: '', label: 'Any time' },
+  { value: '',   label: 'Any time' },
 ] as const
 
 interface Props {
-  onStatusChange: (status: string, label: string) => void
+  onStatusChange: (status: string, label: string, runId?: string) => void
+  initialRunId?: string
+  devMode?: boolean
 }
 
-export function RunView({ onStatusChange }: Props) {
+export function RunView({ onStatusChange, initialRunId, devMode }: Props) {
   const [topic, setTopic] = useState('')
   const [freshness, setFreshness] = useState<string>('pm')
-  const [runId, setRunId] = useState<string | null>(null)
+  const [runId, setRunId] = useState<string | null>(initialRunId ?? null)
   const [activeTopic, setActiveTopic] = useState<string | null>(null)
   const [cached, setCached] = useState(false)
   const [loading, setLoading] = useState(false)
   const [cancelling, setCancelling] = useState(false)
   const [expanding, setExpanding] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
-  // Bumped whenever a run completes so HistoryPanel knows to refresh.
   const [historyKey, setHistoryKey] = useState(0)
+  const [ncRunId, setNcRunId] = useState<string | null>(null)
+  const [suggestions, setSuggestions] = useState<string[]>([])
+  const [showSuggestions, setShowSuggestions] = useState(false)
+  const suggestTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const { events, status } = useRunStream(runId)
 
@@ -48,20 +52,23 @@ export function RunView({ onStatusChange }: Props) {
     return (completed?.detail as { report?: Report } | undefined)?.report ?? null
   }, [events])
 
+  // Propagate status + label + runId to parent (for tab state + close-kills-task).
   useEffect(() => {
     const label = activeTopic ?? 'New Search'
     const tabStatus = cached && status !== 'running' ? 'cached' : status
-    onStatusChange(tabStatus, label)
+    onStatusChange(tabStatus, label, runId ?? undefined)
     if (status === 'completed') {
       setHistoryKey(k => k + 1)
     }
-  }, [status, activeTopic, cached, onStatusChange])
+  }, [status, activeTopic, cached, runId, onStatusChange])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!topic.trim()) return
     setLoading(true)
     setFormError(null)
+    setNcRunId(null)
+    setShowSuggestions(false)
     try {
       const req: RunRequest = {
         topic: topic.trim(),
@@ -90,10 +97,10 @@ export function RunView({ onStatusChange }: Props) {
   async function handleExpand() {
     if (!runId) return
     setExpanding(true)
+    setNcRunId(null)
     try {
       const { run_id } = await expandRun(runId)
       setRunId(run_id)
-      setActiveTopic(activeTopic)
       setCached(false)
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Expand failed')
@@ -102,14 +109,39 @@ export function RunView({ onStatusChange }: Props) {
     }
   }
 
-  /** Load a historical run by its ID (replays stored events via SSE). */
+  async function handleNemoClaw() {
+    if (!runId) return
+    try {
+      const { run_id } = await startNemoClaw(runId)
+      setNcRunId(run_id)
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'NemoClaw failed to start')
+    }
+  }
+
   function loadHistoricRun(histRunId: string, histTopic: string) {
     setRunId(histRunId)
     setActiveTopic(histTopic)
-    setCached(true)  // historical runs are always "from cache"
+    setCached(true)
+    setNcRunId(null)
   }
 
-  // 'idle' only exists when there's no runId yet — don't treat it as "running"
+  // Debounced search suggestions
+  const fetchSuggestions = useCallback((q: string) => {
+    if (suggestTimer.current) clearTimeout(suggestTimer.current)
+    if (q.trim().length < 3) { setSuggestions([]); return }
+    suggestTimer.current = setTimeout(async () => {
+      const results = await suggestAngles(q)
+      setSuggestions(results)
+      setShowSuggestions(results.length > 0)
+    }, 700)
+  }, [])
+
+  function handleTopicChange(e: React.ChangeEvent<HTMLInputElement>) {
+    setTopic(e.target.value)
+    fetchSuggestions(e.target.value)
+  }
+
   const isRunning   = status === 'running'
   const isCompleted = status === 'completed'
   const isCancelled = status === 'cancelled'
@@ -118,17 +150,40 @@ export function RunView({ onStatusChange }: Props) {
     <div className="run-view">
       {/* ── Search bar + history ── */}
       <div className="panel search-panel">
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, flex: 1 }}>
-          <form className="search-form" onSubmit={handleSubmit}>
-            <input
-              className="search-input"
-              type="text"
-              placeholder="Topic, brand, event, or question…"
-              value={topic}
-              onChange={e => setTopic(e.target.value)}
-              disabled={loading}
-              required
-            />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, flex: 1, position: 'relative' }}>
+          <form className="search-form" onSubmit={handleSubmit} autoComplete="off">
+            <div style={{ position: 'relative', flex: 1 }}>
+              <input
+                className="search-input"
+                type="text"
+                placeholder="Topic, brand, event, or question…"
+                value={topic}
+                onChange={handleTopicChange}
+                onFocus={() => suggestions.length && setShowSuggestions(true)}
+                onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+                disabled={loading}
+                required
+              />
+              {showSuggestions && suggestions.length > 0 && (
+                <div className="suggestions-dropdown">
+                  {suggestions.map((s, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      className="suggestion-item"
+                      onMouseDown={e => {
+                        e.preventDefault()
+                        setTopic(s)
+                        setShowSuggestions(false)
+                      }}
+                    >
+                      <span className="suggestion-icon">⊕</span>
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
             <select
               className="freshness-select"
               value={freshness}
@@ -147,7 +202,6 @@ export function RunView({ onStatusChange }: Props) {
           {formError && <p className="error-msg">{formError}</p>}
         </div>
 
-        {/* History picker — refreshKey bumped on each completion */}
         <HistoryPanel onLoadRun={loadHistoricRun} refreshKey={historyKey} />
       </div>
 
@@ -157,43 +211,39 @@ export function RunView({ onStatusChange }: Props) {
           <div style={{ minWidth: 0 }}>
             <strong>{statusLabel(status, events.length)}</strong>
             {activeTopic && <p className="run-topic clip-text" title={activeTopic}>{activeTopic}</p>}
-            <p className="muted" style={{ fontFamily: 'var(--mono)', fontSize: 11 }}>
-              {runId.slice(0, 8)}…
-            </p>
+            {devMode && (
+              <p className="muted" style={{ fontFamily: 'var(--mono)', fontSize: 10 }}>
+                run: {runId}
+              </p>
+            )}
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-            {cached && !isRunning && (
-              <span className="cached-badge">⚡ cached</span>
-            )}
-            {isCancelled && (
-              <span className="cancelled-badge">⊘ cancelled</span>
-            )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            {cached && !isRunning && <span className="cached-badge">⚡ cached</span>}
+            {isCancelled && <span className="cancelled-badge">⊘ cancelled</span>}
 
-            {/* Cancel button — only while running */}
-            {isRunning && runId && (
-              <button
-                className="btn-cancel"
-                onClick={handleCancel}
-                disabled={cancelling}
-                title="Stop this analysis"
-              >
+            {isRunning && (
+              <button className="btn-cancel" onClick={handleCancel} disabled={cancelling}>
                 {cancelling ? <span className="spinner" style={{ borderTopColor: 'var(--rog-red)' }} /> : '⊘'}
                 {cancelling ? 'Stopping…' : 'Cancel'}
               </button>
             )}
 
-            {/* Expand search — only when completed */}
-            {isCompleted && runId && (
+            {isCompleted && !ncRunId && (
               <button
-                className="btn-expand"
-                onClick={handleExpand}
-                disabled={expanding}
-                title="Expand: search wider (2× URLs, any time)"
+                className="btn-nemoclaw"
+                onClick={handleNemoClaw}
+                title="Launch NemoClaw autonomous deep-dive"
               >
+                ⬡ NemoClaw
+              </button>
+            )}
+
+            {isCompleted && (
+              <button className="btn-expand" onClick={handleExpand} disabled={expanding}>
                 {expanding
                   ? <><span className="spinner" style={{ borderTopColor: 'var(--rog-cyan)' }} /> Expanding…</>
-                  : '⊕ Expand search'}
+                  : '⊕ Expand'}
               </button>
             )}
 
@@ -202,17 +252,20 @@ export function RunView({ onStatusChange }: Props) {
         </div>
       )}
 
-      {/* Skeleton while waiting for first event */}
+      {/* Skeleton while waiting */}
       {runId && events.length === 0 && status !== 'error' && (
         <div className="panel">
           <div className="skeleton skeleton-line skeleton-line--short" style={{ marginBottom: 12 }} />
           <div className="skeleton skeleton-line skeleton-line--full" />
           <div className="skeleton skeleton-line skeleton-line--medium" />
-          <div className="skeleton skeleton-line skeleton-line--full" />
         </div>
       )}
 
+      {/* NemoClaw sidebar — shown when activated */}
+      {ncRunId && <NemoClawPanel ncRunId={ncRunId} topic={activeTopic ?? ''} />}
+
       {runId && events.length > 0 && <EventTimeline events={events} status={status} />}
+
       {report && runId && activeTopic && (
         <ReportView runId={runId} topic={activeTopic} report={report} />
       )}
@@ -223,7 +276,7 @@ export function RunView({ onStatusChange }: Props) {
 function statusLabel(status: string, eventCount: number): string {
   if (status === 'completed') return 'Analysis complete'
   if (status === 'cancelled') return 'Analysis cancelled'
-  if (status === 'error') return 'Analysis stopped with an error'
-  if (eventCount === 0) return 'Initialising…'
+  if (status === 'error')    return 'Analysis stopped with an error'
+  if (eventCount === 0)      return 'Initialising…'
   return 'Analysis in progress'
 }
