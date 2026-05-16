@@ -7,7 +7,7 @@
  * Close tab = kill task: when a tab with a running task is closed, the
  * backend cancel endpoint is called before removing it from state.
  */
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { TabBar } from './components/TabBar'
 import { RunView } from './components/RunView'
 import { CompareView } from './components/CompareView'
@@ -20,7 +20,7 @@ const SESSION_KEY = 'autosentiment_session'
 const MAX_PERSISTED_TABS = 10
 
 interface PersistedTab {
-  id: string; label: string; status: Tab['status']; runId?: string; topic?: string
+  id: string; label: string; status: Tab['status']; runId?: string; topic?: string; type?: Tab['type']
 }
 interface PersistedSession { tabs: PersistedTab[]; activeId: string }
 
@@ -43,7 +43,7 @@ function saveSession(tabs: Tab[], activeId: string) {
   try {
     const data: PersistedSession = {
       tabs: tabs.slice(0, MAX_PERSISTED_TABS).map(t => ({
-        id: t.id, label: t.label, status: t.status, runId: t.runId,
+        id: t.id, label: t.label, status: t.status, runId: t.runId, type: t.type,
       })),
       activeId,
     }
@@ -58,12 +58,14 @@ function TabPanel({
   activeId,
   handleStatusChange,
   openRunInNewTab,
+  openRunIds,
   devMode,
 }: {
   tab: Tab
   activeId: string
   handleStatusChange: (tabId: string, status: string, label: string, runId?: string) => void
   openRunInNewTab: (runId: string, topic: string) => void
+  openRunIds: Set<string>
   devMode: boolean
 }) {
   const onStatusChange = useCallback(
@@ -85,6 +87,7 @@ function TabPanel({
           onStatusChange={onStatusChange}
           onOpenRunInNewTab={openRunInNewTab}
           initialRunId={tab.runId}
+          openRunIds={openRunIds}
           devMode={devMode}
         />
       )}
@@ -134,12 +137,18 @@ export default function App() {
   // ── Keyboard shortcuts ───────────────────────────────────────────────────
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      // Ctrl+Shift+D: toggle dev mode
+      // Never intercept when focus is inside a text input to avoid
+      // swallowing Ctrl+T or Ctrl+W while the user types.
+      const tag = (e.target as HTMLElement)?.tagName
+      const isEditing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'
+
+      // Ctrl+Shift+D: toggle dev mode (fires even in inputs)
       if (e.ctrlKey && e.shiftKey && e.key === 'D') {
         e.preventDefault()
         setDevMode(d => !d)
         return
       }
+      if (isEditing) return  // block remaining shortcuts while editing
       // Ctrl+T: new tab
       if (e.ctrlKey && !e.shiftKey && e.key === 't') {
         e.preventDefault()
@@ -243,6 +252,10 @@ export default function App() {
   }
 
   const runningCount = tabs.filter(t => t.status === 'running').length
+  const openRunIds = useMemo(
+    () => new Set(tabs.map(t => t.runId).filter((id): id is string => Boolean(id))),
+    [tabs],
+  )
 
   function reorderTabs(dragId: string, dropId: string) {
     setTabs(prev => {
@@ -308,6 +321,7 @@ export default function App() {
           activeId={activeId}
           handleStatusChange={handleStatusChange}
           openRunInNewTab={openRunInNewTab}
+          openRunIds={openRunIds}
           devMode={devMode}
         />
       ))}

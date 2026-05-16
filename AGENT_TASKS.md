@@ -50,3 +50,33 @@ Last updated: 2026-05-16 20:40 UTC
 - [x] [cursor] Animated number counters on sentiment bars (RAF ease-out cubic)
 - [x] [cursor] Dark/light theme transition animation (CSS transition on *, excluded SVGs)
 - [x] [cursor] Sentiment confidence scores per item (prompt + confidence_map + badge UI)
+
+## 🔴 NemoClaw Self-Analysis Findings — NEW
+Audit run 2026-05-16 by nemotron-3-super against full project docs + code.
+Full report: /tmp/autosentiment_self_analysis.md
+
+### HIGH — Performance
+- [ ] [pi]  Batch sentiment analysis: send multiple snippets per Ollama call instead of one-at-a-time
+- [ ] [pi]  GPU utilization: track model load/unload timing, avoid 30B/120B thrashing
+
+### HIGH — Reliability  
+- [ ] [pi]  Retry logic + circuit breaker on all Ollama HTTP calls (exponential backoff, max 3 retries)
+- [ ] [pi]  Transient failure recovery: don't crash entire run on one failed model call
+
+### MEDIUM — Testing
+- [ ] [pi]  LLM failure injection tests: mock Ollama returning 500s, timeouts, malformed JSON
+- [ ] [pi]  Property-based tests for report builder functions (hypothesis or manual invariants)
+
+### MEDIUM — Architecture
+- [ ] [pi]  Extract synthesis interface from builder.py: decouple LLM prompt engineering from pure analytics
+- [ ] [pi]  SQLite WAL mode + connection pooling for concurrent multi-tab write safety
+
+### LOW — UX
+- [ ] [pi]  Evidence modal: highlight matching terms, show why snippet got its sentiment label
+- [ ] [pi]  Admin dashboard: quota usage over time, model availability, run success rate
+- [ ] [pi]  Automatic model fallback: try smaller model if 120B/30B unavailable
+
+### RISKS (preventative)
+- [ ] [pi]  Fix SSE event listener accumulation in SPA (memory leak risk)
+- [ ] [pi]  Add prompt injection guard: sanitize user topic before sending to LLM
+- [ ] [pi]  Add Brave quota exhaustion early warning before deep runs

@@ -56,6 +56,19 @@ class RunRequest(BaseModel):
         value = value.strip()
         if not value:
             raise ValueError("topic is required")
+        if len(value) > 500:
+            raise ValueError("topic must be 500 characters or fewer")
+        # Strip prompt injection patterns: system overrides, delimiter attacks, role switching.
+        blocked = (
+            "<|system|>", "<|user|>", "<|assistant|>", "<|im_start|>", "<|im_end|>",
+            "ignore previous", "ignore all previous", "disregard prior",
+            "you are now", "act as", "pretend you are", "new instructions:",
+            "[/INST]", "[INST]", "<<SYS>>", "<</SYS>>",
+        )
+        lower = value.lower()
+        for pattern in blocked:
+            if pattern in lower:
+                raise ValueError("topic contains disallowed content")
         return value
 
     @field_validator("freshness")
