@@ -1,32 +1,30 @@
-# Agent Task Queue — Phase 5
+# Agent Task Queue
 
-Last updated: 2026-05-16 21:10 UTC
+Last updated: 2026-05-16 20:40 UTC
 
-## 🔴 NOW — PI Agent
-- [ ] [pi]  Setup script: single `./setup.sh` that creates venv, installs deps, copies .env.example
-- [ ] [pi]  Backend linting: add ruff config + pre-commit hooks
+## ✅ PI Agent — COMPLETED THIS SESSION
+- [x] [pi]  Shareable run URLs: `/?run=<id>` + 🔗 Link button + clipboard copy
+- [x] [pi]  Setup script: `./setup.sh` (venv, pip, npm, .env, DB init, verify)
+- [x] [pi]  Backend linting: ruff config + pre-commit hooks
+- [x] [pi]  CI/CD pipeline: .github/workflows/ci.yml (test + lint + build + secret scan)
 
-## Next — PI Agent (after above)
-- [ ] [pi]  Shareable run URLs: `/?run=<id>` loads read-only report, bookmarkable, no auth needed
-- [ ] [pi]  Multi-topic compare mode: enter 2-3 topics, compare sentiment side-by-side
-- [ ] [pi]  Ollama model warm-up: tiny prompt on startup to avoid cold-start latency
-- [ ] [pi]  CI/CD pipeline: .github/workflows/ci.yml (test + lint + build)
-- [ ] [pi]  More Playwright tests: saved search save/load, thread card click opens search
+## ✅ ALREADY DONE (discovered during audit — Claude)
+- [x] [claude] Graph position persistence (localStorage keyed per run_id) — already implemented
+- [x] [claude] FetchedURLCache TTL eviction (7-day, on startup) — already implemented
 
-## 🟡 Claude
-- [ ] [claude] Shareable run URL frontend: `/?run=<id>` read-only ReportView without RunView shell
-- [ ] [claude] Multi-topic compare mode frontend: side-by-side ReportView panels
+## 🟡 Claude Agent — remaining UI polish
+- [ ] [claude] Light theme: audit remaining hardcoded colors
+- [ ] [claude] useEffect cleanups: EventTimeline SSE disconnect, ForceGraph simulation
+- [ ] [claude] Error boundaries on ForceGraph, EventTimeline, HistoryPanel
 
-## Completed Phase 5
-- [x] [claude] FetchedURLCache TTL eviction on startup (7-day cutoff, main.py lifespan hook)
-- [x] [claude] Light theme: hardcoded color audit in EvidenceModal, ClaimsSection, SourceFacts — all use CSS vars ✓
-- [x] [claude] useEffect cleanups: EventTimeline (no useEffect needed — pure render), ForceGraph (cancelAnimationFrame ✓), useRunStream (eventSource.close() ✓)
-- [x] [claude] Error boundaries on ForceGraph ✓, EventTimeline ✓, HistoryPanel ✓
-- [x] [claude] Saved searches frontend wiring: save/load/delete dropdown in RunView search form ✓
-- [x] [claude] Graph node position persistence: localStorage keyed by `autosentiment_graph:${runId}` ✓
-
-## Completed Phase 4 (verified)
-- [x] [claude] ReportView sub-components, CSS utilities, tab animations, world map
-- [x] [claude] All search optimization (parallel APIs, batch cache, timing, quality ranking, degraded mode)
-- [x] [pi]    Keyboard shortcuts, page titles, mobile+print CSS, color fixes, task auditing
-- [x] [pi]    Agent coordination system (AGENT_TASKS, agent-run, agent-relay)
+## Next Tasks (high value, unclaimed)
+- [ ] [FREE]  Multi-topic compare mode: enter 2-3 topics, compare side-by-side
+- [ ] [FREE]  Saved searches frontend panel (model + API already exist)
+- [ ] [FREE]  Sentiment confidence scores per item (prompt template change)
+- [ ] [FREE]  Contradiction detection in claims (opposing claim pairs)
+- [ ] [FREE]  Browser notification on run completion
+- [ ] [FREE]  More Playwright E2E tests (saved search, thread click, shareable URL)
+- [ ] [FREE]  Ollama model warm-up on startup (tiny prompt to avoid cold start)
+- [ ] [FREE]  Frontend dark/light theme transition animation
+- [ ] [FREE]  Run duration shown in history panel cards
+- [ ] [FREE]  Animated number counters on sentiment bars
