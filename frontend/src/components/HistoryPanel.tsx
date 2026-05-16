@@ -59,6 +59,7 @@ export function HistoryPanel({ onOpenRun, refreshKey }: Props) {
   const [runs, setRuns] = useState<RunSummary[]>([])
   const [loading, setLoading] = useState(false)
   const [openedIds, setOpenedIds] = useState<Set<string>>(new Set())
+  const openingRef = useRef<string | null>(null)  // prevent double-clicks
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   async function fetchRuns() {
@@ -134,11 +135,12 @@ export function HistoryPanel({ onOpenRun, refreshKey }: Props) {
                 <button
                   className={`history-item${openedIds.has(run.id) ? ' history-item--open' : ''}`}
                   onClick={() => {
-                    if (!isActive) {
-                      setOpenedIds(prev => new Set(prev).add(run.id))
-                      onOpenRun(run.id, run.topic)
-                      setOpen(false)
-                    }
+                    if (isActive || openingRef.current === run.id) return
+                    openingRef.current = run.id
+                    setOpenedIds(prev => new Set(prev).add(run.id))
+                    onOpenRun(run.id, run.topic)
+                    setOpen(false)
+                    setTimeout(() => { openingRef.current = null }, 300)
                   }}
                   disabled={isActive}
                   title={isActive ? 'Currently running' : openedIds.has(run.id) ? `${run.topic} (already open — click to switch)` : run.topic}
