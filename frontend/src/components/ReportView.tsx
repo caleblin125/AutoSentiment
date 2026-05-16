@@ -304,14 +304,11 @@ function SourceGroupCard({ group }: { group: SourceGroup }) {
             const fakeUrl = `https://${fact.domain}`
             const dtotal = (fact.labels?.positive ?? 0) + (fact.labels?.neutral ?? 0) + (fact.labels?.negative ?? 0) || 1
             return (
-              <a
+              <details
                 key={fact.domain}
                 className="source-fact"
-                href={fakeUrl}
-                target="_blank"
-                rel="noreferrer"
               >
-                <div className="source-fact-header">
+                <summary className="source-fact-header">
                   <img
                     src={`https://www.google.com/s2/favicons?domain=${fact.domain}&sz=14`}
                     alt="" width={14} height={14}
@@ -320,7 +317,7 @@ function SourceGroupCard({ group }: { group: SourceGroup }) {
                   <strong className="clip-text" title={fact.domain}>
                     {KNOWN_PROVIDERS[fact.domain] ?? fact.domain.replace(/^www\./, '')}
                   </strong>
-                </div>
+                </summary>
                 <span style={{ fontSize: 10, color: 'var(--text)', fontFamily: 'var(--mono)' }}>
                   {fact.count} items
                   {fact.credibility !== undefined && (
@@ -334,7 +331,14 @@ function SourceGroupCard({ group }: { group: SourceGroup }) {
                   <div style={{ flex: (fact.labels?.neutral  ?? 0) / dtotal, background: 'var(--neutral)' }} />
                   <div style={{ flex: (fact.labels?.negative ?? 0) / dtotal, background: 'var(--rog-red)' }} />
                 </div>
-              </a>
+                <div className="source-link-list">
+                  {(fact.urls?.length ? fact.urls : [fakeUrl]).map(url => (
+                    <a key={url} href={url} target="_blank" rel="noreferrer" title={url}>
+                      {providerName(url)}
+                    </a>
+                  ))}
+                </div>
+              </details>
             )
           })}
         </div>

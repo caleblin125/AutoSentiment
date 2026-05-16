@@ -258,6 +258,12 @@ def compute_source_facts(chunks: list[EvidenceChunk], limit: int = 10) -> list[d
             key=lambda source: counts[source],
         )
         first_url = next((c.url for c in chunks if urlparse(c.url).netloc == domain), f"https://{domain}")
+        urls = []
+        for chunk in chunks:
+            if urlparse(chunk.url).netloc == domain and chunk.url not in urls:
+                urls.append(chunk.url)
+            if len(urls) >= 8:
+                break
         facts.append(
             {
                 "domain": domain,
@@ -265,6 +271,7 @@ def compute_source_facts(chunks: list[EvidenceChunk], limit: int = 10) -> list[d
                 "count": counts["count"],
                 "labels": labels,
                 "credibility": round(_credibility_score(first_url), 2),
+                "urls": urls,
             }
         )
     return sorted(facts, key=lambda item: item["count"], reverse=True)[:limit]
@@ -296,8 +303,6 @@ def compute_timeline(chunks: list[EvidenceChunk], topic: str, limit: int = 8) ->
     for chunk in chunks:
         text = f"{chunk.summary}. {chunk.snippet}"
         dates = _extract_dates(text)
-        if not dates and chunk.retrieved_at:
-            dates = [(chunk.retrieved_at.date().isoformat(), "source retrieved")]
         for iso_date, source_text in dates:
             event = events.setdefault(
                 iso_date,
@@ -307,15 +312,20 @@ def compute_timeline(chunks: list[EvidenceChunk], topic: str, limit: int = 8) ->
                     "description": _event_description(chunk),
                     "evidence_ids": [],
                     "source_count": 0,
-                    "certainty": "explicit" if source_text != "source retrieved" else "retrieved_at",
+                    "certainty": "explicit",
                     "source_text": source_text,
+                    "_score": 0.0,
                 },
             )
             event["source_count"] += 1
+            event["_score"] += _event_relevance(chunk, topic)
             if chunk.id not in event["evidence_ids"] and len(event["evidence_ids"]) < 5:
                 event["evidence_ids"].append(chunk.id)
 
-    ordered = sorted(events.values(), key=lambda item: item["date"])[:limit]
+    relevant = sorted(events.values(), key=lambda item: (-item["_score"], item["date"]))[:limit]
+    ordered = sorted(relevant, key=lambda item: item["date"])
+    for event in ordered:
+        event.pop("_score", None)
     start_date = ordered[0]["date"] if ordered else None
     end_date = ordered[-1]["date"] if ordered else None
     if ordered:
@@ -337,6 +347,18 @@ def compute_timeline(chunks: list[EvidenceChunk], topic: str, limit: int = 8) ->
             for evidence_id in event["evidence_ids"]
         ][:12],
     }
+
+
+def _event_relevance(chunk: EvidenceChunk, topic: str) -> float:
+    text = f"{chunk.summary} {chunk.snippet}".lower()
+    score = 1.0
+    score += sum(1 for token in topic.lower().split() if len(token) > 2 and token in text) * 0.6
+    score += _credibility_score(chunk.url)
+    if re.search(r"\b(announced|released|launched|reported|filed|published|confirmed|delayed|cancelled|approved|recalled)\b", text):
+        score += 1.0
+    if re.search(r"[$%]|\b\d{2,}\b", text):
+        score += 0.4
+    return score
 
 
 def compute_claims(chunks: list[EvidenceChunk], limit: int = 10) -> dict:

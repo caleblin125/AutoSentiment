@@ -16,6 +16,9 @@ export interface RunRequest {
   freshness?: 'pd' | 'pw' | 'pm' | 'py'
   research_depth?: ResearchDepth
   use_case?: UseCase
+  nemoclaw_model?: string
+  lightweight_model?: string
+  suggestion_model?: string
 }
 
 export type ResearchDepth = 'quick' | 'standard' | 'deep' | 'exhaustive'
@@ -32,6 +35,7 @@ export interface DepthBudget {
 export interface RunCreated {
   run_id: string
   cached: boolean
+  reused_run_id?: string | null
 }
 
 export interface PlannedQuery {
@@ -208,6 +212,7 @@ export interface SourceFact {
   count: number
   labels: Record<string, number>
   credibility?: number
+  urls?: string[]
 }
 
 export interface IdeaGraph {
@@ -355,17 +360,20 @@ export async function expandRun(runId: string, req?: { research_depth?: Research
   return res.json()
 }
 
-export async function startNemoClaw(runId: string): Promise<RunCreated> {
+export async function startNemoClaw(runId: string, req?: { nemoclaw_model?: string }): Promise<RunCreated> {
   const res = await fetch(`${API_BASE_URL}/api/runs/${encodeURIComponent(runId)}/nemoclaw`, {
     method: 'POST',
-    headers: API_KEY ? { 'X-API-Key': API_KEY } : undefined,
+    headers: authHeaders(),
+    body: req ? JSON.stringify(req) : JSON.stringify({}),
   })
   if (!res.ok) throw new Error(`POST /nemoclaw failed: ${res.status}`)
   return res.json()
 }
 
-export async function suggestAngles(q: string): Promise<string[]> {
-  const res = await fetch(`${API_BASE_URL}/api/suggest?q=${encodeURIComponent(q)}`)
+export async function suggestAngles(q: string, model?: string): Promise<string[]> {
+  const params = new URLSearchParams({ q })
+  if (model) params.set('model', model)
+  const res = await fetch(`${API_BASE_URL}/api/suggest?${params}`)
   if (!res.ok) return []
   const data = await res.json()
   return data.suggestions ?? []

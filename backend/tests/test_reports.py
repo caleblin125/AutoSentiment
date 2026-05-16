@@ -153,6 +153,22 @@ def test_compute_timeline_extracts_explicit_dates_without_fabricating() -> None:
     assert "d1" in timeline["supporting_evidence_ids"]
 
 
+def test_compute_timeline_ignores_retrieved_at_when_no_explicit_dates() -> None:
+    from app.reports.builder import compute_timeline
+
+    chunks = [
+        EvidenceChunk(id="no-date", run_id="r", url="https://news.example/a", source_type="news",
+                      snippet="People debated the product without naming a date.",
+                      label="neutral", summary="discussion")
+    ]
+
+    timeline = compute_timeline(chunks, "Product")
+
+    assert timeline["important_dates"] == []
+    assert timeline["start_date"] is None
+    assert "No explicit dates" in timeline["event_summary"]
+
+
 def test_compute_claims_groups_factual_claims_and_flags_verification() -> None:
     from app.reports.builder import compute_claims
 

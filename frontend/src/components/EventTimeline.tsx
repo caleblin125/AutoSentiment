@@ -4,7 +4,7 @@
  * All url_fetched events are merged into a single "fetch batch" row that
  * shows a progress counter and advances as URLs complete.
  */
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import type { SSEEvent } from '../lib/api'
 
 interface Props { events: SSEEvent[]; status: string }
@@ -275,12 +275,7 @@ function GenericRow({ ev }: { ev: SSEEvent }) {
   )
 }
 
-function EventRow({ ev, isLast }: { ev: FoldedEvent; isLast: boolean }) {
-  const bottomRef = useRef<HTMLSpanElement | null>(null)
-  useEffect(() => {
-    if (isLast) bottomRef.current?.scrollIntoView({ block: 'nearest' })
-  }, [isLast])
-
+function EventRow({ ev }: { ev: FoldedEvent }) {
   const elapsed = !isFolded(ev) ? ev.detail.elapsed_ms : ev._latestElapsed
   const received = !isFolded(ev) ? ev.detail.received_at : undefined
 
@@ -293,7 +288,6 @@ function EventRow({ ev, isLast }: { ev: FoldedEvent; isLast: boolean }) {
        ev.type === 'search_queried'  ? <SearchRow ev={ev} />              :
        ev.type === 'fetch_started'   ? null                               : // handled above
        <GenericRow ev={ev} />}
-      {isLast && <span ref={bottomRef} />}
     </li>
   )
 }
@@ -359,7 +353,7 @@ export function EventTimeline({ events, status }: Props) {
       {/* Collapsed: show most recent event */}
       {collapsed && lastEvent && (
         <div className="timeline-collapsed-preview">
-          <EventRow ev={lastEvent} isLast={false} />
+          <EventRow ev={lastEvent} />
         </div>
       )}
 
@@ -375,8 +369,8 @@ export function EventTimeline({ events, status }: Props) {
             </div>
           )}
           <ul className="timeline">
-            {folded.map((ev, i) => (
-              ev !== null && <EventRow key={ev.seq} ev={ev} isLast={i === folded.length - 1} />
+            {folded.map(ev => (
+              ev !== null && <EventRow key={ev.seq} ev={ev} />
             ))}
           </ul>
         </>

@@ -2,6 +2,7 @@ import asyncio
 import json
 from datetime import UTC, datetime, timedelta
 from typing import Optional
+from difflib import SequenceMatcher
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from fastapi.responses import StreamingResponse
@@ -45,6 +46,9 @@ class RunRequest(BaseModel):
     freshness: Optional[str] = "pm"  # pd | pw | pm | py | None
     research_depth: str = DEFAULT_DEPTH
     use_case: str = "generic"
+    nemoclaw_model: Optional[str] = None
+    lightweight_model: Optional[str] = None
+    suggestion_model: Optional[str] = None
 
     @field_validator("topic")
     @classmethod
@@ -76,6 +80,8 @@ class ExpandRunRequest(BaseModel):
     research_depth: Optional[str] = None
     freshness: Optional[str] = None
     use_case: Optional[str] = None
+    nemoclaw_model: Optional[str] = None
+    lightweight_model: Optional[str] = None
 
     @field_validator("research_depth")
     @classmethod
@@ -100,6 +106,94 @@ CACHE_TTL_HOURS = 2
 class RunResponse(BaseModel):
     run_id: str
     cached: bool = False
+    reused_run_id: Optional[str] = None
+
+
+class NemoClawRequest(BaseModel):
+    nemoclaw_model: Optional[str] = None
+
+
+def _settings_with_model_overrides(settings: Settings, **models: str | None) -> Settings:
+    updates = {key: value.strip() for key, value in models.items() if isinstance(value, str) and value.strip()}
+    return settings.model_copy(update=updates) if updates else settings
+
+
+def _topic_similarity(a: str, b: str) -> float:
+    left = " ".join(a.casefold().split())
+    right = " ".join(b.casefold().split())
+    if not left or not right:
+        return 0.0
+    left_tokens = {token for token in left.split() if len(token) > 2}
+    right_tokens = {token for token in right.split() if len(token) > 2}
+    token_score = len(left_tokens & right_tokens) / max(1, len(left_tokens | right_tokens))
+    sequence_score = SequenceMatcher(None, left, right).ratio()
+    return max(token_score, sequence_score)
+
+
+async def _find_similar_completed_run(
+    db: AsyncSession,
+    topic: str,
+    freshness: str | None,
+    research_depth: str,
+) -> Run | None:
+    result = await db.execute(
+        select(Run)
+        .where(Run.status == "completed")
+        .where(Run.freshness == freshness)
+        .order_by(desc(Run.created_at))
+        .limit(30)
+    )
+    for run in result.scalars().all():
+        if depth_from_report(run.report) != research_depth:
+            continue
+        if _topic_similarity(topic, run.topic) >= 0.72:
+            return run
+    return None
+
+
+async def _copy_seed_context(
+    db: AsyncSession,
+    source_run_id: str,
+    target_run_id: str,
+    *,
+    copy_events: bool,
+) -> set[str]:
+    """Copy prior evidence, and optionally non-terminal timeline events, into a new run."""
+    skip_urls: set[str] = set()
+    if copy_events:
+        events = (
+            await db.execute(
+                select(RunEvent).where(RunEvent.run_id == source_run_id).order_by(RunEvent.seq)
+            )
+        ).scalars().all()
+        seq = 0
+        omitted = {"run_started", "run_completed", "run_cancelled", "run_error"}
+        for ev in events:
+            if ev.type in omitted:
+                continue
+            seq += 1
+            db.add(RunEvent(
+                run_id=target_run_id,
+                seq=seq,
+                type=ev.type,
+                message=ev.message,
+                detail=ev.detail,
+            ))
+
+    chunks = (
+        await db.execute(select(EvidenceChunk).where(EvidenceChunk.run_id == source_run_id))
+    ).scalars().all()
+    for chunk in chunks:
+        skip_urls.add(chunk.url)
+        db.add(EvidenceChunk(
+            run_id=target_run_id,
+            url=chunk.url,
+            source_type=chunk.source_type,
+            snippet=chunk.snippet,
+            label=chunk.label,
+            summary=chunk.summary,
+        ))
+    return skip_urls
 
 
 def _run_to_dict(run: Run) -> dict:
@@ -185,6 +279,7 @@ async def diagnostics(
         "models": {
             "nemoclaw_model": settings.nemoclaw_model,
             "lightweight_model": settings.lightweight_model,
+            "suggestion_model": settings.suggestion_model,
             "ollama_base_url": settings.ollama_base_url,
         },
         "limits": {
@@ -231,11 +326,13 @@ async def list_runs(
 @router.get("/suggest")
 async def suggest_topics(
     q: str = Query(min_length=1, max_length=200),
+    model: Optional[str] = Query(default=None, max_length=120),
     settings: Settings = Depends(get_settings),
 ) -> dict:
     """Use the small model to generate research angle suggestions for a query."""
     from app.agents.nemoclaw import suggest_angles
-    suggestions = await suggest_angles(q, settings=settings)
+    effective_settings = settings.model_copy(update={"suggestion_model": model}) if model else settings
+    suggestions = await suggest_angles(q, settings=effective_settings)
     return {"suggestions": suggestions}
 
 
@@ -321,25 +418,38 @@ async def create_run(
     if cached_run is not None:
         return RunResponse(run_id=cached_run.id, cached=True)
 
+    similar_run = await _find_similar_completed_run(db, body.topic, body.freshness, body.research_depth)
     run = Run(topic=body.topic, freshness=body.freshness, status="pending")
     db.add(run)
     await db.commit()
     await db.refresh(run)
 
+    skip_urls: set[str] = set()
+    if similar_run is not None:
+        skip_urls = await _copy_seed_context(db, similar_run.id, run.id, copy_events=False)
+        await db.commit()
+
+    effective_settings = _settings_with_model_overrides(
+        depth_budget.apply_to_settings(settings),
+        nemoclaw_model=body.nemoclaw_model,
+        lightweight_model=body.lightweight_model,
+        suggestion_model=body.suggestion_model,
+    )
     event_bus.register(run.id)
     asyncio.create_task(
         run_research(
             run.id,
             run.topic,
             run.freshness,
-            depth_budget.apply_to_settings(settings),
+            effective_settings,
+            frozenset(skip_urls),
             research_depth=depth_budget.name,
             depth_budget=depth_budget.to_metadata(),
             use_case=body.use_case,
         )
     )
 
-    return RunResponse(run_id=run.id)
+    return RunResponse(run_id=run.id, reused_run_id=similar_run.id if similar_run else None)
 
 
 @router.get("/runs/{run_id}")
@@ -439,7 +549,11 @@ async def expand_run(
     original_depth = depth_from_report(original.report)
     requested_depth = body.research_depth or next_depth_name(original_depth)
     depth_budget = get_depth_budget(requested_depth, settings)
-    expanded_settings = depth_budget.apply_to_settings(settings)
+    expanded_settings = _settings_with_model_overrides(
+        depth_budget.apply_to_settings(settings),
+        nemoclaw_model=body.nemoclaw_model,
+        lightweight_model=body.lightweight_model,
+    )
     expanded_freshness = body.freshness if body.freshness is not None else original.freshness
     original_metadata = original.report.get("metadata", {}) if original.report else {}
     original_use_case = (
@@ -454,36 +568,9 @@ async def expand_run(
     await db.commit()
     await db.refresh(run)
 
-    # Copy existing RunEvents so the expanded run's timeline continues from original.
-    orig_events_result = await db.execute(
-        select(RunEvent).where(RunEvent.run_id == run_id).order_by(RunEvent.seq)
-    )
-    for ev in orig_events_result.scalars().all():
-        db.add(RunEvent(
-            run_id=run.id,
-            seq=ev.seq,
-            type=ev.type,
-            message=ev.message,
-            detail=ev.detail,
-        ))
-
-    # Copy existing evidence chunks and collect URLs to skip so the expanded
-    # run focuses on sources not yet covered.
-    orig_result = await db.execute(
-        select(EvidenceChunk).where(EvidenceChunk.run_id == run_id)
-    )
-    orig_chunks = orig_result.scalars().all()
-    skip_urls: set[str] = set()
-    for c in orig_chunks:
-        skip_urls.add(c.url)
-        db.add(EvidenceChunk(
-            run_id=run.id,
-            url=c.url,
-            source_type=c.source_type,
-            snippet=c.snippet,
-            label=c.label,
-            summary=c.summary,
-        ))
+    # Copy non-terminal events and evidence so the expanded timeline continues
+    # without duplicate "run started" or stale "done" rows.
+    skip_urls = await _copy_seed_context(db, run_id, run.id, copy_events=True)
     await db.commit()
 
     event_bus.register(run.id)
@@ -506,6 +593,7 @@ async def expand_run(
 @router.post("/runs/{run_id}/nemoclaw")
 async def start_nemoclaw(
     run_id: str,
+    body: NemoClawRequest | None = None,
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
     _auth: None = Depends(require_auth),
@@ -530,7 +618,9 @@ async def start_nemoclaw(
 
     event_bus.register(nc_run.id)
     from app.agents.nemoclaw_agent import run_nemoclaw
-    asyncio.create_task(run_nemoclaw(nc_run.id, parent.topic, parent.id, settings))
+    body = body or NemoClawRequest()
+    effective_settings = _settings_with_model_overrides(settings, nemoclaw_model=body.nemoclaw_model)
+    asyncio.create_task(run_nemoclaw(nc_run.id, parent.topic, parent.id, effective_settings))
 
     return RunResponse(run_id=nc_run.id)
 

@@ -23,12 +23,15 @@ class Settings(BaseSettings):
     nemoclaw_model: str = Field(default="nemotron-3-super", validation_alias="NEMCLAW_MODEL")
     # 30B — per-item sentiment (queued, bounded parallelism)
     lightweight_model: str = Field(default="nemotron-3-nano", validation_alias="LIGHTWEIGHT_MODEL")
+    # Fast suggestion model.
+    suggestion_model: str = Field(default="deepseek-r1:14b", validation_alias="SUGGESTION_MODEL")
     light_queue_max_parallel: int = Field(default=4, validation_alias="LIGHT_QUEUE_MAX_PARALLEL")
 
     brave_api_key: str = Field(default="", validation_alias="BRAVE_API_KEY")
     max_queries_per_run: int = Field(default=16, validation_alias="MAX_QUERIES_PER_RUN")
     max_urls_per_run: int = Field(default=30, validation_alias="MAX_URLS_PER_RUN")
     max_items_per_run: int = Field(default=100, validation_alias="MAX_ITEMS_PER_RUN")
+    enable_media_api_search: bool = Field(default=False, validation_alias="ENABLE_MEDIA_API_SEARCH")
 
     # Auth: when set, all API requests must include X-API-Key header.
     # Leave empty to disable auth (default for localhost use).

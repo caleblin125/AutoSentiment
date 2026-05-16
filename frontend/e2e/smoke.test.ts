@@ -145,6 +145,10 @@ const MOCK_REPORT = {
 
 const SSE_STREAM = [
   `data: ${JSON.stringify({ type: 'run_started', detail: {}, ts: Date.now() })}\n\n`,
+  `data: ${JSON.stringify({ type: 'fetch_started', detail: { url_count: 3, elapsed_ms: 1000 }, message: 'Fetching 3 URLs', ts: Date.now() })}\n\n`,
+  `data: ${JSON.stringify({ type: 'url_fetched', detail: { url: 'https://example.com/a', domain: 'example.com', item_count: 2, fetch_ms: 120, elapsed_ms: 1100 }, message: 'Fetched 2 items', ts: Date.now() })}\n\n`,
+  `data: ${JSON.stringify({ type: 'url_fetched', detail: { url: 'https://example.com/b', domain: 'example.com', item_count: 1, fetch_ms: 130, elapsed_ms: 1200 }, message: 'Fetched 1 item', ts: Date.now() })}\n\n`,
+  `data: ${JSON.stringify({ type: 'url_fetched', detail: { url: 'https://example.com/c', domain: 'example.com', item_count: 1, fetch_ms: 140, elapsed_ms: 1300 }, message: 'Fetched 1 item', ts: Date.now() })}\n\n`,
   `data: ${JSON.stringify({ type: 'run_completed', detail: { report: MOCK_REPORT }, ts: Date.now() })}\n\n`,
 ].join('')
 
@@ -254,6 +258,14 @@ test.describe('App loads', () => {
     await expect(page.locator('.use-case-select')).toBeVisible()
   })
 
+  test('freshness options are chronological', async ({ page }) => {
+    await mockBackend(page)
+    await page.goto('/')
+
+    const labels = await page.locator('.freshness-select option').allTextContents()
+    expect(labels).toEqual(['Past 24 h', 'Past week', 'Past month', 'Past year', 'Any time'])
+  })
+
   test('shows budget preview chips', async ({ page }) => {
     await mockBackend(page)
     await page.goto('/')
@@ -275,6 +287,18 @@ test.describe('Golden path: submit → complete → tabs', () => {
 
   test('run status strip appears after submission', async ({ page }) => {
     await expect(page.locator('.run-status')).toBeVisible({ timeout: 8_000 })
+  })
+
+  test('timeline has one run start and expanded fetch list pushes rows down', async ({ page }) => {
+    await expect(page.locator('section[aria-label="Run timeline"]')).toBeVisible({ timeout: 10_000 })
+
+    await expect(page.locator('.timeline-event--run_started')).toHaveCount(1)
+    await page.locator('.url-expand-toggle').click()
+    const fetchBox = await page.locator('.timeline-event--fetch_started').boundingBox()
+    const doneBox = await page.locator('.timeline-event--run_completed').boundingBox()
+    expect(fetchBox).not.toBeNull()
+    expect(doneBox).not.toBeNull()
+    expect(doneBox!.y).toBeGreaterThan(fetchBox!.y + fetchBox!.height - 1)
   })
 
   test('report renders after run completes', async ({ page }) => {

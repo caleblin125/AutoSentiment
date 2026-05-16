@@ -2,11 +2,12 @@ import asyncio
 
 import pytest
 import pytest_asyncio
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.api import event_bus, routes
 from app.core.config import Settings
-from app.models import Base, EvidenceChunk, Run
+from app.models import Base, EvidenceChunk, Run, RunEvent
 
 
 @pytest_asyncio.fixture
@@ -234,6 +235,80 @@ async def test_create_run_cache_is_depth_sensitive(monkeypatch, db_session) -> N
 
 
 @pytest.mark.asyncio
+async def test_create_run_reuses_similar_completed_evidence(monkeypatch, db_session) -> None:
+    launched: list[tuple] = []
+
+    async def fake_run_research(*args, **kwargs) -> None:
+        launched.append((args, kwargs))
+
+    monkeypatch.setattr(routes, "run_research", fake_run_research)
+
+    existing = Run(
+        topic="Tesla Model 3 reliability",
+        freshness="pm",
+        status="completed",
+        report={"metadata": {"research_depth": "standard"}, "overall": {"total": 1}},
+    )
+    db_session.add(existing)
+    await db_session.commit()
+    await db_session.refresh(existing)
+    db_session.add(EvidenceChunk(
+        run_id=existing.id,
+        url="https://news.example/reliability",
+        source_type="news",
+        snippet="Reliability improved.",
+        label="positive",
+        summary="reliability improved",
+    ))
+    await db_session.commit()
+
+    response = await routes.create_run(
+        routes.RunRequest(topic="Tesla Model 3 reliability concerns", freshness="pm"),
+        db=db_session,
+        settings=Settings(),
+    )
+
+    assert response.cached is False
+    assert response.reused_run_id == existing.id
+    copied = (await db_session.execute(
+        select(EvidenceChunk).where(EvidenceChunk.run_id == response.run_id)
+    )).scalars().all()
+    assert [chunk.url for chunk in copied] == ["https://news.example/reliability"]
+    await asyncio.sleep(0)
+    assert launched[0][0][4] == frozenset({"https://news.example/reliability"})
+    event_bus.deregister(response.run_id)
+
+
+@pytest.mark.asyncio
+async def test_create_run_applies_model_overrides(monkeypatch, db_session) -> None:
+    launched: list[tuple] = []
+
+    async def fake_run_research(*args, **kwargs) -> None:
+        launched.append((args, kwargs))
+
+    monkeypatch.setattr(routes, "run_research", fake_run_research)
+
+    response = await routes.create_run(
+        routes.RunRequest(
+            topic="model override",
+            freshness="pm",
+            nemoclaw_model="custom-nc",
+            lightweight_model="custom-light",
+            suggestion_model="custom-suggest",
+        ),
+        db=db_session,
+        settings=Settings(),
+    )
+
+    await asyncio.sleep(0)
+    settings = launched[0][0][3]
+    assert settings.nemoclaw_model == "custom-nc"
+    assert settings.lightweight_model == "custom-light"
+    assert settings.suggestion_model == "custom-suggest"
+    event_bus.deregister(response.run_id)
+
+
+@pytest.mark.asyncio
 async def test_create_run_finds_matching_depth_cache_behind_newer_depth(monkeypatch, db_session) -> None:
     async def fake_run_research(*_a, **_kw) -> None:
         return None
@@ -329,6 +404,12 @@ async def test_expand_run_creates_new_run_with_requested_depth(monkeypatch, db_s
     db_session.add(original)
     await db_session.commit()
     await db_session.refresh(original)
+    db_session.add_all([
+        RunEvent(run_id=original.id, seq=1, type="run_started", message="Run started", detail={}),
+        RunEvent(run_id=original.id, seq=2, type="search_queried", message="Search queried", detail={"query": "q"}),
+        RunEvent(run_id=original.id, seq=3, type="run_completed", message="Run completed", detail={}),
+    ])
+    await db_session.commit()
 
     settings = Settings(max_urls_per_run=10, max_items_per_run=50)
     response = await routes.expand_run(
@@ -354,6 +435,10 @@ async def test_expand_run_creates_new_run_with_requested_depth(monkeypatch, db_s
     assert kwargs["research_depth"] == "deep"
     assert kwargs["use_case"] == "entertainment_product"
     assert kwargs["depth_budget"]["query_count"] == 10
+    copied_events = (await db_session.execute(
+        select(RunEvent).where(RunEvent.run_id == response.run_id).order_by(RunEvent.seq)
+    )).scalars().all()
+    assert [event.type for event in copied_events] == ["search_queried"]
 
     event_bus.deregister(response.run_id)
 
@@ -441,7 +526,7 @@ async def test_start_nemoclaw_creates_sub_run(monkeypatch, db_session) -> None:
     await db_session.refresh(parent)
 
     settings = Settings()
-    response = await routes.start_nemoclaw(parent.id, db_session, settings)
+    response = await routes.start_nemoclaw(parent.id, None, db_session, settings)
     nc_run = await db_session.get(Run, response.run_id)
     assert nc_run is not None
     assert "[NemoClaw]" in nc_run.topic
@@ -452,6 +537,33 @@ async def test_start_nemoclaw_creates_sub_run(monkeypatch, db_session) -> None:
     _, topic, parent_id, _ = launched[0]
     assert topic == "AI safety"
     assert parent_id == parent.id
+
+
+@pytest.mark.asyncio
+async def test_start_nemoclaw_applies_model_override(monkeypatch, db_session) -> None:
+    launched: list[tuple] = []
+
+    async def fake_run_nemoclaw(*args, **_kw) -> None:
+        launched.append(args)
+
+    import app.agents.nemoclaw_agent as nc_mod
+    monkeypatch.setattr(nc_mod, "run_nemoclaw", fake_run_nemoclaw)
+
+    parent = Run(topic="AI safety", freshness=None, status="completed")
+    db_session.add(parent)
+    await db_session.commit()
+    await db_session.refresh(parent)
+
+    response = await routes.start_nemoclaw(
+        parent.id,
+        routes.NemoClawRequest(nemoclaw_model="custom-nemoclaw"),
+        db_session,
+        Settings(),
+    )
+
+    await asyncio.sleep(0)
+    assert launched[0][3].nemoclaw_model == "custom-nemoclaw"
+    event_bus.deregister(response.run_id)
 
     event_bus.deregister(response.run_id)
 

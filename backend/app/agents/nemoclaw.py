@@ -10,10 +10,6 @@ from app.agents.ollama import ollama_generate, ollama_generate_streaming
 if TYPE_CHECKING:
     from app.core.config import Settings
 
-# Fastest available model for low-latency suggestion generation.
-_SUGGEST_MODEL = "deepseek-r1:14b"
-
-
 async def suggest_angles(query: str, *, settings: Settings) -> list[str]:
     """Return 5 refined research-angle suggestions for the given query string.
 
@@ -37,7 +33,7 @@ async def suggest_angles(query: str, *, settings: Settings) -> list[str]:
         payload = await ollama_generate(
             prompt,
             system=system,
-            model=_SUGGEST_MODEL,
+            model=settings.suggestion_model,
             base_url=settings.ollama_base_url,
         )
         suggestions = payload.get("suggestions", [])

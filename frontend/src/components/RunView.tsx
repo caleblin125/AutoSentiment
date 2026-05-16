@@ -18,9 +18,9 @@ import { HistoryPanel } from './HistoryPanel'
 import { NemoClawPanel } from './NemoClawPanel'
 
 const FRESHNESS_OPTIONS = [
-  { value: 'pm', label: 'Past month' },
-  { value: 'pw', label: 'Past week' },
   { value: 'pd', label: 'Past 24 h' },
+  { value: 'pw', label: 'Past week' },
+  { value: 'pm', label: 'Past month' },
   { value: 'py', label: 'Past year' },
   { value: '',   label: 'Any time' },
 ] as const
@@ -73,6 +73,10 @@ export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMo
   const [showSuggestions, setShowSuggestions] = useState(false)
   const [suggestLoading, setSuggestLoading] = useState(false)
   const [searchPlan, setSearchPlan] = useState<SearchPlan | null>(null)
+  const [showModelSettings, setShowModelSettings] = useState(false)
+  const [nemoclawModel, setNemoclawModel] = useState('')
+  const [sentimentModel, setSentimentModel] = useState('')
+  const [suggestionModel, setSuggestionModel] = useState('')
   // Track the pre-expand runId so we can restore it if the expanded run is cancelled.
   const [preExpandRunId, setPreExpandRunId] = useState<string | null>(null)
   // Saved searches
@@ -172,6 +176,9 @@ export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMo
         ...(freshness ? { freshness: freshness as RunRequest['freshness'] } : {}),
         research_depth: researchDepth,
         use_case: useCase,
+        ...(nemoclawModel.trim() ? { nemoclaw_model: nemoclawModel.trim() } : {}),
+        ...(sentimentModel.trim() ? { lightweight_model: sentimentModel.trim() } : {}),
+        ...(suggestionModel.trim() ? { suggestion_model: suggestionModel.trim() } : {}),
       }
       const { run_id, cached: isCached } = await createRun(req)
       setRunId(run_id)
@@ -214,7 +221,7 @@ export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMo
   async function handleNemoClaw() {
     if (!runId) return
     try {
-      const { run_id } = await startNemoClaw(runId)
+      const { run_id } = await startNemoClaw(runId, nemoclawModel.trim() ? { nemoclaw_model: nemoclawModel.trim() } : undefined)
       setNcRunId(run_id)
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'NemoClaw failed to start')
@@ -227,13 +234,13 @@ export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMo
     if (!topic.trim() || suggestLoading) return
     setSuggestLoading(true)
     try {
-      const results = await suggestAngles(topic)
+      const results = await suggestAngles(topic, suggestionModel.trim() || undefined)
       setSuggestions(results)
       setShowSuggestions(results.length > 0)
     } finally {
       setSuggestLoading(false)
     }
-  }, [topic, suggestLoading])
+  }, [topic, suggestLoading, suggestionModel])
 
   function handleTopicChange(e: React.ChangeEvent<HTMLInputElement>) {
     setTopic(e.target.value)
@@ -404,6 +411,22 @@ export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMo
               ))}
             </div>
           )}
+          <div className="model-settings-row">
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => setShowModelSettings(v => !v)}
+            >
+              Models {showModelSettings ? '▲' : '▼'}
+            </button>
+            {showModelSettings && (
+              <div className="model-settings-grid">
+                <input value={nemoclawModel} onChange={e => setNemoclawModel(e.target.value)} placeholder="NemoClaw model" />
+                <input value={sentimentModel} onChange={e => setSentimentModel(e.target.value)} placeholder="Sentiment model" />
+                <input value={suggestionModel} onChange={e => setSuggestionModel(e.target.value)} placeholder="Suggestions model" />
+              </div>
+            )}
+          </div>
           {/* ── Saved searches row ── */}
           <div className="saved-search-row">
             {showSaveInput ? (

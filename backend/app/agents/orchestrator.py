@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
 import httpx
+from sqlalchemy import select
 
 from app.api import event_bus
 from app.api.event_bus import clear_cancel, is_cancelled, request_cancel as _request_cancel  # noqa: F401
@@ -34,6 +35,7 @@ from app.reports.builder import (
 )
 from app.search_planner import build_search_plan, record_brave_query
 from app.tools.search import brave_search, is_cached_search
+from app.tools.media_apis import supplemental_media_search
 
 if TYPE_CHECKING:
     from app.core.config import Settings
@@ -220,6 +222,25 @@ async def run_research(
                     urls.append(url)
                     if len(urls) >= settings.max_urls_per_run:
                         break
+            if (
+                getattr(settings, "enable_media_api_search", True)
+                and settings.brave_api_key
+                and len(urls) < settings.max_urls_per_run
+            ):
+                try:
+                    api_urls = await supplemental_media_search(
+                        topic,
+                        limit=settings.max_urls_per_run - len(urls),
+                    )
+                except Exception:
+                    api_urls = []
+                for url in api_urls:
+                    if url in seen_urls or url in skip_urls:
+                        continue
+                    seen_urls.add(url)
+                    urls.append(url)
+                    if len(urls) >= settings.max_urls_per_run:
+                        break
             urls = _select_diverse_urls(urls, settings.max_urls_per_run)
             timings["search_ms"] = _elapsed_ms(stage_started)
 
@@ -391,6 +412,12 @@ async def run_research(
             timings["sentiment_cache_hits"] = float(max(0, len(fetched_items) - len(sentiment_tasks)))
 
             # ── Stage 5: synthesis ──────────────────────────────────────────
+            # Expanded and similar-topic runs can seed existing evidence before
+            # new fetching starts; merge all stored chunks into this report.
+            all_chunks_result = await db.execute(
+                select(EvidenceChunk).where(EvidenceChunk.run_id == run_id)
+            )
+            chunks = list(all_chunks_result.scalars().all())
             counts = compute_counts(chunks)
             top_positive = pick_top_quotes(chunks, SentimentLabel.POSITIVE)
             top_negative = pick_top_quotes(chunks, SentimentLabel.NEGATIVE)
