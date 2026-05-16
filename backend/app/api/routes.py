@@ -2,9 +2,10 @@ import asyncio
 import json
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, field_validator
+from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api import event_bus
@@ -69,6 +70,37 @@ def _evidence_to_dict(chunk: EvidenceChunk) -> dict:
 @router.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@router.get("/runs")
+async def list_runs(
+    topic: Optional[str] = Query(default=None),
+    limit: int = Query(default=20, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+) -> list[dict]:
+    """Return recent completed runs, optionally filtered by exact topic match.
+
+    Used by the frontend to build the historical sentiment chart.
+    """
+    stmt = (
+        select(Run)
+        .where(Run.status == "completed")
+        .order_by(desc(Run.created_at))
+        .limit(limit)
+    )
+    if topic:
+        stmt = stmt.where(Run.topic == topic)
+    result = await db.execute(stmt)
+    runs = result.scalars().all()
+    return [
+        {
+            "id": run.id,
+            "topic": run.topic,
+            "created_at": run.created_at.isoformat(),
+            "overall": run.report.get("overall") if run.report else None,
+        }
+        for run in runs
+    ]
 
 
 @router.post("/runs", response_model=RunResponse)

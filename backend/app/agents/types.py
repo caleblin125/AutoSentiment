@@ -27,6 +27,7 @@ class Freshness(StrEnum):
 class SSEEventType(StrEnum):
     RUN_STARTED = "run_started"
     SEARCH_QUERIED = "search_queried"
+    FETCH_STARTED = "fetch_started"
     URL_FETCHED = "url_fetched"
     ITEM_ANALYZED = "item_analyzed"
     SYNTHESIS_STARTED = "synthesis_started"

@@ -41,7 +41,7 @@ export default function App() {
           </section>
         )}
         {runId && <EventTimeline events={events} status={status} />}
-        {report && runId && <ReportView runId={runId} report={report} />}
+        {report && runId && activeTopic && <ReportView runId={runId} topic={activeTopic} report={report} />}
       </main>
     </div>
   )

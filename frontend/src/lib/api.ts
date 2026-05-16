@@ -92,11 +92,21 @@ export interface GraphEdge {
   weight: number
 }
 
+// ── Run history ─────────────────────────────────────────────────────────────
+
+export interface RunSummary {
+  id: string
+  topic: string
+  created_at: string
+  overall: { positive: number; neutral: number; negative: number; total: number } | null
+}
+
 // ── SSE event types ─────────────────────────────────────────────────────────
 
 export type SSEEventType =
   | 'run_started'
   | 'search_queried'
+  | 'fetch_started'
   | 'url_fetched'
   | 'item_analyzed'
   | 'synthesis_started'
@@ -107,6 +117,7 @@ export interface SSEEvent {
   seq: number
   type: SSEEventType
   message: string
+  /** All detail fields, plus server-injected elapsed_ms (ms since run start). */
   detail: Record<string, unknown>
 }
 
@@ -138,4 +149,12 @@ export async function getEvidence(runId: string, chunkId: string): Promise<Evide
 
 export function getEventsUrl(runId: string): string {
   return `${API_BASE_URL}/api/runs/${encodeURIComponent(runId)}/events`
+}
+
+export async function listRuns(topic?: string, limit = 20): Promise<RunSummary[]> {
+  const params = new URLSearchParams({ limit: String(limit) })
+  if (topic) params.set('topic', topic)
+  const res = await fetch(`${API_BASE_URL}/api/runs?${params}`)
+  if (!res.ok) throw new Error(`GET /api/runs failed: ${res.status}`)
+  return res.json()
 }
