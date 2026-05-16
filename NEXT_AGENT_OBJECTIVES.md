@@ -483,6 +483,12 @@ Implemented the first pass of Objectives 5 and 6:
 - Frontend report now renders use-case decision cards and compact analyst data cards.
 - Added tests for entertainment-mode insights and chart data.
 
+Implemented the first pass of Objective 7:
+
+- Graph now hides zero-count sentiment nodes.
+- Added graph controls for showing/hiding source nodes and topic/theme/aspect nodes.
+- Graph node positions persist per run in localStorage after right-drag/repositioning.
+
 ```bash
 cd /home/asus/AutoSentiment/frontend
 npm run lint

@@ -7,7 +7,7 @@
  *   Left-click sentiment node → calls onNodeClick to scroll to quotes
  *   Right-click + drag → reposition node
  */
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { EvidenceChunk, GraphEdge, GraphNode, IdeaGraph } from '../lib/api'
 import { getEvidence } from '../lib/api'
 
@@ -42,7 +42,7 @@ function shortLabel(label: string): string {
 
 // ── Force simulation ──────────────────────────────────────────────────────
 
-function useForce(nodes: GraphNode[], edges: GraphEdge[]) {
+function useForce(nodes: GraphNode[], edges: GraphEdge[], storageKey: string) {
   const simRef = useRef<NodeSim[]>([])
   const [positions, setPositions] = useState<Map<string, Vec2>>(new Map())
   const rafRef = useRef(0)
@@ -51,17 +51,18 @@ function useForce(nodes: GraphNode[], edges: GraphEdge[]) {
 
   useLayoutEffect(() => {
     simRef.current = nodes.map((node, i) => {
+      const saved = restorePosition(storageKey, node.id)
       const angle = (2 * Math.PI * i) / Math.max(1, nodes.length)
       const r = Math.min(W, H) * 0.28
       return {
         id: node.id,
-        pos: { x: W / 2 + r * Math.cos(angle), y: H / 2 + r * Math.sin(angle) },
+        pos: saved ?? { x: W / 2 + r * Math.cos(angle), y: H / 2 + r * Math.sin(angle) },
         vel: { x: (Math.random() - 0.5) * 2, y: (Math.random() - 0.5) * 2 },
         fixed: false,
       }
     })
     idxMap.current = new Map(simRef.current.map((s, i) => [s.id, i]))
-  }, [nodes])
+  }, [nodes, storageKey])
 
   useEffect(() => {
     function tick() {
@@ -113,12 +114,13 @@ function useForce(nodes: GraphNode[], edges: GraphEdge[]) {
         next.set(s.id, { x: s.pos.x, y: s.pos.y })
       }
       setPositions(next)
+      persistPositions(storageKey, states)
       rafRef.current = requestAnimationFrame(tick)
     }
 
     rafRef.current = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(rafRef.current)
-  }, [nodes, edges])
+  }, [nodes, edges, storageKey])
 
   // Right-click drag handler
   function onContextMenu(nodeId: string, e: React.MouseEvent<SVGElement>) {
@@ -155,6 +157,29 @@ function useForce(nodes: GraphNode[], edges: GraphEdge[]) {
   }
 
   return { positions, onContextMenu }
+}
+
+function restorePosition(storageKey: string, nodeId: string): Vec2 | null {
+  try {
+    const raw = localStorage.getItem(storageKey)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as Record<string, Vec2>
+    const pos = parsed[nodeId]
+    if (!pos || typeof pos.x !== 'number' || typeof pos.y !== 'number') return null
+    return pos
+  } catch {
+    return null
+  }
+}
+
+function persistPositions(storageKey: string, states: NodeSim[]) {
+  try {
+    const payload: Record<string, Vec2> = {}
+    for (const state of states) payload[state.id] = { x: state.pos.x, y: state.pos.y }
+    localStorage.setItem(storageKey, JSON.stringify(payload))
+  } catch {
+    // Ignore storage quota and private browsing failures.
+  }
 }
 
 // ── Popover for source node URLs ──────────────────────────────────────────
@@ -303,7 +328,19 @@ interface Props {
 }
 
 export function ForceGraph({ graph, runId, onNodeClick }: Props) {
-  const { positions, onContextMenu } = useForce(graph.nodes, graph.edges)
+  const [showSources, setShowSources] = useState(true)
+  const [showAspects, setShowAspects] = useState(true)
+  const visibleNodes = useMemo(() => graph.nodes.filter(node => {
+    if (node.kind === 'sentiment' && node.weight <= 0) return false
+    if (node.kind === 'source' && !showSources) return false
+    if ((node.kind === 'aspect' || node.kind === 'theme') && !showAspects) return false
+    return true
+  }), [graph.nodes, showSources, showAspects])
+  const visibleEdges = useMemo(() => {
+    const visibleIds = new Set(visibleNodes.map(node => node.id))
+    return graph.edges.filter(edge => visibleIds.has(edge.source) && visibleIds.has(edge.target))
+  }, [graph.edges, visibleNodes])
+  const { positions, onContextMenu } = useForce(visibleNodes, visibleEdges, `autosentiment_graph:${runId}`)
   const [popover, setPopover] = useState<PopoverState | null>(null)
   const [topicDetail, setTopicDetail] = useState<TopicDetailState | null>(null)
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -344,6 +381,10 @@ export function ForceGraph({ graph, runId, onNodeClick }: Props) {
         Idea graph
         <span className="graph-hint">left-click theme/sentiment = jump to quotes · left-click source = links · right-drag = reposition</span>
       </h3>
+      <div className="graph-controls">
+        <label><input type="checkbox" checked={showSources} onChange={e => setShowSources(e.target.checked)} /> sources</label>
+        <label><input type="checkbox" checked={showAspects} onChange={e => setShowAspects(e.target.checked)} /> topics</label>
+      </div>
 
       <svg
         className="idea-graph idea-graph--force"
@@ -358,7 +399,7 @@ export function ForceGraph({ graph, runId, onNodeClick }: Props) {
         </defs>
 
         {/* Edges */}
-        {graph.edges.map(edge => {
+        {visibleEdges.map(edge => {
           const s = positions.get(edge.source)
           const t = positions.get(edge.target)
           if (!s || !t) return null
@@ -374,7 +415,7 @@ export function ForceGraph({ graph, runId, onNodeClick }: Props) {
         })}
 
         {/* Nodes */}
-        {graph.nodes.map(node => {
+        {visibleNodes.map(node => {
           const pos = positions.get(node.id)
           if (!pos) return null
           const r = nodeRadius(node)
