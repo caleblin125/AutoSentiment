@@ -93,6 +93,29 @@ async def test_ollama_generate_extracts_json_from_fenced_response(monkeypatch) -
 
 
 @pytest.mark.asyncio
+async def test_ollama_generate_accepts_array_response(monkeypatch) -> None:
+    """Batch prompts can legitimately return a top-level JSON array."""
+    body = json.dumps({
+        "response": '[{"label": "positive", "summary": "likes it"}]',
+        "done": True,
+    }).encode() + b"\n"
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=body)
+
+    orig = httpx.AsyncClient
+    monkeypatch.setattr(
+        httpx,
+        "AsyncClient",
+        lambda **kwargs: orig(**{**kwargs, "transport": httpx.MockTransport(handler)}),
+    )
+
+    result = await ollama_generate("prompt", system="system", model="model", base_url="http://ollama")
+
+    assert result == [{"label": "positive", "summary": "likes it"}]
+
+
+@pytest.mark.asyncio
 async def test_ollama_generate_raises_value_error_for_unparseable_response(monkeypatch) -> None:
     body = json.dumps({"response": "not json", "done": True}).encode() + b"\n"
 

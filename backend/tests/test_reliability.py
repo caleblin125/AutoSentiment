@@ -133,6 +133,38 @@ async def test_analyze_batch_returns_correct_count(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
+async def test_analyze_batch_pads_short_model_response(monkeypatch) -> None:
+    async def short_generate(*_args, **_kwargs):
+        return {"results": [
+            {"label": "positive", "summary": "likes feature", "confidence": 0.9},
+        ]}
+
+    monkeypatch.setattr("app.agents.light_queue.ollama_generate", short_generate)
+
+    results = await SentimentQueue(Settings()).analyze_batch(["good", "missing"])
+
+    assert len(results) == 2
+    assert results[0].label == SentimentLabel.POSITIVE
+    assert results[1].label == SentimentLabel.NEUTRAL
+    assert results[1].summary == "neutral signal"
+
+
+@pytest.mark.asyncio
+async def test_analyze_batch_accepts_numbered_dict_payload(monkeypatch) -> None:
+    async def numbered_generate(*_args, **_kwargs):
+        return {"results": {
+            "1": {"label": "negative", "summary": "dislikes price"},
+            "0": {"label": "neutral", "summary": "mixed view"},
+        }}
+
+    monkeypatch.setattr("app.agents.light_queue.ollama_generate", numbered_generate)
+
+    results = await SentimentQueue(Settings()).analyze_batch(["mixed", "bad"])
+
+    assert [result.label for result in results] == [SentimentLabel.NEUTRAL, SentimentLabel.NEGATIVE]
+
+
+@pytest.mark.asyncio
 async def test_analyze_batch_handles_empty_list() -> None:
     queue = SentimentQueue(Settings())
     results = await queue.analyze_batch([])
@@ -153,7 +185,7 @@ async def test_analyze_batch_falls_back_on_failure(monkeypatch) -> None:
 
     assert len(results) == 2
     assert all(isinstance(r, SentimentResult) for r in results)
-    assert all("batch" in r.summary.lower() for r in results)
+    assert all(r.summary == "neutral signal" for r in results)
 
 
 # ── Fetch retry tests ─────────────────────────────────────────────────────────

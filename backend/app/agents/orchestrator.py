@@ -439,7 +439,7 @@ async def run_research(
                     if j < len(batch_results):
                         cached_results[idx] = batch_results[j]
                     else:
-                        cached_results[idx] = SentimentResult(label=SentimentLabel.NEUTRAL, summary="batch miss")
+                        cached_results[idx] = SentimentResult(label=SentimentLabel.NEUTRAL, summary="neutral signal")
 
             # Map results back to all fetched items (including duplicates).
             for item in fetched_items:

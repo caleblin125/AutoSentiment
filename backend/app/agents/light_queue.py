@@ -67,17 +67,17 @@ class SentimentQueue:
         truncated = [s[:_MAX_SNIPPET_CHARS] for s in snippets]
         system = (
             "You are a JSON-only sentiment classifier. "
-            "Output must be a JSON array. No explanations, no markdown."
+            "Output must be a JSON object. No explanations, no markdown."
         )
         items = "\n".join(
             f"[{idx}] {text}" for idx, text in enumerate(truncated)
         )
         prompt = (
             "Classify the sentiment of each of the following texts.\n"
-            "Return a JSON array of objects, one per text, in order:\n"
-            '[{"label": "positive"|"neutral"|"negative", '
+            "Return exactly one JSON object with a results array, one object per text, in order:\n"
+            '{"results": [{"label": "positive"|"neutral"|"negative", '
             '"summary": "<3-5 words>", '
-            '"confidence": <0.0-1.0>}]\n\n'
+            '"confidence": <0.0-1.0>}]}\n\n'
             f"{items}"
         )
 
@@ -91,14 +91,7 @@ class SentimentQueue:
                     base_url=self._settings.ollama_base_url,
                     cancel_check=self._cancel_check,
                 )
-                # Response may be a JSON array or a dict with a key containing the array.
-                items_raw = payload if isinstance(payload, list) else payload.get("results", payload.get("items", []))
-                if not isinstance(items_raw, list):
-                    raise ValueError(f"Expected JSON array, got {type(items_raw)}")
-                return [
-                    self._parse_batch_item(item, idx)
-                    for idx, item in enumerate(items_raw)
-                ][:len(snippets)]
+                return self._normalize_batch_payload(payload, len(snippets))
             except GenerationCancelled:
                 raise
             except Exception as exc:
@@ -108,11 +101,51 @@ class SentimentQueue:
                     continue
 
         logger.exception("Batch sentiment call failed after %d attempts", _MAX_RETRIES + 1, exc_info=last_exc)
-        return [SentimentResult(label=SentimentLabel.NEUTRAL, summary="batch parse error") for _ in snippets]
+        return [
+            SentimentResult(label=SentimentLabel.NEUTRAL, summary=_SUMMARY_BY_LABEL[SentimentLabel.NEUTRAL])
+            for _ in snippets
+        ]
+
+    def _normalize_batch_payload(self, payload: object, expected_count: int) -> list[SentimentResult]:
+        """Return exactly one result per requested snippet.
+
+        Local models occasionally omit trailing batch items or wrap the array in
+        different keys. Padding missing rows here prevents user-visible
+        "batch miss" artifacts while still preserving every analyzable result.
+        """
+        items_raw: object
+        if isinstance(payload, list):
+            items_raw = payload
+        elif isinstance(payload, dict):
+            items_raw = (
+                payload.get("results")
+                or payload.get("items")
+                or payload.get("sentiments")
+                or payload.get("classifications")
+                or []
+            )
+            if isinstance(items_raw, dict):
+                items_raw = [
+                    items_raw[key]
+                    for key in sorted(items_raw, key=lambda value: int(value) if str(value).isdigit() else str(value))
+                ]
+        else:
+            items_raw = []
+
+        if not isinstance(items_raw, list):
+            raise ValueError(f"Expected batch results list, got {type(items_raw)}")
+
+        results = [
+            self._parse_batch_item(item, idx)
+            for idx, item in enumerate(items_raw[:expected_count])
+        ]
+        while len(results) < expected_count:
+            results.append(SentimentResult(label=SentimentLabel.NEUTRAL, summary=_SUMMARY_BY_LABEL[SentimentLabel.NEUTRAL]))
+        return results
 
     def _parse_batch_item(self, item, idx: int) -> SentimentResult:
         if not isinstance(item, dict):
-            return SentimentResult(label=SentimentLabel.NEUTRAL, summary=f"batch[{idx}] non-dict")
+            return SentimentResult(label=SentimentLabel.NEUTRAL, summary=_SUMMARY_BY_LABEL[SentimentLabel.NEUTRAL])
         label = _coerce_label(item.get("label"))
         summary = str(item.get("summary") or _SUMMARY_BY_LABEL[label]).strip()
         try:

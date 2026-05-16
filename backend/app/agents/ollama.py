@@ -64,9 +64,9 @@ def _circuit_breaker_record_failure(model: str) -> None:
 
 async def _with_retry(
     model: str,
-    fn: Callable[[], dict],
+    fn: Callable[[], dict | list],
     retriable: Callable[[Exception], bool],
-) -> dict:
+) -> dict | list:
     """Execute fn with exponential backoff retry and circuit breaker check."""
     _circuit_breaker_check(model)
 
@@ -117,7 +117,7 @@ async def ollama_generate(
     model: str,
     base_url: str,
     cancel_check: Callable[[], bool] | None = None,
-) -> dict:
+) -> dict | list:
     """Stream from Ollama /api/generate with format=json; return parsed response dict.
 
     Retries up to 3 times with exponential backoff on transient failures.
@@ -214,7 +214,7 @@ def _pick_text(response: str, thinking: str) -> str:
     return thinking.strip()
 
 
-def _parse_model_json(text: str) -> dict:
+def _parse_model_json(text: str) -> dict | list:
     raw = text.strip()
     if not raw:
         raise ValueError("Empty response from model")
@@ -224,7 +224,7 @@ def _parse_model_json(text: str) -> dict:
             parsed = json.loads(candidate)
         except json.JSONDecodeError:
             continue
-        if isinstance(parsed, dict):
+        if isinstance(parsed, dict | list):
             return parsed
     raise ValueError(raw)
 
@@ -233,7 +233,14 @@ def _json_candidates(text: str) -> list[str]:
     candidates: list[str] = []
     for match in re.finditer(r"```(?:json)?\s*(.*?)```", text, flags=re.DOTALL | re.IGNORECASE):
         candidates.append(match.group(1).strip())
-    start = text.find("{")
+    candidates.extend(_balanced_json_candidates(text, "{", "}"))
+    candidates.extend(_balanced_json_candidates(text, "[", "]"))
+    return candidates
+
+
+def _balanced_json_candidates(text: str, open_char: str, close_char: str) -> list[str]:
+    candidates: list[str] = []
+    start = text.find(open_char)
     while start != -1:
         depth = 0
         in_string = False
@@ -246,11 +253,12 @@ def _json_candidates(text: str) -> list[str]:
                 elif char == '"': in_string = False
                 continue
             if char == '"': in_string = True
-            elif char == "{": depth += 1
-            elif char == "}":
+            elif char == open_char:
+                depth += 1
+            elif char == close_char:
                 depth -= 1
                 if depth == 0:
                     candidates.append(text[start:idx + 1])
                     break
-        start = text.find("{", start + 1)
+        start = text.find(open_char, start + 1)
     return candidates
