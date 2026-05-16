@@ -1,5 +1,10 @@
 # `app.retrieve` — evidence retrieval
 
+## Model split
+
+- Default retrieval is **non-LLM** (FTS5 / keyword).
+- Optional: pass top candidates through **`LightweightModelQueue`** (`LightJobKind.CHUNK_QUICK_FILTER` or snippet rerank) before feeding the report builder — keeps cost low versus running Nemoclaw on every chunk.
+
 ## Must implement
 
 - [ ] **Query chunks scoped to `run_id`** (never leak other runs).

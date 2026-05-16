@@ -2,15 +2,22 @@
 
 Autonomous, **citation-backed** web research: a Python API runs multi-step investigation loops (search, fetch, chunk, retrieve, summarize) and streams progress to a React UI over **SSE**.
 
-This repo is scaffolded for a **short hackathon** — minimal moving parts: **FastAPI + SQLite**, **no job queue**, **httpx** + HTML extraction (no Playwright in v0 unless you finish early).
+**Nemoclaw** (orchestrator model) **organizes and structures** what is searched and how work is ordered. **Smaller models** run behind a **queued, concurrency-capped** path for faster, lighter, cheaper **search-facing** LLM tasks (query expansion, snippet scoring, quick filters). See [`docs/IMPLEMENTATION.md`](docs/IMPLEMENTATION.md) for the two-tier flow.
+
+This repo is scaffolded for a **short hackathon** — minimal moving parts: **FastAPI + SQLite**, in-process lightweight queue (no distributed worker cluster required for v0), **httpx** + HTML extraction (no Playwright in v0 unless you finish early).
+
+## Hackathon environment (NemoClaw)
+
+Official event context and how **`NEMCLAW_MODEL` / `LIGHTWEIGHT_MODEL`** map to the **NVIDIA NemoClaw** stack (OpenShell, inference routing) are summarized in **[`docs/HACKATHON_ENV.md`](docs/HACKATHON_ENV.md)**. The live Nemoclaw tab is **[shortesthack.com/?tab=nemoclaw](https://www.shortesthack.com/?tab=nemoclaw)** — use the in-browser instructions there with NemoClaw docs for authoritative setup.
 
 ## Repository layout
 
 | Path | Role |
 |------|------|
-| [`backend/`](backend/) | FastAPI app, agent orchestration, storage, SSE |
+| [`backend/`](backend/) | FastAPI app, Nemoclaw planning, lightweight queue, storage, SSE |
 | [`frontend/`](frontend/) | Vite + React + TypeScript UI |
 | [`docs/IMPLEMENTATION.md`](docs/IMPLEMENTATION.md) | **What must be implemented** (acceptance criteria & checklist) |
+| [`docs/HACKATHON_ENV.md`](docs/HACKATHON_ENV.md) | **NemoClaw / Hack-a-Claw** environment mapping |
 
 Each backend submodule and the frontend include an **`IMPLEMENTATION.md`** with concrete tasks.
 
@@ -44,6 +51,7 @@ Set `VITE_API_URL` in `frontend/.env` if the API is not the default `http://loca
 ## Configuration
 
 - Copy `backend/.env.example` to `backend/.env` and fill secrets (e.g. search/API keys). The app should fail fast with clear errors if a required key is missing.
+- **Orchestrator (NemoClaw / planning route):** `NEMCLAW_MODEL` — must match the **model id or alias** from your hackathon NemoClaw inference setup. **Light tier:** `LIGHTWEIGHT_MODEL`, `LIGHT_QUEUE_MAX_PARALLEL` for cheaper search-facing calls. See [`docs/HACKATHON_ENV.md`](docs/HACKATHON_ENV.md).
 
 ## Vision (beyond the hackathon)
 

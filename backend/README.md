@@ -2,12 +2,12 @@
 
 ## What to build
 
-See **[`../docs/IMPLEMENTATION.md`](../docs/IMPLEMENTATION.md)** for MVP acceptance criteria.
+See **[`../docs/IMPLEMENTATION.md`](../docs/IMPLEMENTATION.md)** for MVP acceptance criteria and **[`../docs/HACKATHON_ENV.md`](../docs/HACKATHON_ENV.md)** for the NemoClaw / Hack-a-Claw environment.
 
 Per-module task lists:
 
+- [`app/agents/IMPLEMENTATION.md`](app/agents/IMPLEMENTATION.md) *(Nemoclaw + lightweight queue)*
 - [`app/api/IMPLEMENTATION.md`](app/api/IMPLEMENTATION.md)
-- [`app/agents/IMPLEMENTATION.md`](app/agents/IMPLEMENTATION.md)
 - [`app/ingest/IMPLEMENTATION.md`](app/ingest/IMPLEMENTATION.md)
 - [`app/retrieve/IMPLEMENTATION.md`](app/retrieve/IMPLEMENTATION.md)
 - [`app/memory/IMPLEMENTATION.md`](app/memory/IMPLEMENTATION.md)
