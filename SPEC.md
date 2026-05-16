@@ -1,5 +1,7 @@
 # AutoSentiment — Project Spec
 
+> **Note:** This is the original spec from May 15, 2026. The project has far exceeded these requirements. See [README.md](README.md) for the current state and [NEXT_AGENT_OBJECTIVES.md](NEXT_AGENT_OBJECTIVES.md) for the evolution trail.
+
 Autonomous brand/topic sentiment analysis from Reddit and news. The user types a keyword and picks a time window; the system searches, fetches, runs per-item sentiment with a fast 30B model, synthesizes an aggregate report with a 120B model, and streams every step to the UI in real time.
 
 ## Hardware & Inference

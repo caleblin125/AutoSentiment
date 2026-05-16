@@ -32,8 +32,10 @@ Every opinion links back to its source URL. Every claim shows corroborating doma
 |---|---|
 | **Python 3.12+** | Backend |
 | **Node.js 20+** | Frontend |
-| **Ollama** | Local LLM server — [ollama.ai](https://ollama.ai) |
+| **Ollama** or **llama.cpp server** | Local LLM inference — [ollama.ai](https://ollama.ai) |
 | **Brave Search API key** | Free tier: 1 req/s, 2,000 queries/month — [brave.com/search/api](https://brave.com/search/api/) |
+
+> **Note:** For llama.cpp, benchmark with `python3 scripts/benchmark_llamacpp.py` to compare throughput against Ollama.
 
 ### Ollama models
 
@@ -256,10 +258,10 @@ Before running, configure three optional settings:
 **Research depth** — controls how many queries, URLs, and items are analysed:
 | Preset | Queries | URLs | Items | Best for |
 |---|---|---|---|---|
-| Quick | ~6 | ~20 | ~60 | Fast gut-check |
-| Standard | ~10 | ~40 | ~120 | Everyday research |
-| Deep | ~14 | ~70 | ~200 | Thorough analysis |
-| Exhaustive | ~20 | ~120 | ~360 | Maximum coverage |
+| Quick | 3 | 12 | 40 | Fast gut-check |
+| Standard | 6 | 30 | 100 | Everyday research |
+| Deep | 10 | 60 | 180 | Thorough analysis |
+| Exhaustive | 16 | 100 | 300 | Maximum coverage |
 
 **Use case** — shapes which report sections are emphasised:
 - Generic (default)
@@ -323,13 +325,28 @@ Open multiple tabs using the **+** button in the tab bar. Each tab is an indepen
 
 After a run completes, click **NemoClaw** to activate the autonomous research agent. NemoClaw generates expert research angles based on the initial report, searches independently, and produces structured analysis with a verdict and supporting findings.
 
+### 13. NemoClaw self-analysis
+
+Run NemoClaw against the project itself for an architectural audit:
+
+```bash
+cd backend && source .venv/bin/activate
+RUN_SELF_ANALYSIS=1 pytest tests/test_self_analysis.py -v -s
+```
+
+The 120B model reads all project docs and code, then outputs a structured report with: verdict, strengths, problems (severity + area + impact), concrete suggestions (priority + effort), missing features, and risks. Results are also saved to `/tmp/autosentiment_self_analysis.md`.
+
 ### Keyboard shortcuts
 
 | Shortcut | Action |
 |---|---|
 | `Ctrl+Enter` | Start / submit search |
-| `Ctrl+K` | Focus search input |
-| `Escape` | Close modal |
+| `Ctrl+T` | New tab |
+| `Ctrl+W` | Close active tab |
+| `Ctrl+Tab` / `Ctrl+Shift+Tab` | Cycle tabs forward / backward |
+| `1`–`7` | Switch report tabs (Summary, Topics, Timeline, Evidence, Claims, Graph, Performance) |
+| `Escape` | Close modal / evidence inspector |
+| `?` | Show keyboard shortcut help |
 | `Ctrl+Shift+D` | Toggle dev overlay (SSE queue stats, model info) |
 
 ---
@@ -357,7 +374,7 @@ source .venv/bin/activate
 pytest tests/ -v
 ```
 
-142 tests covering the pipeline, report builder, LLM client, search, fetch, and API routes. Two tests are skipped (require a live Ollama connection).
+117 tests covering the pipeline, report builder, LLM client, search, fetch, API routes, media APIs, and property-based invariants. Two tests are skipped (require a live Ollama connection or E2E environment).
 
 See [`backend/tests/README.md`](backend/tests/README.md) for a full description of every test file and what each test covers.
 
@@ -482,11 +499,18 @@ AutoSentiment/
         │   ├── RunView.tsx          # Search form, depth/use-case selectors, live stage
         │   ├── ReportView.tsx       # Tabbed report layout
         │   ├── ForceGraph.tsx       # Physics-based idea graph
-        │   ├── HistoryPanel.tsx     # Run history with filter
-        │   ├── EvidenceModal.tsx    # Full-snippet inspection modal
+        │   ├── HistoryPanel.tsx     # Run history with filter + cancel
+        │   ├── EvidenceModal.tsx    # Snippet inspector with keyword highlighting
+        │   ├── ClaimsSection.tsx    # Fact-check + contradiction cards
+        │   ├── SourceFacts.tsx      # Source-type accordion with URL links
+        │   ├── CompareView.tsx      # Multi-topic side-by-side comparison
+        │   ├── TabBar.tsx           # Draggable tab bar with running-count pill
+        │   ├── HistoryChart.tsx     # Sentiment trend SVG chart
         │   ├── NemoClawPanel.tsx    # NemoClaw agent UI
+        │   ├── ErrorBoundary.tsx    # React error boundary wrapper
         │   └── DevOverlay.tsx       # Dev stats panel (Ctrl+Shift+D)
         ├── hooks/useRunStream.ts    # SSE consumer hook
+        ├── hooks/useKeyboardShortcuts.ts  # Keyboard shortcut handler
         └── lib/api.ts               # Typed API client + all TypeScript interfaces
 ```
 
