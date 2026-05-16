@@ -1,17 +1,13 @@
-"""Queued, concurrency-capped execution for lightweight models (search-tier LLM work).
-
-Jobs are **not** meant for heavy reasoning — use Nemoclaw for planning and for
-final synthesis when quality requires it. This tier stays fast, cheap, and parallel
-up to `light_queue_max_parallel`.
-"""
+"""30B model (nemotron-3-nano via Ollama) — per-item sentiment, queued and concurrency-capped."""
 
 from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
-from app.agents.types import LightJobKind
+from app.agents.ollama import ollama_generate
+from app.agents.types import SentimentLabel, SentimentResult
 
 if TYPE_CHECKING:
     from app.core.config import Settings
@@ -19,29 +15,42 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class LightweightModelQueue:
-    """In-process queue: lightweight model calls share a bounded worker pool.
+class SentimentQueue:
+    """Bounded-parallel queue for 30B sentiment calls.
 
-    Hackathon: semaphore-backed dispatch in one process. Swap for Redis/Celery
-    if you need cross-machine workers later.
+    Each call sends one snippet to the model and returns a SentimentResult.
+    Concurrency is capped at settings.light_queue_max_parallel.
     """
 
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
         self._sem = asyncio.Semaphore(max(1, settings.light_queue_max_parallel))
 
-    async def run(self, kind: LightJobKind, payload: dict[str, Any]) -> dict[str, Any]:
-        """Enqueue logic: wait for a worker slot, then run the lightweight model."""
+    async def analyze(self, snippet: str) -> SentimentResult:
         async with self._sem:
-            return await self._invoke(kind, payload)
+            return await self._call_model(snippet)
 
-    async def _invoke(self, kind: LightJobKind, payload: dict[str, Any]) -> dict[str, Any]:
-        """Route to provider using `settings.lightweight_model`. Implement in this module."""
-        logger.debug("light_queue job kind=%s model=%s", kind, self._settings.lightweight_model)
-        # TODO: HTTP/SDK call to lightweight model with short prompts (see tools/IMPLEMENTATION.md)
-        del payload
-        return {
-            "kind": str(kind),
-            "model": self._settings.lightweight_model,
-            "status": "not_implemented",
-        }
+    async def _call_model(self, snippet: str) -> SentimentResult:
+        """POST to Ollama /api/generate with the 30B model. Return label + 3-5 word summary."""
+        system = "You are a sentiment classifier. Respond with JSON only. No explanation."
+        prompt = (
+            "Classify the sentiment of the following text.\n"
+            "Return exactly: {\"label\": \"positive\" | \"neutral\" | \"negative\", "
+            "\"summary\": \"<3-5 words describing the author's opinion>\"}\n\n"
+            f"Text:\n{snippet}"
+        )
+
+        try:
+            payload = await ollama_generate(
+                prompt,
+                system=system,
+                model=self._settings.lightweight_model,
+                base_url=self._settings.ollama_base_url,
+            )
+            return SentimentResult(
+                label=SentimentLabel(str(payload["label"])),
+                summary=str(payload["summary"]),
+            )
+        except Exception:
+            logger.exception("Sentiment model call failed")
+            return SentimentResult(label=SentimentLabel.NEUTRAL, summary="parse error")

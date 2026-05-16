@@ -1,5 +1,3 @@
-"""Application settings — loaded from environment (see .env.example)."""
-
 from functools import lru_cache
 
 from pydantic import Field
@@ -11,23 +9,25 @@ class Settings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         extra="ignore",
+        # Tests and local scripts should be able to pass Python field names
+        # while production still reads the uppercase env aliases.
+        populate_by_name=True,
     )
 
     database_url: str = "sqlite+aiosqlite:///./data/app.db"
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
 
-    # NemoClaw / orchestrator route — planning model (see docs/HACKATHON_ENV.md; env name kept NEMCLAW_MODEL).
-    nemoclaw_model: str = Field(default="nemoclaw", validation_alias="NEMCLAW_MODEL")
+    ollama_base_url: str = Field(default="http://localhost:11434", validation_alias="OLLAMA_BASE_URL")
 
-    # Lightweight tier: fast/cheap model IDs for search-adjacent LLM calls (queued, bounded parallelism).
-    lightweight_model: str = Field(
-        default="lightweight-search",
-        validation_alias="LIGHTWEIGHT_MODEL",
-    )
-    light_queue_max_parallel: int = Field(
-        default=4,
-        validation_alias="LIGHT_QUEUE_MAX_PARALLEL",
-    )
+    # 120B — query expansion and final synthesis
+    nemoclaw_model: str = Field(default="nemotron-3-super", validation_alias="NEMCLAW_MODEL")
+    # 30B — per-item sentiment (queued, bounded parallelism)
+    lightweight_model: str = Field(default="nemotron-3-nano", validation_alias="LIGHTWEIGHT_MODEL")
+    light_queue_max_parallel: int = Field(default=4, validation_alias="LIGHT_QUEUE_MAX_PARALLEL")
+
+    brave_api_key: str = Field(default="", validation_alias="BRAVE_API_KEY")
+    max_urls_per_run: int = Field(default=30, validation_alias="MAX_URLS_PER_RUN")
+    max_items_per_run: int = Field(default=100, validation_alias="MAX_ITEMS_PER_RUN")
 
     @property
     def cors_origins_list(self) -> list[str]:

@@ -1,1 +1,1 @@
-"""Agent orchestration: Nemoclaw plans runs; LightweightModelQueue handles search-tier LLM work."""
+"""Agent orchestration: nemoclaw.py (120B) plans and synthesizes; light_queue.py (30B) runs per-item sentiment."""

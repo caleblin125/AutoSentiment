@@ -1,34 +1,36 @@
-"""Shared structures for Nemoclaw planning and downstream stages."""
-
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import StrEnum
 
 
-class LightJobKind(StrEnum):
-    """Kinds of work dispatched to the lightweight model tier (search-adjacent, cheap)."""
+class SentimentLabel(StrEnum):
+    POSITIVE = "positive"
+    NEUTRAL = "neutral"
+    NEGATIVE = "negative"
 
-    SEARCH_QUERY_EXPAND = "search_query_expand"
-    SERP_INTENT_OR_CLASSIFY = "serp_intent_or_classify"
-    SNIPPET_RELEVANCE_SCORE = "snippet_relevance_score"
-    CHUNK_QUICK_FILTER = "chunk_quick_filter"
+
+class SourceType(StrEnum):
+    REDDIT = "reddit"
+    NEWS = "news"
+
+
+class Freshness(StrEnum):
+    DAY = "pd"
+    WEEK = "pw"
+    MONTH = "pm"
+    YEAR = "py"
+
+
+class SSEEventType(StrEnum):
+    RUN_STARTED = "run_started"
+    SEARCH_QUERIED = "search_queried"
+    URL_FETCHED = "url_fetched"
+    ITEM_ANALYZED = "item_analyzed"
+    SYNTHESIS_STARTED = "synthesis_started"
+    RUN_COMPLETED = "run_completed"
+    RUN_ERROR = "run_error"
 
 
 @dataclass
-class ResearchPlan:
-    """What Nemoclaw decides should be searched and how processing is structured.
-
-    Nemoclaw fills this; ingest/retrieve/report stages consume it. Field names are
-    illustrative — adjust to your API contract as you implement.
-    """
-
-    sub_questions: list[str]
-    """Focused research slices derived from the user question."""
-
-    search_program: list[str]
-    """High-level search angles or seed queries (may be expanded by lightweight models)."""
-
-    processing_order: list[str] = field(default_factory=list)
-    """Ordered stage identifiers, e.g. discover → ingest → retrieve → synthesize."""
-
-    notes_for_light_tier: dict[str, str] = field(default_factory=dict)
-    """Optional hints passed into lightweight jobs (limits, languages, domains)."""
+class SentimentResult:
+    label: SentimentLabel
+    summary: str  # 3–5 words

@@ -1,18 +1,105 @@
-import { getApiBaseUrl } from './config'
+import { API_BASE_URL } from './config'
 
-/** POST /api/runs — implement in `frontend/IMPLEMENTATION.md`. */
-export async function createRun(_query: string): Promise<{ run_id: string }> {
-  void _query
-  throw new Error('Not implemented — wire POST /api/runs (see frontend/IMPLEMENTATION.md)')
+// ── Request / response types ────────────────────────────────────────────────
+
+export interface RunRequest {
+  topic: string
+  freshness?: 'pd' | 'pw' | 'pm' | 'py'
 }
 
-/** GET /api/runs/{id} — implement per IMPLEMENTATION.md. */
-export async function getRun(_runId: string): Promise<unknown> {
-  void _runId
-  throw new Error('Not implemented — see frontend/IMPLEMENTATION.md')
+export interface RunCreated {
+  run_id: string
 }
 
-/** URL for SSE: GET /api/runs/{id}/events */
-export function getRunEventsUrl(runId: string): string {
-  return `${getApiBaseUrl()}/api/runs/${encodeURIComponent(runId)}/events`
+export interface Run {
+  id: string
+  topic: string
+  freshness: string | null
+  status: 'pending' | 'running' | 'completed' | 'error'
+  created_at: string
+  report: Report | null
+}
+
+export interface Report {
+  overall: { positive: number; neutral: number; negative: number; total: number }
+  by_source: {
+    reddit?: SourceStats
+    news?: SourceStats
+  }
+  top_positive: Quote[]
+  top_negative: Quote[]
+  themes: string[]
+  narrative: string
+}
+
+export interface SourceStats {
+  positive: number
+  neutral: number
+  negative: number
+  count: number
+}
+
+export interface Quote {
+  summary: string
+  evidence_id: string
+  url: string
+}
+
+export interface EvidenceChunk {
+  id: string
+  run_id: string
+  url: string
+  source_type: 'reddit' | 'news'
+  snippet: string
+  label: 'positive' | 'neutral' | 'negative'
+  summary: string
+  retrieved_at: string
+}
+
+// ── SSE event types ─────────────────────────────────────────────────────────
+
+export type SSEEventType =
+  | 'run_started'
+  | 'search_queried'
+  | 'url_fetched'
+  | 'item_analyzed'
+  | 'synthesis_started'
+  | 'run_completed'
+  | 'run_error'
+
+export interface SSEEvent {
+  seq: number
+  type: SSEEventType
+  message: string
+  detail: Record<string, unknown>
+}
+
+// ── API functions ────────────────────────────────────────────────────────────
+
+export async function createRun(req: RunRequest): Promise<RunCreated> {
+  const res = await fetch(`${API_BASE_URL}/api/runs`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(req),
+  })
+  if (!res.ok) throw new Error(`POST /api/runs failed: ${res.status}`)
+  return res.json()
+}
+
+export async function getRun(runId: string): Promise<Run> {
+  const res = await fetch(`${API_BASE_URL}/api/runs/${encodeURIComponent(runId)}`)
+  if (!res.ok) throw new Error(`GET /api/runs/${runId} failed: ${res.status}`)
+  return res.json()
+}
+
+export async function getEvidence(runId: string, chunkId: string): Promise<EvidenceChunk> {
+  const res = await fetch(
+    `${API_BASE_URL}/api/runs/${encodeURIComponent(runId)}/evidence/${encodeURIComponent(chunkId)}`
+  )
+  if (!res.ok) throw new Error(`GET evidence failed: ${res.status}`)
+  return res.json()
+}
+
+export function getEventsUrl(runId: string): string {
+  return `${API_BASE_URL}/api/runs/${encodeURIComponent(runId)}/events`
 }

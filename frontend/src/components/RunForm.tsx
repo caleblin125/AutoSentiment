@@ -1,14 +1,67 @@
-/**
- * Submit research query → POST /api/runs.
- * Replace stub with real form + loading/error states (see frontend/IMPLEMENTATION.md).
- */
-export function RunForm() {
+import { useState } from 'react'
+import { createRun, type RunRequest } from '../lib/api'
+
+interface Props {
+  onRunCreated: (runId: string) => void
+}
+
+const FRESHNESS_OPTIONS = [
+  { value: 'pm', label: 'Past month' },
+  { value: 'pw', label: 'Past week' },
+  { value: 'pd', label: 'Past 24 hours' },
+  { value: 'py', label: 'Past year' },
+  { value: '', label: 'Any time' },
+] as const
+
+export function RunForm({ onRunCreated }: Props) {
+  const [topic, setTopic] = useState('')
+  const [freshness, setFreshness] = useState<string>('pm')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!topic.trim()) return
+    setLoading(true)
+    setError(null)
+    try {
+      const req: RunRequest = {
+        topic: topic.trim(),
+        ...(freshness ? { freshness: freshness as RunRequest['freshness'] } : {}),
+      }
+      const { run_id } = await createRun(req)
+      onRunCreated(run_id)
+      setTopic('')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to start run')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   return (
     <section className="panel" aria-label="New research run">
       <h2>New run</h2>
-      <p className="muted">
-        Implement form + <code>createRun()</code> in <code>src/lib/api.ts</code>.
-      </p>
+      <form onSubmit={handleSubmit}>
+        <input
+          type="text"
+          placeholder="Topic or brand (e.g. Tesla Model 3)"
+          value={topic}
+          onChange={e => setTopic(e.target.value)}
+          disabled={loading}
+          required
+        />
+        <select value={freshness} onChange={e => setFreshness(e.target.value)} disabled={loading}>
+          {FRESHNESS_OPTIONS.map(o => (
+            <option key={o.value} value={o.value}>{o.label}</option>
+          ))}
+        </select>
+        <button type="submit" disabled={loading || !topic.trim()}>
+          {loading && <span className="spinner" aria-hidden="true" />}
+          <span>{loading ? 'Starting' : 'Analyze'}</span>
+        </button>
+      </form>
+      {error && <p className="error">{error}</p>}
     </section>
   )
 }

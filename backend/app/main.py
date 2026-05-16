@@ -1,5 +1,3 @@
-"""FastAPI entrypoint — wire routers, CORS, and lifespan hooks here."""
-
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -7,13 +5,13 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes import router as api_router
 from app.core.config import get_settings
+from app.db.session import create_tables
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    # TODO: create tables, warm caches, etc. (see app/db/IMPLEMENTATION.md)
+    await create_tables()
     yield
-    # TODO: dispose engine / close connections if needed
 
 
 def create_app() -> FastAPI:
