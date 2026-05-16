@@ -514,6 +514,19 @@ function LocationSentimentMap({ locations }: {
   const panRef = useRef<{ sx: number; sy: number; sp: { x: number; y: number } } | null>(null)
   const svgRef = useRef<SVGSVGElement>(null)
 
+  // Non-passive wheel listener so preventDefault() stops page scroll.
+  // Must be before any early return to satisfy the Rules of Hooks.
+  useEffect(() => {
+    const el = svgRef.current
+    if (!el) return
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault()
+      setZoom(z => Math.max(0.5, Math.min(6, z * (e.deltaY > 0 ? 0.85 : 1.18))))
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [])
+
   const points = locations.map(location => {
     const x = ((location.lon + 180) / 360) * 1000
     const y = ((90 - location.lat) / 180) * 500
@@ -524,11 +537,6 @@ function LocationSentimentMap({ locations }: {
   if (!points.length) return null
 
   const selectedPoint = points.find(p => p.location === selected) ?? points[0]
-
-  function handleWheel(e: React.WheelEvent) {
-    e.preventDefault()
-    setZoom(z => Math.max(0.5, Math.min(6, z * (e.deltaY > 0 ? 0.85 : 1.18))))
-  }
 
   function handleSvgMouseDown(e: React.MouseEvent<SVGSVGElement>) {
     if (e.button !== 0) return
@@ -560,7 +568,6 @@ function LocationSentimentMap({ locations }: {
           viewBox={`${-pan.x} ${-pan.y} ${1000 / zoom} ${500 / zoom}`}
           role="img"
           aria-label="Geographic sentiment map"
-          onWheel={handleWheel}
           onMouseDown={handleSvgMouseDown}
           style={{ cursor: isMapPanning ? 'grabbing' : 'grab' }}
         >

@@ -458,11 +458,19 @@ export function ForceGraph({ graph, runId, onNodeClick }: Props) {
     if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current)
   }
 
-  // Zoom via scroll wheel on the SVG
-  function handleWheel(e: React.WheelEvent) {
-    e.preventDefault()
-    setZoom(z => Math.max(0.45, Math.min(4, z * (e.deltaY > 0 ? 0.88 : 1.13))))
-  }
+  // Attach a non-passive wheel listener so preventDefault() actually works.
+  // React's synthetic onWheel is passive by default in modern browsers,
+  // which means e.preventDefault() inside it is ignored and the page scrolls.
+  useEffect(() => {
+    const el = svgRef.current
+    if (!el) return
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault()
+      setZoom(z => Math.max(0.45, Math.min(4, z * (e.deltaY > 0 ? 0.88 : 1.13))))
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, []) // svgRef.current is stable after mount
 
   // Pan via left-click drag on background (SVG element directly)
   function handleSvgMouseDown(e: React.MouseEvent<SVGSVGElement>) {
@@ -573,7 +581,6 @@ export function ForceGraph({ graph, runId, onNodeClick }: Props) {
           viewBox={`${-pan.x} ${-pan.y} ${W / zoom} ${H / zoom}`}
           aria-label="Topic relationship graph"
           onContextMenu={e => e.preventDefault()}
-          onWheel={handleWheel}
           onMouseDown={handleSvgMouseDown}
           style={{ cursor: isPanning ? 'grabbing' : 'grab' }}
         >
