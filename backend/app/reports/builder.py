@@ -745,7 +745,12 @@ def build_idea_graph(topic: str, chunks: list[EvidenceChunk], themes: list[str],
             "evidence_ids": aspect.get("evidence_ids", []),
         })
         edges.append({"source": "topic", "target": node_id, "kind": "aspect", "weight": aspect["count"]})
-        edges.append({"source": node_id, "target": f"sentiment:{aspect['sentiment']}", "kind": "direction", "weight": aspect["count"]})
+        # Connect to every sentiment that has at least one chunk, not just the dominant.
+        # This ensures minority sentiments (e.g. negative on a mostly-positive topic) still get branches.
+        for label in SentimentLabel:
+            label_count = round(aspect[label.value] * aspect["count"])
+            if label_count > 0:
+                edges.append({"source": node_id, "target": f"sentiment:{label.value}", "kind": "direction", "weight": label_count})
 
     # Collect up to 5 representative URLs per domain for the link popover.
     domain_urls: dict[str, list[str]] = defaultdict(list)

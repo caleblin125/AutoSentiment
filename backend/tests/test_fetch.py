@@ -5,6 +5,14 @@ from app.agents.types import SourceType
 from app.ingest import fetch
 
 
+def _reddit_payload(comments: list, selftext: str = "", post_url: str = "") -> list:
+    """Build a minimal Reddit JSON payload (listing[0]=post, listing[1]=comments)."""
+    return [
+        {"data": {"children": [{"kind": "t3", "data": {"selftext": selftext, "url": post_url}}]}},
+        {"data": {"children": comments}},
+    ]
+
+
 @pytest.mark.asyncio
 async def test_fetch_reddit_parses_comments_and_caps(monkeypatch) -> None:
     children = [
@@ -18,7 +26,7 @@ async def test_fetch_reddit_parses_comments_and_caps(monkeypatch) -> None:
 
     def handler(request: httpx.Request) -> httpx.Response:
         seen_urls.append(str(request.url))
-        return httpx.Response(200, json=[{}, {"data": {"children": children}}])
+        return httpx.Response(200, json=_reddit_payload(children))
 
     async_client = httpx.AsyncClient
     monkeypatch.setattr(
@@ -35,6 +43,105 @@ async def test_fetch_reddit_parses_comments_and_caps(monkeypatch) -> None:
     assert len(items) == fetch.REDDIT_COMMENTS_PER_THREAD
     assert items[0].snippet == "comment 0"
     assert items[0].source_type == SourceType.REDDIT
+
+
+@pytest.mark.asyncio
+async def test_fetch_reddit_follows_links_in_comments(monkeypatch) -> None:
+    """URLs in comments should be fetched one level deep."""
+    comments = [
+        {"kind": "t1", "data": {"body": "Check this out: https://news.example/article"}},
+        {"kind": "t1", "data": {"body": "plain comment with no link"}},
+    ]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "reddit.com" in str(request.url):
+            return httpx.Response(200, json=_reddit_payload(comments))
+        # Simulate a linked article
+        return httpx.Response(200, text="<html>article</html>")
+
+    _AsyncClient = httpx.AsyncClient
+    monkeypatch.setattr(
+        fetch.httpx,
+        "AsyncClient",
+        lambda **kwargs: _AsyncClient(
+            **{**kwargs, "transport": httpx.MockTransport(handler)}
+        ),
+    )
+    monkeypatch.setattr(
+        fetch.trafilatura,
+        "extract",
+        lambda _html: "This linked article content is long enough to be a real fetched item.",
+    )
+
+    items = await fetch._fetch_reddit("https://www.reddit.com/r/test/comments/abc/title/")
+
+    # Two reddit comment items + one item from the linked article
+    reddit_items = [i for i in items if i.source_type == SourceType.REDDIT]
+    linked_items = [i for i in items if i.source_type != SourceType.REDDIT]
+    assert len(reddit_items) == 2
+    assert len(linked_items) == 1
+    assert linked_items[0].url == "https://news.example/article"
+
+
+@pytest.mark.asyncio
+async def test_fetch_reddit_follows_post_url(monkeypatch) -> None:
+    """A link-post URL (non-reddit, non-media) should also be fetched."""
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "reddit.com" in str(request.url):
+            return httpx.Response(
+                200,
+                json=_reddit_payload([], post_url="https://techcrunch.com/story"),
+            )
+        return httpx.Response(200, text="<html>tc</html>")
+
+    _AsyncClient = httpx.AsyncClient
+    monkeypatch.setattr(
+        fetch.httpx,
+        "AsyncClient",
+        lambda **kwargs: _AsyncClient(
+            **{**kwargs, "transport": httpx.MockTransport(handler)}
+        ),
+    )
+    monkeypatch.setattr(
+        fetch.trafilatura,
+        "extract",
+        lambda _html: "TechCrunch article text that is long enough to pass the length filter.",
+    )
+
+    items = await fetch._fetch_reddit("https://www.reddit.com/r/test/comments/abc/title/")
+    assert any(i.url == "https://techcrunch.com/story" for i in items)
+
+
+@pytest.mark.asyncio
+async def test_fetch_reddit_skips_reddit_and_media_links(monkeypatch) -> None:
+    """Links to Reddit itself, imgur, youtube, etc. should not be followed."""
+    comments = [
+        {"kind": "t1", "data": {"body": "https://www.reddit.com/r/other/comments/xyz/"}},
+        {"kind": "t1", "data": {"body": "https://i.imgur.com/pic.jpg"}},
+        {"kind": "t1", "data": {"body": "https://youtube.com/watch?v=abc"}},
+    ]
+    fetch_news_called = []
+
+    async def mock_fetch_news(url: str, client=None):
+        fetch_news_called.append(url)
+        return []
+
+    monkeypatch.setattr(fetch, "_fetch_news", mock_fetch_news)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=_reddit_payload(comments))
+
+    _AsyncClient = httpx.AsyncClient
+    monkeypatch.setattr(
+        fetch.httpx,
+        "AsyncClient",
+        lambda **kwargs: _AsyncClient(
+            **{**kwargs, "transport": httpx.MockTransport(handler)}
+        ),
+    )
+
+    await fetch._fetch_reddit("https://www.reddit.com/r/test/comments/abc/title/")
+    assert fetch_news_called == []
 
 
 @pytest.mark.asyncio

@@ -1,6 +1,8 @@
 """Fetch and extract text items from URLs.
 
 Reddit URLs: fetch url.json → extract top-level comments (cap 20).
+             URLs found in the post body or comments are followed one level
+             deep so linked articles contribute real content to the analysis.
 News URLs:   httpx GET → trafilatura extraction → split into paragraphs.
 """
 
@@ -8,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta, UTC
 from urllib.parse import urlparse, urlsplit, urlunsplit
@@ -20,6 +23,18 @@ from app.agents.types import SourceType
 _SNIPPET_DELIMITER = "\n␞\n"  # ASCII record separator wrapped in newlines
 
 REDDIT_COMMENTS_PER_THREAD = 20
+# Max outbound links to follow from a single Reddit post/thread.
+_REDDIT_LINK_FOLLOW_LIMIT = 5
+
+_URL_RE = re.compile(r'https?://[^\s\)\]>"\']+')
+
+_SKIP_LINK_HOSTS = frozenset({
+    "reddit.com", "www.reddit.com", "old.reddit.com",
+    "redd.it", "i.redd.it", "v.redd.it",
+    "imgur.com", "i.imgur.com",
+    "youtu.be", "youtube.com", "www.youtube.com",
+    "twitter.com", "x.com",
+})
 _USER_AGENT = (
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/125.0 Safari/537.36"
@@ -177,32 +192,76 @@ async def write_url_cache(
 
 
 async def _fetch_reddit(url: str, client: httpx.AsyncClient | None = None) -> list[FetchedItem]:
-    """GET url.json, parse comments array, return up to REDDIT_COMMENTS_PER_THREAD items."""
+    """GET url.json, parse post + comments, then follow outbound links one level deep."""
     reddit_url = _reddit_json_url(url)
+    own_client: httpx.AsyncClient | None = None
     if client is None:
-        async with httpx.AsyncClient(timeout=10.0, headers={"User-Agent": _USER_AGENT}) as own_client:
-            response = await own_client.get(reddit_url)
-            response.raise_for_status()
-            payload = response.json()
-    else:
+        own_client = httpx.AsyncClient(timeout=10.0, headers={"User-Agent": _USER_AGENT})
+        client = own_client
+
+    try:
         response = await client.get(reddit_url)
         response.raise_for_status()
         payload = response.json()
+    finally:
+        if own_client is not None:
+            await own_client.aclose()
+            client = None  # don't reuse after close
 
-    children = payload[1]["data"]["children"]
     items: list[FetchedItem] = []
+    found_links: list[str] = []
 
-    for child in children:
+    # Post body (kind == "t3" in listing[0])
+    post_children = payload[0]["data"]["children"]
+    if post_children:
+        post_data = post_children[0].get("data", {})
+        post_url_field = post_data.get("url", "")
+        if post_url_field and not _should_skip_link(post_url_field):
+            found_links.append(post_url_field)
+        post_text = post_data.get("selftext", "").strip()
+        if post_text:
+            items.append(FetchedItem(snippet=post_text, url=url, source_type=SourceType.REDDIT))
+            found_links.extend(_extract_links(post_text))
+
+    # Comments (kind == "t1" in listing[1])
+    for child in payload[1]["data"]["children"]:
         if child.get("kind") != "t1":
             continue
         body = child.get("data", {}).get("body", "").strip()
         if not body:
             continue
         items.append(FetchedItem(snippet=body, url=url, source_type=SourceType.REDDIT))
+        found_links.extend(_extract_links(body))
         if len(items) >= REDDIT_COMMENTS_PER_THREAD:
             break
 
+    # Follow unique outbound links (deduplicated, capped).
+    seen: set[str] = set()
+    links_to_follow: list[str] = []
+    for link in found_links:
+        if link not in seen and len(links_to_follow) < _REDDIT_LINK_FOLLOW_LIMIT:
+            seen.add(link)
+            links_to_follow.append(link)
+
+    if links_to_follow:
+        async with httpx.AsyncClient(timeout=12.0, headers={"User-Agent": _USER_AGENT}) as link_client:
+            tasks = [_fetch_news(lnk, client=link_client) for lnk in links_to_follow]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+        for linked_items in results:
+            if isinstance(linked_items, list):
+                items.extend(linked_items)
+
     return items
+
+
+def _should_skip_link(url: str) -> bool:
+    host = urlparse(url).netloc.lower().removeprefix("www.")
+    return host in _SKIP_LINK_HOSTS
+
+
+def _extract_links(text: str) -> list[str]:
+    """Return non-skipped http(s) URLs found in text."""
+    return [u for u in _URL_RE.findall(text) if not _should_skip_link(u)]
 
 
 async def _fetch_news(url: str, client: httpx.AsyncClient | None = None) -> list[FetchedItem]:
