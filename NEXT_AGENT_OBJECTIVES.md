@@ -519,6 +519,83 @@ Manual smoke:
 - `GET /api/runs?limit=1` returned recent run metadata.
 - Stopped the temporary uvicorn process.
 
+### 2026-05-16 (PI Agent, continuing from Codex interrupted at d0ed200)
+
+Completed Objective 12 (Report tabs):
+
+- Replaced single-scroll report with tabbed layout: Summary, Topics, Timeline, Evidence, Claims, Graph, Performance.
+- Removed redundant `by_source` table; SourceFacts accordion is now primary source view.
+- Running tabs reconnect SSE stream on page reload (App.tsx optimistic status).
+
+Completed Objective 12 (Loading states):
+
+- Added `LoadingStage` component with progress bar, phase label, and detail description.
+- Shows current pipeline stage (Planning, Searching, Fetching, Analyzing, Synthesizing) with percentage estimate.
+
+Extended Objective 5 (Use cases):
+
+- Added `financial_market` use case with queries targeting: analyst ratings, earnings, SEC filings, Seeking Alpha, Yahoo Finance, MarketWatch, Bloomberg, WallStreetBets Reddit, insider trading, sector outlook.
+- Added financial market insights to `compute_use_case_insights`: market pulse, analyst sentiment, retail sentiment, risk signals, verification notes.
+- Added 15+ financial provider names to frontend for source labeling.
+
+New feature: Fine-grain topic threads (extends Objectives 4 and 6):
+
+- Added `compute_threads()` to backend builder: extracts recurring 2-3 word phrases, clusters overlapping phrases, traces temporal provenance across sources.
+- Each thread carries: sentiment distribution, source domains, date range, sample snippets, search query.
+- Added "Topics" report tab with navigable thread cards. Clicking a thread fills the search input.
+- Added `ThreadItem` type to frontend API.
+
+Completed Objective 10 (Reliability):
+
+- Added `ErrorCode` enum: brave_key_missing, brave_quota_exceeded, brave_rate_limited, model_unavailable, fetch_timeout, synthesis_failed, cancelled_by_user, internal_error.
+- Error SSE events now carry `detail.error_code`.
+- Added `StructuredLogger` adapter that prefixes every log message with `[run=<id>]`.
+- Added `recover_stale_runs()`: on FastAPI startup, marks `running` runs as `error` for durable state.
+- Added `_classify_error()` helper mapping exception types to error codes.
+- Added optional auth: `AUTH_API_KEY` env var enables `X-API-Key` header requirement on mutating endpoints.
+
+Improved Objective 9 (Source classification):
+
+- Rewrote `classify_source_type()` with explicit domain allowlists for news, forums, social, video, and financial sites.
+- Added generic keyword fallbacks ("news", "forum", "community") for uncategorized domains.
+
+Added benchmarking infrastructure:
+
+- Created `backend/scripts/benchmark_llamacpp.py` comparing Ollama vs direct llama.cpp server inference speed across 3 prompt types.
+
+Updated documentation:
+
+- Rewrote README.md with full feature inventory, use cases, architecture, configuration, project structure.
+- Rewrote HANDOFF.md with complete current state, known issues, and next steps.
+
+Validation:
+
+```bash
+cd /home/asus/AutoSentiment/backend
+source .venv/bin/activate
+python3 -m pytest tests/ -v  # 60 passed
+cd /home/asus/AutoSentiment/frontend
+npm run lint  # clean
+npm run build  # passes
+```
+
+## Current Status Summary
+
+| Objective | Status |
+|-----------|--------|
+| 1: Configurable search depth | ✅ Complete |
+| 2: Search planning + quota | ✅ Complete |
+| 3: Chronological timeline | ✅ Complete |
+| 4: Fact & evidence layer | ✅ Complete |
+| 5: Entertainment product mode | ✅ Complete (extended with financial) |
+| 6: Better charts | ✅ Complete |
+| 7: Better graph visualization | ✅ Complete |
+| 8: Faster runs | ⬜ Partial (snippet dedup, fetch timeout, thread offload done; per-domain caps, DB caches remaining) |
+| 9: Evidence storage/inspection | ✅ Complete (classification improved) |
+| 10: Reliability hardening | ✅ Complete (logging, error codes, recovery, auth done; event bus persistence remaining) |
+| 11: Public current events | ✅ Complete |
+| 12: UX polish | ✅ Complete (tabs, loading states, export done; mobile layout, Playwright remaining) |
+
 ## Current Recommended First Task
 
-Continue with Objective 2. Build a quota-aware search planner on top of the depth presets so each run can show planned query cost, platform mix, and Brave monthly budget impact before it starts.
+Write integration tests for `compute_threads` in `test_reports.py`. Then implement per-domain fetch caps in the orchestrator to prevent any single slow site from dominating fetch time.
