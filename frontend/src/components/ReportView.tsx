@@ -720,8 +720,9 @@ export function ReportView({ runId, topic, report, onSearchTopic }: Props) {
   return (
     <section className="panel" aria-label="Report">
       <div className="report-header">
-        <h2>Report</h2>
+        <h2>Report {timings?.total_ms != null && <span className="duration-badge">{fmtDuration(timings.total_ms)}</span>}</h2>
         <div className="export-actions">
+          <button className="btn-secondary" onClick={() => { navigator.clipboard.writeText(`# ${topic}\n\n${narrative}\n\nPositive: ${pct(overall.positive)} · Neutral: ${pct(overall.neutral)} · Negative: ${pct(overall.negative)}\n\nThemes: ${themes.join(', ')}\n\nAnalyzed ${overall.total} items across ${Object.keys(by_source).filter(k => (by_source[k]?.count ?? 0) > 0).length} source types.`).catch(() => {}) }}>📋 Copy</button>
           <button className="btn-secondary" onClick={() => exportReport('json')}>JSON</button>
           <button className="btn-secondary" onClick={() => exportReport('csv')}>CSV</button>
           <button className="btn-secondary" onClick={() => exportReport('markdown')}>MD</button>

@@ -82,3 +82,14 @@ class SentimentCache(Base):
     label: Mapped[str] = mapped_column(String, nullable=False)
     summary: Mapped[str] = mapped_column(String, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
+
+
+class FetchedURLCache(Base):
+    """Cache raw fetched URL content with TTL for reuse across runs."""
+    __tablename__ = "fetched_url_cache"
+
+    url_hash: Mapped[str] = mapped_column(String, primary_key=True)
+    url: Mapped[str] = mapped_column(Text, nullable=False)
+    extracted_text: Mapped[str] = mapped_column(Text, nullable=False)
+    source_type: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
