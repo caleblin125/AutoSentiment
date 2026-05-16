@@ -40,7 +40,7 @@ Last updated: 2026-05-16 20:40 UTC
 - [x] [claude] Inline style cleanup: 100+ inline styles replaced with semantic CSS classes across all components
 
 ## Next Tasks (high value, unclaimed)
-- [ ] [FREE]  Contradiction detection in claims (opposing claim pairs)
+- [x] [claude] Contradiction detection in claims (_find_contradictions bigram grouping, amber card UI in Claims tab)
 - [ ] [FREE]  More Playwright E2E tests (saved search, thread click, shareable URL)
 
 ## ✅ Cursor Agent — current session
