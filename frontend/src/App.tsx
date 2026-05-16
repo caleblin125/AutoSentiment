@@ -149,7 +149,7 @@ export default function App() {
       // Ctrl+W: close active tab
       if (e.ctrlKey && !e.shiftKey && e.key === 'w') {
         e.preventDefault()
-        setActiveId(id => { closeTab(id); return id })
+        closeActiveTab()
         return
       }
       // Ctrl+Tab / Ctrl+Shift+Tab: cycle tabs
@@ -201,17 +201,21 @@ export default function App() {
     ))
   }, [])
 
-  // ── Open a historic run in a new tab ─────────────────────────────────────
+  // ── Open a historic run: switch to existing tab or create new one ────────
   const openRunInNewTab = useCallback((runId: string, topic: string) => {
+    // If a tab for this run already exists, just switch to it — no duplicates.
+    const existing = tabs.find(t => t.runId === runId)
+    if (existing) {
+      setActiveId(existing.id)
+      return
+    }
     const tab = newTab()
     tab.label = topic
     tab.runId = runId
     tab.status = 'completed'
     setTabs(prev => [...prev, tab])
     setActiveId(tab.id)
-    // The RunView for this new tab will receive initialRunId and replay events.
-    // We store the runId in the tab so the TabBar shows the correct status.
-  }, [])
+  }, [tabs])
 
   function addTab() {
     const tab = newTab()
