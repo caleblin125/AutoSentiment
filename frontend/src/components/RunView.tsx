@@ -161,12 +161,19 @@ export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMo
   // Propagate status + label + runId to parent (for tab state + close-kills-task).
   useEffect(() => {
     const label = activeTopic ?? 'New Search'
-    const tabStatus = cached && status !== 'running' ? 'cached' : status
+    let tabStatus: string
+    if (expanding || (isExpandedRun && status === 'running')) {
+      tabStatus = 'expanding'
+    } else if (cached && status !== 'running') {
+      tabStatus = 'cached'
+    } else {
+      tabStatus = status
+    }
     onStatusChange(tabStatus, label, runId ?? undefined)
     if (status === 'completed') {
       queueMicrotask(() => setHistoryKey(k => k + 1))
     }
-  }, [status, activeTopic, cached, runId, onStatusChange])
+  }, [status, activeTopic, cached, runId, expanding, isExpandedRun, onStatusChange])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
