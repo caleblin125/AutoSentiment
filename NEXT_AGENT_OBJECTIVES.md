@@ -579,6 +579,42 @@ npm run lint  # clean
 npm run build  # passes
 ```
 
+### 2026-05-16 (Phase 4: Productization Hardening)
+
+**compute_threads test coverage** (commit `56ab01a`):
+
+- Added 5 integration tests in `test_reports.py` covering phrase clustering, topic-token exclusion, sentiment sum=1.0 invariant, limit cap, and date_range derivation from retrieved_at. Closes HANDOFF Priority 1.
+
+**FetchedURLCache wired end-to-end** (commit `856611e`):
+
+- Added `read_url_cache` and `write_url_cache` helpers to `fetch.py`; keyed by SHA-256 URL hash with configurable `FETCHED_URL_CACHE_TTL_SECONDS` (default 24 h, 0 = off).
+- Orchestrator reads cache serially before launching concurrent HTTP fetches; cache hits emit URL_FETCHED immediately without touching the network. Cache writes happen after each fetch resolves to keep the shared db session safe.
+- Exposes `fetch_cache_hits` and `fetch_cache_misses` in run timings; Performance tab now shows URL + sentiment cache pill badges.
+- Fixed pre-existing bug: persistent sentiment cache hit path created `SentimentResult(label=str)` which crashed on `result.label.value`; now parses string back to `SentimentLabel` enum.
+- Added 4 URL cache unit tests (disabled/none, round-trip, TTL expiry, overwrite) and 2 orchestrator integration tests (cross-run cache reuse, ttl=0 bypasses cache).
+
+**Streaming synthesis test coverage** (commit `0718bbb`):
+
+- Added 4 tests: `ollama_generate_streaming` calls on_token per chunk, cancel_check raises GenerationCancelled, full `synthesize_report_streaming` round-trip parses all fields, model failure returns safe fallback.
+
+**SavedSearch: model + endpoints + UI** (commit `c2d9397`):
+
+- Added `SavedSearch` SQLAlchemy model (id, name, topic, freshness, research_depth, use_case, created_at); picked up by `create_tables` on startup.
+- Added three endpoints: `GET /api/saved-searches`, `POST /api/saved-searches`, `DELETE /api/saved-searches/{id}`.
+- Added 5 route tests: full CRUD cycle, 404 on unknown delete, blank-name rejection, invalid-freshness rejection, newest-first list ordering.
+- Frontend: `SavedSearch`/`SavedSearchRequest` types and three API functions in `api.ts`; `RunView` now has a "★ Save" inline name-input bar and a "Saved (N) ▾" dropdown to load or delete saved search configs.
+
+Validation:
+
+```bash
+cd /home/asus/AutoSentiment/backend
+source .venv/bin/activate
+python3 -m pytest tests/ -q  # 80 passed
+cd /home/asus/AutoSentiment/frontend
+npm run lint  # clean
+npm run build  # passes
+```
+
 ## Current Status Summary
 
 | Objective | Status |
@@ -590,12 +626,14 @@ npm run build  # passes
 | 5: Entertainment product mode | ✅ Complete (extended with financial) |
 | 6: Better charts | ✅ Complete |
 | 7: Better graph visualization | ✅ Complete |
-| 8: Faster runs | ⬜ Partial (snippet dedup, fetch timeout, thread offload done; per-domain caps, DB caches remaining) |
+| 8: Faster runs | ✅ Complete (snippet dedup, fetch timeout, thread offload, per-domain caps, persistent Brave + URL + sentiment caches) |
 | 9: Evidence storage/inspection | ✅ Complete (classification improved) |
-| 10: Reliability hardening | ✅ Complete (logging, error codes, recovery, auth done; event bus persistence remaining) |
+| 10: Reliability hardening | ✅ Complete (logging, error codes, recovery, auth, graceful shutdown) |
 | 11: Public current events | ✅ Complete |
-| 12: UX polish | ✅ Complete (tabs, loading states, export done; mobile layout, Playwright remaining) |
+| 12: UX polish | ✅ Complete (tabs, loading states, export, saved searches, cache stats in Performance tab) |
 
 ## Current Recommended First Task
 
-Write integration tests for `compute_threads` in `test_reports.py`. Then implement per-domain fetch caps in the orchestrator to prevent any single slow site from dominating fetch time.
+**Mobile layout pass** — the report tabs and graph render on mobile but some panels overflow. Audit on a narrow viewport (≤ 480 px) and fix the most prominent overflow issues. Start with the timing grid and the evidence modal, which are most likely to clip on small screens.
+
+Then consider **Playwright smoke tests** for the golden path: submit topic → wait for completed status → check report tabs render without JS errors. This would give confidence in regressions across the full React component tree.
