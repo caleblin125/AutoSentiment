@@ -131,17 +131,44 @@ export default function App() {
     saveSession(tabs, activeId)
   }, [tabs, activeId])
 
-  // ── Dev mode toggle (Ctrl+Shift+D) ───────────────────────────────────────
+  // ── Keyboard shortcuts ───────────────────────────────────────────────────
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      // Ctrl+Shift+D: toggle dev mode
       if (e.ctrlKey && e.shiftKey && e.key === 'D') {
         e.preventDefault()
         setDevMode(d => !d)
+        return
+      }
+      // Ctrl+T: new tab
+      if (e.ctrlKey && !e.shiftKey && e.key === 't') {
+        e.preventDefault()
+        addTab()
+        return
+      }
+      // Ctrl+W: close active tab
+      if (e.ctrlKey && !e.shiftKey && e.key === 'w') {
+        e.preventDefault()
+        setActiveId(id => { closeTab(id); return id })
+        return
+      }
+      // Ctrl+Tab / Ctrl+Shift+Tab: cycle tabs
+      if (e.ctrlKey && e.key === 'Tab') {
+        e.preventDefault()
+        setTabs(prev => {
+          const idx = prev.findIndex(t => t.id === activeId)
+          if (idx === -1) return prev
+          const next = e.shiftKey
+            ? (idx - 1 + prev.length) % prev.length
+            : (idx + 1) % prev.length
+          setActiveId(prev[next].id)
+          return prev
+        })
       }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [])
+  }, [activeId, tabs])  // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Shareable URL: ?run=<id> loads a read-only report ──────────────────
   useEffect(() => {
