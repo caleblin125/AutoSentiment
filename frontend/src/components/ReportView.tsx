@@ -113,7 +113,7 @@ function TimingSummary({ timings }: { timings: Record<string, number> }) {
 
 // ── Sentiment bars ────────────────────────────────────────────────────────
 
-function SentimentBar({ label, value, color }: { label: string; value: number; color: string }) {
+function SentimentBar({ label, value, variant }: { label: string; value: number; variant: 'pos' | 'neu' | 'neg' }) {
   const [displayed, setDisplayed] = useState(0)
   const rafRef = useRef(0)
   // Track the current rendered value in a ref so the effect can read it without
@@ -147,7 +147,7 @@ function SentimentBar({ label, value, color }: { label: string; value: number; c
         <strong className="mono">{pct(displayed)}</strong>
       </div>
       <div className="sentiment-track">
-        <div className="sentiment-fill" style={{ width: pct(displayed), background: color }} />
+        <div className={`sentiment-fill sentiment-fill--${variant}`} style={{ width: pct(displayed) }} />
       </div>
     </div>
   )
@@ -191,7 +191,7 @@ function AnalysisSection({ impacts, reasons, arguments: args }: {
         )}
 
         {args && args.length > 0 && (
-          <div className="analysis-card" style={{ gridColumn: args.length > 2 ? '1 / -1' : undefined }}>
+          <div className={`analysis-card${args.length > 2 ? ' analysis-card--wide' : ''}`}>
             <h4>Arguments</h4>
             {args.map((a, i) => (
               <div key={i} className={`arg-item arg-item--${a.side}`}>
@@ -907,9 +907,9 @@ export function ReportView({ runId, topic, report, onSearchTopic, autoScroll }: 
           </div>
 
           <div className="sentiment-bars">
-            <SentimentBar label="Positive" value={overall.positive} color="var(--positive)" />
-            <SentimentBar label="Neutral"  value={overall.neutral}  color="var(--neutral)" />
-            <SentimentBar label="Negative" value={overall.negative} color="var(--rog-red)" />
+            <SentimentBar label="Positive" value={overall.positive} variant="pos" />
+            <SentimentBar label="Neutral"  value={overall.neutral}  variant="neu" />
+            <SentimentBar label="Negative" value={overall.negative} variant="neg" />
             <p className="muted mono text-xs">{overall.total} items analyzed</p>
           </div>
 

@@ -40,7 +40,7 @@ export function DevOverlay({ onClose }: Props) {
           <div className="dev-section-title">Backend — Active SSE Connections</div>
           <div className="dev-stat">
             <span>Live SSE queues</span>
-            <strong style={{ color: activeQueues ? 'var(--rog-cyan)' : 'var(--text)' }}>
+            <strong className={activeQueues ? 'dev-val--active' : ''}>
               {activeQueues ?? '—'}
             </strong>
           </div>
@@ -51,14 +51,8 @@ export function DevOverlay({ onClose }: Props) {
             <div className="dev-section-title">Run Counts</div>
             {Object.entries(runCounts).map(([status, count]) => (
               <div className="dev-stat" key={status}>
-                <span style={{ textTransform: 'capitalize' }}>{status}</span>
-                <strong style={{
-                  color: status === 'running' ? 'var(--rog-cyan)' :
-                         status === 'error'   ? 'var(--rog-red)' :
-                         status === 'completed' ? 'var(--positive)' : 'var(--text)',
-                }}>
-                  {count}
-                </strong>
+                <span className="dev-stat-label--cap">{status}</span>
+                <strong className={`dev-val--${status}`}>{count}</strong>
               </div>
             ))}
           </div>
@@ -68,15 +62,15 @@ export function DevOverlay({ onClose }: Props) {
           <div className="dev-section-title">Models</div>
           <div className="dev-stat">
             <span>NemoClaw · Query expansion + Synthesis</span>
-            <strong style={{ color: '#a78bfa' }}>nemotron-3-super:120b</strong>
+            <strong className="dev-model-nemoclaw">nemotron-3-super:120b</strong>
           </div>
           <div className="dev-stat">
             <span>Sentiment · Per-item classification</span>
-            <strong style={{ color: 'var(--rog-cyan)' }}>nemotron3:33b</strong>
+            <strong className="dev-model-sentiment">nemotron3:33b</strong>
           </div>
           <div className="dev-stat">
             <span>Suggestions · Search angle generation</span>
-            <strong style={{ color: 'var(--positive)' }}>deepseek-r1:14b</strong>
+            <strong className="dev-model-suggest">deepseek-r1:14b</strong>
           </div>
         </div>
 
@@ -84,27 +78,27 @@ export function DevOverlay({ onClose }: Props) {
           <div className="dev-section-title">NemoClaw Agent</div>
           <div className="dev-stat">
             <span>Backend</span>
-            <strong style={{ fontFamily: 'var(--mono)' }}>Ollama /api/generate (streaming)</strong>
+            <strong className="dev-val--mono">Ollama /api/generate (streaming)</strong>
           </div>
           <div className="dev-stat">
             <span>Cancel method</span>
-            <strong style={{ fontFamily: 'var(--mono)' }}>cancel_check per token</strong>
+            <strong className="dev-val--mono">cancel_check per token</strong>
           </div>
           <div className="dev-stat">
             <span>Agent runs active</span>
-            <strong style={{ color: ncRunCount > 0 ? '#a78bfa' : 'var(--text)' }}>
+            <strong className={ncRunCount > 0 ? 'dev-model-nemoclaw' : ''}>
               {ncRunCount > 0 ? `${ncRunCount} running` : 'idle'}
             </strong>
           </div>
           <div className="dev-stat">
             <span>Tools</span>
-            <strong style={{ fontFamily: 'var(--mono)', fontSize: 10 }}>
+            <strong className="dev-val--mono dev-val--sm">
               ollama_generate · brave_search · fetch_items
             </strong>
           </div>
           <div className="dev-stat">
             <span>Query strategy</span>
-            <strong style={{ fontFamily: 'var(--mono)', fontSize: 10 }}>
+            <strong className="dev-val--mono dev-val--sm">
               date-aware · 4 expert angles
             </strong>
           </div>
@@ -114,17 +108,16 @@ export function DevOverlay({ onClose }: Props) {
           <div className="dev-section-title">Session</div>
           <div className="dev-stat">
             <span>localStorage key</span>
-            <strong style={{ fontFamily: 'var(--mono)' }}>autosentiment_session</strong>
+            <strong className="dev-val--mono">autosentiment_session</strong>
           </div>
           <div className="dev-stat">
             <span>Session size</span>
-            <strong style={{ fontFamily: 'var(--mono)' }}>
+            <strong className="dev-val--mono">
               {(localStorage.getItem('autosentiment_session')?.length ?? 0)} chars
             </strong>
           </div>
           <button
-            className="btn-secondary"
-            style={{ marginTop: 8, fontSize: 11, height: 26, padding: '0 10px', width: '100%' }}
+            className="btn-secondary btn-secondary--compact dev-clear-btn"
             onClick={() => { localStorage.removeItem('autosentiment_session'); window.location.reload() }}
           >
             Clear session + reload

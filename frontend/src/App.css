@@ -1587,6 +1587,9 @@ button[type="submit"] {
 }
 
 .sentiment-fill { height: 100%; min-width: 2px; border-radius: inherit; transition: width 0.6s ease; }
+.sentiment-fill--pos { background: var(--positive); }
+.sentiment-fill--neu { background: var(--neutral); }
+.sentiment-fill--neg { background: var(--rog-red); }
 
 /* Source table */
 .source-table {
@@ -1783,6 +1786,7 @@ button[type="submit"] {
 
 .analysis-card ul { margin: 0; padding: 0 0 0 14px; }
 .analysis-card li { font-size: 12px; color: var(--text-strong); margin-bottom: 5px; line-height: 1.45; }
+.analysis-card--wide { grid-column: 1 / -1; }
 
 .impact-item { display: flex; gap: 8px; align-items: flex-start; margin-bottom: 7px; font-size: 12px; color: var(--text-strong); }
 .impact-icon { flex-shrink: 0; font-size: 14px; }
@@ -2459,6 +2463,23 @@ button[type="submit"] {
 }
 
 .dev-stat strong { font-family: var(--mono); font-size: 11px; }
+.dev-stat-label--cap { text-transform: capitalize; }
+
+/* Dev stat value colour modifiers */
+.dev-val--active    { color: var(--rog-cyan); }
+.dev-val--running   { color: var(--rog-cyan); }
+.dev-val--error     { color: var(--rog-red); }
+.dev-val--completed { color: var(--positive); }
+.dev-val--mono      { font-family: var(--mono); }
+.dev-val--sm        { font-size: 10px; }
+
+/* Dev overlay model name colours */
+.dev-model-nemoclaw { color: var(--nemoclaw-purple); }
+.dev-model-sentiment { color: var(--rog-cyan); }
+.dev-model-suggest  { color: var(--positive); }
+
+/* Dev clear-session button */
+.dev-clear-btn { margin-top: 8px; width: 100%; }
 
 .dev-footer {
   padding: 8px 14px;
@@ -2961,6 +2982,11 @@ button[type="submit"] {
   font-size: 10px;
   flex-shrink: 0;
 }
+.history-status-icon--completed { color: var(--positive); }
+.history-status-icon--running   { color: var(--rog-cyan); }
+.history-status-icon--pending   { color: var(--neutral); }
+.history-status-icon--cancelled { color: var(--text); }
+.history-status-icon--error     { color: var(--rog-red); }
 
 .history-running-dot {
   width: 7px;
