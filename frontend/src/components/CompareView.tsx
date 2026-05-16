@@ -21,6 +21,7 @@ interface SlotProps {
   runId: string | null
   onRunStart: (runId: string) => void
   disabled: boolean
+  onOpenFull?: (runId: string, topic: string) => void
 }
 
 function pct(v: number): string { return `${Math.round(v * 100)}%` }
@@ -56,7 +57,7 @@ function SentimentBars({ overall }: { overall: Report['overall'] }) {
   )
 }
 
-function CompareSlot({ index, topic, onTopicChange, runId, disabled }: SlotProps) {
+function CompareSlot({ index, topic, onTopicChange, runId, disabled, onOpenFull }: SlotProps) {
   const { events, status } = useRunStream(runId)
   const [report, setReport] = useState<Report | null>(null)
 
@@ -156,6 +157,17 @@ function CompareSlot({ index, topic, onTopicChange, runId, disabled }: SlotProps
                 <p className="compare-narrative-text">{report.narrative.slice(0, 220)}{report.narrative.length > 220 ? '…' : ''}</p>
               </div>
             )}
+
+            {/* Open full report */}
+            {onOpenFull && runId && (
+              <button
+                type="button"
+                className="btn-secondary compare-open-full-btn"
+                onClick={() => onOpenFull(runId, topic)}
+              >
+                ↗ Open full report
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -165,7 +177,11 @@ function CompareSlot({ index, topic, onTopicChange, runId, disabled }: SlotProps
 
 // ── Main CompareView ──────────────────────────────────────────────────────
 
-export function CompareView() {
+interface CompareViewProps {
+  onOpenFull?: (runId: string, topic: string) => void
+}
+
+export function CompareView({ onOpenFull }: CompareViewProps) {
   const [topics, setTopics] = useState<string[]>(['', ''])
   const [runIds, setRunIds] = useState<(string | null)[]>([null, null])
   const [slotCount, setSlotCount] = useState(2)
@@ -270,6 +286,7 @@ export function CompareView() {
             runId={runIds[i] ?? null}
             onRunStart={id => setRunIds(prev => { const n = [...prev]; n[i] = id; return n })}
             disabled={loading}
+            onOpenFull={onOpenFull}
           />
         ))}
       </div>

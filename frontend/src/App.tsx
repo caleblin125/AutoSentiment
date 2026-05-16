@@ -79,7 +79,7 @@ function TabPanel({
       style={tab.id !== activeId ? { display: 'none' } : undefined}
     >
       {tab.type === 'compare' ? (
-        <CompareView />
+        <CompareView onOpenFull={openRunInNewTab} />
       ) : (
         <RunView
           onStatusChange={onStatusChange}
@@ -240,7 +240,7 @@ export default function App() {
           <h1>Auto<span>Sentiment</span></h1>
         </div>
         <p className="app-lede">Multi-source public sentiment intelligence</p>
-        <div style={{ display: 'flex', gap: 6, marginLeft: 'auto', alignItems: 'center' }}>
+        <div className="app-header-actions">
           <button
             className="btn-secondary compare-open-btn"
             onClick={addCompareTab}

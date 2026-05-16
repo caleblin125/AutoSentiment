@@ -123,6 +123,8 @@ body {
   flex-shrink: 0;
 }
 
+.app-header-actions { display: flex; gap: 6px; margin-left: auto; align-items: center; }
+
 .app-logo {
   display: flex;
   align-items: center;
@@ -3998,6 +4000,7 @@ button[type="submit"] {
 .compare-title-row { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
 .compare-title { font-size: 18px; font-weight: 600; margin: 0; }
 .compare-reset-btn { font-size: 11px; padding: 3px 9px; opacity: 0.75; }
+.compare-open-full-btn { margin-top: 12px; font-size: 11px; width: 100%; }
 
 .compare-form { display: flex; flex-direction: column; gap: 10px; }
 .compare-inputs { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
