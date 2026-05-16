@@ -48,23 +48,29 @@ async def suggest_angles(query: str, *, settings: Settings) -> list[str]:
     return fallback
 
 
-async def expand_queries(topic: str, *, settings: Settings) -> list[str]:
+async def expand_queries(
+    topic: str,
+    *,
+    settings: Settings,
+    cancel_check: "Callable[[], bool] | None" = None,
+) -> list[str]:
     """Call the 120B model to produce 5 search query variants for the topic."""
+    from collections.abc import Callable  # noqa: PLC0415 — avoid circular at module level
     system = "You are a search query generator. Respond with JSON only."
     prompt = (
         "Generate 5 search queries to find public opinions, reviews, and discussions "
         f"about: {topic}\n"
-        "Include variants targeting Reddit, reviews, and news.\n"
+        "Include variants targeting reviews, news, and discussion forums.\n"
         "Return exactly: {\"queries\": [\"...\", \"...\", \"...\", \"...\", \"...\"]}"
     )
-    fallback = [topic, f"{topic} reddit", f"{topic} review", f"{topic} news", f"{topic} opinions"]
+    fallback = [topic, f"{topic} review", f"{topic} news", f"{topic} opinions", f"{topic} discussion"]
 
     try:
         payload = await ollama_generate(
-            prompt,
-            system=system,
+            prompt, system=system,
             model=settings.nemoclaw_model,
             base_url=settings.ollama_base_url,
+            cancel_check=cancel_check,
         )
         queries = payload["queries"]
         if not isinstance(queries, list):
@@ -81,6 +87,7 @@ async def synthesize_report(
     counts: dict,
     *,
     settings: Settings,
+    cancel_check: "Callable[[], bool] | None" = None,
 ) -> dict:
     """Call the 120B model to produce themes list and narrative paragraph.
 
@@ -130,6 +137,7 @@ async def synthesize_report(
             system=system,
             model=settings.nemoclaw_model,
             base_url=settings.ollama_base_url,
+            cancel_check=cancel_check,
         )
         themes = payload.get("themes", [])
         if not isinstance(themes, list):

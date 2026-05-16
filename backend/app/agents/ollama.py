@@ -1,8 +1,17 @@
-"""Shared Ollama httpx client — used by both nemoclaw.py (120B) and light_queue.py (30B)."""
+"""Shared Ollama httpx client — used by both nemoclaw.py (120B) and light_queue.py (30B).
+
+Uses the streaming API so a cancel_check callable can interrupt generation
+between tokens rather than waiting for the full response.
+"""
 
 import json
+from collections.abc import Callable
 
 import httpx
+
+
+class GenerationCancelled(Exception):
+    """Raised when cancel_check() returns True during token streaming."""
 
 
 async def ollama_generate(
@@ -11,41 +20,58 @@ async def ollama_generate(
     system: str,
     model: str,
     base_url: str,
+    cancel_check: Callable[[], bool] | None = None,
 ) -> dict:
-    """POST to Ollama /api/generate with format=json. Returns parsed response dict.
+    """Stream from Ollama /api/generate with format=json; return parsed response dict.
 
-    Raises httpx.HTTPError on network failure.
-    Raises ValueError if the response body is not valid JSON.
+    Streams individual tokens so cancel_check is evaluated between each chunk,
+    allowing fast cancellation without waiting for the full LLM response.
+
+    Raises:
+        GenerationCancelled: when cancel_check() returns True mid-stream.
+        httpx.HTTPError: on network/HTTP failure.
+        ValueError: if the accumulated response is not valid JSON.
     """
-    async with httpx.AsyncClient(timeout=60.0) as client:
-        response = await client.post(
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        async with client.stream(
+            "POST",
             f"{base_url.rstrip('/')}/api/generate",
             json={
                 "model": model,
                 "prompt": prompt,
                 "system": system,
                 "format": "json",
-                "stream": False,
+                "stream": True,
             },
-        )
-        response.raise_for_status()
-        payload = response.json()
+        ) as response:
+            response.raise_for_status()
+            full_response = ""
+            full_thinking = ""
+            async for line in response.aiter_lines():
+                if cancel_check and cancel_check():
+                    raise GenerationCancelled()
+                if not line.strip():
+                    continue
+                try:
+                    chunk = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                full_response += chunk.get("response", "")
+                full_thinking += chunk.get("thinking", "")
+                if chunk.get("done"):
+                    break
 
-    raw_response = _ollama_json_text(payload)
+    raw = _pick_text(full_response, full_thinking)
+    if not raw:
+        raise ValueError("Empty response from model")
     try:
-        return json.loads(raw_response)
+        return json.loads(raw)
     except json.JSONDecodeError as exc:
-        raise ValueError(raw_response) from exc
+        raise ValueError(raw) from exc
 
 
-def _ollama_json_text(payload: dict) -> str:
-    """Return the field that contains model JSON for Ollama generate responses.
-
-    Some reasoning models place their structured answer in ``thinking`` while
-    leaving ``response`` empty. Prefer ``response`` when present, but fall back
-    so these models still satisfy the API's JSON contract.
-    """
-    response = str(payload.get("response") or "").strip()
-    if response:
-        return response
-    return str(payload.get("thinking") or "").strip()
+def _pick_text(response: str, thinking: str) -> str:
+    """Prefer the response field; fall back to thinking for reasoning models."""
+    if response.strip():
+        return response.strip()
+    return thinking.strip()

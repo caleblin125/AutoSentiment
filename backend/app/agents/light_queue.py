@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 
-from app.agents.ollama import ollama_generate
+from app.agents.ollama import GenerationCancelled, ollama_generate
 from app.agents.types import SentimentLabel, SentimentResult
 
 if TYPE_CHECKING:
@@ -20,11 +21,13 @@ class SentimentQueue:
 
     Each call sends one snippet to the model and returns a SentimentResult.
     Concurrency is capped at settings.light_queue_max_parallel.
+    cancel_check is evaluated between streaming tokens for fast interruption.
     """
 
-    def __init__(self, settings: Settings) -> None:
+    def __init__(self, settings: Settings, cancel_check: Callable[[], bool] | None = None) -> None:
         self._settings = settings
         self._sem = asyncio.Semaphore(max(1, settings.light_queue_max_parallel))
+        self._cancel_check = cancel_check
 
     async def analyze(self, snippet: str) -> SentimentResult:
         async with self._sem:
@@ -46,11 +49,14 @@ class SentimentQueue:
                 system=system,
                 model=self._settings.lightweight_model,
                 base_url=self._settings.ollama_base_url,
+                cancel_check=self._cancel_check,
             )
             return SentimentResult(
                 label=SentimentLabel(str(payload["label"])),
                 summary=str(payload["summary"]),
             )
+        except GenerationCancelled:
+            raise
         except Exception:
             logger.exception("Sentiment model call failed")
             return SentimentResult(label=SentimentLabel.NEUTRAL, summary="parse error")

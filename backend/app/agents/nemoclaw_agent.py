@@ -158,21 +158,27 @@ class _Done(Exception):
 
 
 async def _generate_angles(topic: str, settings: Settings) -> list[str]:
-    """Ask the 120B model for 4 unique expert research angles."""
+    """Ask the 120B model for 4 unique expert research angles with current date context."""
+    from datetime import date
+    today = date.today().strftime("%B %Y")  # e.g. "May 2026"
+
     system = "You are an expert research strategist. Respond with JSON only."
     prompt = (
-        f"Topic: \"{topic}\"\n\n"
-        "Generate 4 highly specific research angles that would reveal expert and analytical "
-        "perspectives beyond basic public opinion. Focus on: data/statistics, expert critique, "
-        "historical context, regulatory/policy implications, or technical deep dives.\n"
-        "Each angle should be a specific search query.\n"
+        f"Topic: \"{topic}\"\n"
+        f"Today's date: {today}\n\n"
+        "Generate 4 highly specific, UP-TO-DATE research angles that reveal expert and analytical "
+        "perspectives beyond basic public opinion. Use the current date to ask for recent data, "
+        "2025-2026 studies, latest news, and current trends. Focus on: "
+        "recent data/statistics, expert critique, current controversies, "
+        "latest regulatory/policy developments, or technical deep dives.\n"
+        "Each angle should be a specific search query using 'recent', 'latest', '2025', '2026' where appropriate.\n"
         "Return: {\"angles\": [\"...\", \"...\", \"...\", \"...\"]}"
     )
     fallback = [
-        f"{topic} expert analysis report",
-        f"{topic} data statistics study",
-        f"{topic} criticism expert perspective",
-        f"{topic} regulatory policy implications",
+        f"{topic} latest expert analysis 2026",
+        f"{topic} recent data statistics study 2025 2026",
+        f"{topic} current criticism expert perspective",
+        f"{topic} latest regulatory policy developments",
     ]
     try:
         payload = await ollama_generate(
@@ -206,7 +212,7 @@ async def _expert_synthesis(
     snippets: list[dict],
     settings: Settings,
 ) -> dict:
-    """Ask NemoClaw to produce an expert analysis from the gathered evidence."""
+    """Ask NemoClaw to produce an expert analysis with topic-specific controversy categories."""
     evidence_text = "\n".join(f"- {s['text'][:300]}" for s in snippets[:20])
     if not evidence_text:
         evidence_text = "No evidence gathered."
@@ -216,12 +222,20 @@ async def _expert_synthesis(
         f"Topic: \"{topic}\"\n"
         f"Research angles explored: {', '.join(angles)}\n\n"
         f"Evidence gathered:\n{evidence_text}\n\n"
-        "Produce an expert analysis. Return:\n"
+        "Produce an expert analysis. For the 'categories' field, identify the 2-3 most "
+        "controversial, debated, or important dimensions SPECIFIC to this topic. "
+        "Do NOT use generic 'Opportunities' and 'Risks' — instead find the actual fault lines "
+        "of debate. Examples: for a tech product use 'Performance claims vs Real-world results'; "
+        "for a political figure use 'Supporter arguments vs Critic arguments'; "
+        "for a health topic use 'Scientific consensus vs Public perception'.\n\n"
+        "Return:\n"
         "{\n"
         '  "summary": "3-4 sentence expert overview",\n'
         '  "key_findings": ["finding 1", "finding 2", "finding 3"],\n'
-        '  "risks": ["risk 1", "risk 2"],\n'
-        '  "opportunities": ["opportunity 1", "opportunity 2"],\n'
+        '  "categories": [\n'
+        '    {"name": "Specific controversy dimension 1", "side": "positive", "items": ["point 1", "point 2"]},\n'
+        '    {"name": "Specific controversy dimension 2", "side": "negative", "items": ["point 1", "point 2"]}\n'
+        "  ],\n"
         '  "verdict": "one-line expert verdict"\n'
         "}"
     )
@@ -231,19 +245,21 @@ async def _expert_synthesis(
             model=settings.nemoclaw_model,
             base_url=settings.ollama_base_url,
         )
+        categories = payload.get("categories", [])
+        if not isinstance(categories, list):
+            categories = []
         return {
             "type": "nemoclaw",
             "summary": str(payload.get("summary", "Analysis unavailable.")),
             "key_findings": [str(f) for f in payload.get("key_findings", [])],
-            "risks": [str(r) for r in payload.get("risks", [])],
-            "opportunities": [str(o) for o in payload.get("opportunities", [])],
+            "categories": [c for c in categories if isinstance(c, dict)],
             "verdict": str(payload.get("verdict", "")),
         }
     except Exception:
         return {
             "type": "nemoclaw",
             "summary": "Expert synthesis unavailable.",
-            "key_findings": [], "risks": [], "opportunities": [], "verdict": "",
+            "key_findings": [], "categories": [], "verdict": "",
         }
 
 

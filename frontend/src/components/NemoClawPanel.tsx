@@ -12,12 +12,17 @@ interface Props {
   topic: string
 }
 
+interface NemoClawCategory {
+  name: string
+  side: 'positive' | 'negative' | 'neutral'
+  items: string[]
+}
+
 interface NemoClawReport {
   type: 'nemoclaw'
   summary: string
   key_findings: string[]
-  risks: string[]
-  opportunities: string[]
+  categories: NemoClawCategory[]
   verdict: string
 }
 
@@ -87,22 +92,21 @@ export function NemoClawPanel({ ncRunId, topic }: Props) {
                 </ul>
               </div>
             )}
-            {report.opportunities.length > 0 && (
-              <div className="nemoclaw-col">
-                <h4 style={{ color: 'var(--positive)' }}>Opportunities</h4>
-                <ul>
-                  {report.opportunities.map((o, i) => <li key={i} style={{ color: 'var(--positive)' }}>{o}</li>)}
-                </ul>
-              </div>
-            )}
-            {report.risks.length > 0 && (
-              <div className="nemoclaw-col">
-                <h4 style={{ color: 'var(--rog-red)' }}>Risks</h4>
-                <ul>
-                  {report.risks.map((r, i) => <li key={i} style={{ color: 'var(--rog-red)' }}>{r}</li>)}
-                </ul>
-              </div>
-            )}
+            {report.categories.map((cat, ci) => {
+              const color = cat.side === 'positive' ? 'var(--positive)'
+                          : cat.side === 'negative' ? 'var(--rog-red)'
+                          : 'var(--rog-cyan)'
+              return (
+                <div className="nemoclaw-col" key={ci}>
+                  <h4 style={{ color }}>{cat.name}</h4>
+                  <ul>
+                    {cat.items.map((item, i) => (
+                      <li key={i} style={{ color }}>{item}</li>
+                    ))}
+                  </ul>
+                </div>
+              )
+            })}
           </div>
         </div>
       )}

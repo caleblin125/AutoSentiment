@@ -117,6 +117,18 @@ export default function App() {
     return cbCache.current.get(tabId)!
   }
 
+  // ── Open a historic run in a new tab ─────────────────────────────────────
+  const openRunInNewTab = useCallback((runId: string, topic: string) => {
+    const tab = newTab()
+    tab.label = topic
+    tab.runId = runId
+    tab.status = 'completed'
+    setTabs(prev => [...prev, tab])
+    setActiveId(tab.id)
+    // The RunView for this new tab will receive initialRunId and replay events.
+    // We store the runId in the tab so the TabBar shows the correct status.
+  }, [])
+
   function addTab() {
     const tab = newTab()
     setTabs(prev => [...prev, tab])
@@ -181,6 +193,7 @@ export default function App() {
         >
           <RunView
             onStatusChange={getTabCb(tab.id)}
+            onOpenRunInNewTab={openRunInNewTab}
             initialRunId={tab.runId}
             devMode={devMode}
           />

@@ -164,6 +164,10 @@ export function getEventsUrl(runId: string): string {
   return `${API_BASE_URL}/api/runs/${encodeURIComponent(runId)}/events`
 }
 
+export async function clearHistory(): Promise<void> {
+  await fetch(`${API_BASE_URL}/api/runs`, { method: 'DELETE' })
+}
+
 export async function listRuns(topic?: string, limit = 20): Promise<RunSummary[]> {
   const params = new URLSearchParams({ limit: String(limit) })
   if (topic) params.set('topic', topic)

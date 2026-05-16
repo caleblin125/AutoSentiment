@@ -5,10 +5,10 @@
  * refreshKey prop can be bumped externally to force an immediate refresh.
  */
 import { useEffect, useRef, useState } from 'react'
-import { listRuns, type RunSummary } from '../lib/api'
+import { clearHistory, listRuns, type RunSummary } from '../lib/api'
 
 interface Props {
-  onLoadRun: (runId: string, topic: string) => void
+  onOpenRun: (runId: string, topic: string) => void  // always opens in a new tab
   refreshKey?: number
 }
 
@@ -46,7 +46,7 @@ function MiniBar({ overall }: { overall: RunSummary['overall'] }) {
   )
 }
 
-export function HistoryPanel({ onLoadRun, refreshKey }: Props) {
+export function HistoryPanel({ onOpenRun, refreshKey }: Props) {
   const [open, setOpen] = useState(false)
   const [runs, setRuns] = useState<RunSummary[]>([])
   const [loading, setLoading] = useState(false)
@@ -79,6 +79,12 @@ export function HistoryPanel({ onLoadRun, refreshKey }: Props) {
 
   const hasRunning = runs.some(r => r.status === 'running' || r.status === 'pending')
 
+  async function handleClear() {
+    if (!confirm('Clear all completed / cancelled history?')) return
+    await clearHistory()
+    await fetchRuns()
+  }
+
   return (
     <div className="history-panel">
       <button
@@ -94,6 +100,13 @@ export function HistoryPanel({ onLoadRun, refreshKey }: Props) {
 
       {open && (
         <div className="history-dropdown">
+          {runs.length > 0 && (
+            <div className="history-actions">
+              <button className="history-clear-btn" onClick={handleClear}>
+                ✕ Clear history
+              </button>
+            </div>
+          )}
           {loading && runs.length === 0 && (
             <div style={{ padding: '12px 16px' }}>
               <div className="skeleton skeleton-line skeleton-line--medium" />
@@ -111,7 +124,7 @@ export function HistoryPanel({ onLoadRun, refreshKey }: Props) {
             <button
               key={run.id}
               className="history-item"
-              onClick={() => { onLoadRun(run.id, run.topic); setOpen(false) }}
+              onClick={() => { onOpenRun(run.id, run.topic); setOpen(false) }}
               disabled={run.status === 'pending' || run.status === 'running'}
               title={run.status === 'running' ? 'Currently running — wait for completion to replay' : run.topic}
             >

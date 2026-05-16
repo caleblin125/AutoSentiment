@@ -117,18 +117,40 @@ async def suggest_topics(
     return {"suggestions": suggestions}
 
 
+@router.delete("/runs")
+async def clear_history(db: AsyncSession = Depends(get_db)) -> dict:
+    """Delete all non-running runs (completed, cancelled, error) from the history."""
+    from sqlalchemy import delete as sql_delete
+    # Delete events and evidence for completed/cancelled/error runs first.
+    terminal_runs_result = await db.execute(
+        select(Run.id).where(Run.status.in_(["completed", "cancelled", "error"]))
+    )
+    terminal_ids = [r for (r,) in terminal_runs_result.all()]
+    if terminal_ids:
+        await db.execute(
+            sql_delete(RunEvent).where(RunEvent.run_id.in_(terminal_ids))
+        )
+        await db.execute(
+            sql_delete(EvidenceChunk).where(EvidenceChunk.run_id.in_(terminal_ids))
+        )
+        await db.execute(
+            sql_delete(Run).where(Run.id.in_(terminal_ids))
+        )
+    await db.commit()
+    return {"deleted": len(terminal_ids)}
+
+
 @router.post("/runs", response_model=RunResponse)
 async def create_run(
     body: RunRequest,
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> RunResponse:
-    # Return a recent completed run for the same topic+freshness instead of
-    # running a full pipeline again (cache TTL = CACHE_TTL_HOURS).
+    # Case-insensitive cache check for the same topic + freshness (TTL = CACHE_TTL_HOURS).
     cutoff = datetime.now(UTC) - timedelta(hours=CACHE_TTL_HOURS)
     cached_stmt = (
         select(Run)
-        .where(Run.topic == body.topic)
+        .where(Run.topic.ilike(body.topic))  # case-insensitive match
         .where(Run.freshness == body.freshness)
         .where(Run.status == "completed")
         .where(Run.created_at >= cutoff)
@@ -214,10 +236,12 @@ async def expand_run(
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> RunResponse:
-    """Create a wider follow-up run for the same topic.
+    """Create an expanded run that builds on top of existing evidence.
 
-    The expanded run uses double the URL/item limits and drops the freshness
-    restriction (any time) so it casts a broader net than the original.
+    - Copies all EvidenceChunks from the original run so synthesis begins with
+      everything already found rather than starting from scratch.
+    - Passes the original URLs as skip_urls so the pipeline fetches only NEW sources.
+    - Doubles URL/item budgets and drops freshness to cast a wider net.
     """
     original = await db.get(Run, run_id)
     if original is None:
@@ -227,13 +251,35 @@ async def expand_run(
         "max_urls_per_run": settings.max_urls_per_run * 2,
         "max_items_per_run": settings.max_items_per_run * 2,
     })
+
     run = Run(topic=original.topic, freshness=None, status="pending")
     db.add(run)
     await db.commit()
     await db.refresh(run)
 
+    # Copy existing evidence chunks and collect URLs to skip so the expanded
+    # run focuses on sources not yet covered.
+    orig_result = await db.execute(
+        select(EvidenceChunk).where(EvidenceChunk.run_id == run_id)
+    )
+    orig_chunks = orig_result.scalars().all()
+    skip_urls: set[str] = set()
+    for c in orig_chunks:
+        skip_urls.add(c.url)
+        db.add(EvidenceChunk(
+            run_id=run.id,
+            url=c.url,
+            source_type=c.source_type,
+            snippet=c.snippet,
+            label=c.label,
+            summary=c.summary,
+        ))
+    await db.commit()
+
     event_bus.register(run.id)
-    asyncio.create_task(run_research(run.id, run.topic, None, expanded_settings))
+    asyncio.create_task(
+        run_research(run.id, run.topic, None, expanded_settings, frozenset(skip_urls))
+    )
 
     return RunResponse(run_id=run.id)
 

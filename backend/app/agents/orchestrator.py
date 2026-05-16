@@ -12,6 +12,7 @@ from app.api import event_bus
 from app.api.event_bus import clear_cancel, is_cancelled, request_cancel as _request_cancel  # noqa: F401
 from app.agents.light_queue import SentimentQueue
 from app.agents.nemoclaw import expand_queries, synthesize_report
+from app.agents.ollama import GenerationCancelled
 from app.agents.types import SSEEventType, SentimentLabel
 from app.db.session import AsyncSessionLocal
 from app.ingest.fetch import classify_source_type, fetch_items
@@ -31,7 +32,13 @@ class _CancelledByUser(Exception):
     """Raised internally when a user cancels the run; triggers a clean shutdown."""
 
 
-async def run_research(run_id: str, topic: str, freshness: str | None, settings: Settings) -> None:
+async def run_research(
+    run_id: str,
+    topic: str,
+    freshness: str | None,
+    settings: Settings,
+    skip_urls: frozenset[str] = frozenset(),
+) -> None:
     """End-to-end pipeline for one run. Runs as a background asyncio task.
 
     Stages (see SPEC.md §Agent Flow):
@@ -91,9 +98,16 @@ async def run_research(run_id: str, topic: str, freshness: str | None, settings:
             await emit(SSEEventType.RUN_STARTED, "Run started", {"topic": topic, "freshness": freshness})
             await db.commit()
 
+            # ── cancel_check propagated to all LLM calls for fast interruption ──
+            def _cancel_check() -> bool:
+                return is_cancelled(run_id)
+
             # ── Stage 1: query expansion ────────────────────────────────────
             stage_started = perf_counter()
-            queries = _expand_platform_queries(await expand_queries(topic, settings=settings), topic)
+            queries = _expand_platform_queries(
+                await expand_queries(topic, settings=settings, cancel_check=_cancel_check),
+                topic,
+            )
             timings["query_expansion_ms"] = _elapsed_ms(stage_started)
 
             if is_cancelled(run_id):
@@ -116,7 +130,7 @@ async def run_research(run_id: str, topic: str, freshness: str | None, settings:
                     break
 
                 for url in await brave_search(query, freshness=freshness, count=remaining, settings=settings):
-                    if url in seen_urls:
+                    if url in seen_urls or url in skip_urls:
                         continue
                     seen_urls.add(url)
                     urls.append(url)
@@ -170,7 +184,7 @@ async def run_research(run_id: str, topic: str, freshness: str | None, settings:
             timings["fetch_ms"] = _elapsed_ms(stage_started)
 
             # ── Stage 4: sentiment analysis (parallel, capped by SentimentQueue) ──
-            sentiment_queue = SentimentQueue(settings)
+            sentiment_queue = SentimentQueue(settings, cancel_check=_cancel_check)
             chunks: list[EvidenceChunk] = []
 
             stage_started = perf_counter()
@@ -224,7 +238,9 @@ async def run_research(run_id: str, topic: str, freshness: str | None, settings:
             await db.commit()
 
             stage_started = perf_counter()
-            synthesis = await synthesize_report(topic, chunks_summary, counts, settings=settings)
+            synthesis = await synthesize_report(
+                topic, chunks_summary, counts, settings=settings, cancel_check=_cancel_check
+            )
             timings["synthesis_ms"] = _elapsed_ms(stage_started)
             themes = synthesis.get("themes", [])
             timings["total_ms"] = _elapsed_ms(run_started_at)
@@ -249,7 +265,7 @@ async def run_research(run_id: str, topic: str, freshness: str | None, settings:
             await emit(SSEEventType.RUN_COMPLETED, "Run completed", {"report": report})
             await db.commit()
 
-        except _CancelledByUser:
+        except (_CancelledByUser, GenerationCancelled):
             logger.info("Run cancelled by user: %s", run_id)
             run = await db.get(Run, run_id)
             if run is not None:

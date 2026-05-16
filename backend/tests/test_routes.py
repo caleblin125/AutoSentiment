@@ -196,7 +196,7 @@ async def test_expand_run_creates_new_run_with_doubled_limits(monkeypatch, db_se
     assert new_run.freshness is None  # expanded runs use "any time"
     await asyncio.sleep(0)
     assert len(launched) == 1
-    _run_id, _topic, _freshness, expanded_settings = launched[0]
+    _run_id, _topic, _freshness, expanded_settings, _skip = launched[0]
     assert expanded_settings.max_urls_per_run == 20
     assert expanded_settings.max_items_per_run == 100
 

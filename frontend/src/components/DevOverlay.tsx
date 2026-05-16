@@ -25,6 +25,7 @@ export function DevOverlay({ onClose }: Props) {
 
   const runCounts = stats.run_counts as Record<string, number> | undefined
   const activeQueues = stats.active_sse_queues as number | undefined
+  const ncRunCount = runCounts ? (runCounts['running'] ?? 0) : 0
 
   return (
     <div className="dev-overlay">
@@ -64,10 +65,49 @@ export function DevOverlay({ onClose }: Props) {
         )}
 
         <div className="dev-section">
-          <div className="dev-section-title">Models (from .env)</div>
-          <div className="dev-stat"><span>NemoClaw (synthesis)</span><strong>nemotron-3-super:120b</strong></div>
-          <div className="dev-stat"><span>Sentiment (per item)</span><strong>nemotron3:33b</strong></div>
-          <div className="dev-stat"><span>Suggestions</span><strong>deepseek-r1:14b</strong></div>
+          <div className="dev-section-title">Models</div>
+          <div className="dev-stat">
+            <span>NemoClaw · Query expansion + Synthesis</span>
+            <strong style={{ color: '#a78bfa' }}>nemotron-3-super:120b</strong>
+          </div>
+          <div className="dev-stat">
+            <span>Sentiment · Per-item classification</span>
+            <strong style={{ color: 'var(--rog-cyan)' }}>nemotron3:33b</strong>
+          </div>
+          <div className="dev-stat">
+            <span>Suggestions · Search angle generation</span>
+            <strong style={{ color: 'var(--positive)' }}>deepseek-r1:14b</strong>
+          </div>
+        </div>
+
+        <div className="dev-section">
+          <div className="dev-section-title">NemoClaw Agent</div>
+          <div className="dev-stat">
+            <span>Backend</span>
+            <strong style={{ fontFamily: 'var(--mono)' }}>Ollama /api/generate (streaming)</strong>
+          </div>
+          <div className="dev-stat">
+            <span>Cancel method</span>
+            <strong style={{ fontFamily: 'var(--mono)' }}>cancel_check per token</strong>
+          </div>
+          <div className="dev-stat">
+            <span>Agent runs active</span>
+            <strong style={{ color: ncRunCount > 0 ? '#a78bfa' : 'var(--text)' }}>
+              {ncRunCount > 0 ? `${ncRunCount} running` : 'idle'}
+            </strong>
+          </div>
+          <div className="dev-stat">
+            <span>Tools</span>
+            <strong style={{ fontFamily: 'var(--mono)', fontSize: 10 }}>
+              ollama_generate · brave_search · fetch_items
+            </strong>
+          </div>
+          <div className="dev-stat">
+            <span>Query strategy</span>
+            <strong style={{ fontFamily: 'var(--mono)', fontSize: 10 }}>
+              date-aware · 4 expert angles
+            </strong>
+          </div>
         </div>
 
         <div className="dev-section">

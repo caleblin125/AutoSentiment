@@ -4,7 +4,7 @@
  * Accepts `initialRunId` for session restoration on reload.
  * Propagates current `runId` up so the parent can cancel it on tab close.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'  // eslint-disable-line
 import {
   cancelRun, createRun, expandRun, startNemoClaw, suggestAngles,
   type Report, type RunRequest,
@@ -25,11 +25,12 @@ const FRESHNESS_OPTIONS = [
 
 interface Props {
   onStatusChange: (status: string, label: string, runId?: string) => void
+  onOpenRunInNewTab: (runId: string, topic: string) => void
   initialRunId?: string
   devMode?: boolean
 }
 
-export function RunView({ onStatusChange, initialRunId, devMode }: Props) {
+export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMode }: Props) {
   const [topic, setTopic] = useState('')
   const [freshness, setFreshness] = useState<string>('pm')
   const [runId, setRunId] = useState<string | null>(initialRunId ?? null)
@@ -43,7 +44,7 @@ export function RunView({ onStatusChange, initialRunId, devMode }: Props) {
   const [ncRunId, setNcRunId] = useState<string | null>(null)
   const [suggestions, setSuggestions] = useState<string[]>([])
   const [showSuggestions, setShowSuggestions] = useState(false)
-  const suggestTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [suggestLoading, setSuggestLoading] = useState(false)
 
   const { events, status } = useRunStream(runId)
 
@@ -119,27 +120,24 @@ export function RunView({ onStatusChange, initialRunId, devMode }: Props) {
     }
   }
 
-  function loadHistoricRun(histRunId: string, histTopic: string) {
-    setRunId(histRunId)
-    setActiveTopic(histTopic)
-    setCached(true)
-    setNcRunId(null)
-  }
 
-  // Debounced search suggestions
-  const fetchSuggestions = useCallback((q: string) => {
-    if (suggestTimer.current) clearTimeout(suggestTimer.current)
-    if (q.trim().length < 3) { setSuggestions([]); return }
-    suggestTimer.current = setTimeout(async () => {
-      const results = await suggestAngles(q)
+  // Suggestions fetched on explicit button click only.
+  const handleSuggest = useCallback(async () => {
+    if (!topic.trim() || suggestLoading) return
+    setSuggestLoading(true)
+    try {
+      const results = await suggestAngles(topic)
       setSuggestions(results)
       setShowSuggestions(results.length > 0)
-    }, 700)
-  }, [])
+    } finally {
+      setSuggestLoading(false)
+    }
+  }, [topic, suggestLoading])
 
   function handleTopicChange(e: React.ChangeEvent<HTMLInputElement>) {
     setTopic(e.target.value)
-    fetchSuggestions(e.target.value)
+    // Clear stale suggestions when user edits the query.
+    if (showSuggestions) setShowSuggestions(false)
   }
 
   const isRunning   = status === 'running'
@@ -152,27 +150,32 @@ export function RunView({ onStatusChange, initialRunId, devMode }: Props) {
       <div className="panel search-panel">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, flex: 1, position: 'relative' }}>
           <form className="search-form" onSubmit={handleSubmit} autoComplete="off">
-            <div style={{ position: 'relative', flex: 1 }}>
+            <div style={{ position: 'relative', flex: 1, minWidth: 0 }}>
               <input
                 className="search-input"
                 type="text"
                 placeholder="Topic, brand, event, or question…"
                 value={topic}
                 onChange={handleTopicChange}
-                onFocus={() => suggestions.length && setShowSuggestions(true)}
-                onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
                 disabled={loading}
                 required
               />
               {showSuggestions && suggestions.length > 0 && (
                 <div className="suggestions-dropdown">
+                  <div className="suggestions-header">
+                    <span>AI suggestions</span>
+                    <button
+                      type="button"
+                      className="suggestions-close"
+                      onClick={() => setShowSuggestions(false)}
+                    >✕</button>
+                  </div>
                   {suggestions.map((s, i) => (
                     <button
                       key={i}
                       type="button"
                       className="suggestion-item"
-                      onMouseDown={e => {
-                        e.preventDefault()
+                      onClick={() => {
                         setTopic(s)
                         setShowSuggestions(false)
                       }}
@@ -184,6 +187,15 @@ export function RunView({ onStatusChange, initialRunId, devMode }: Props) {
                 </div>
               )}
             </div>
+            <button
+              type="button"
+              className="btn-suggest"
+              onClick={handleSuggest}
+              disabled={!topic.trim() || suggestLoading}
+              title="Get AI research angle suggestions"
+            >
+              {suggestLoading ? <span className="spinner" style={{ width: 12, height: 12 }} /> : '💡'}
+            </button>
             <select
               className="freshness-select"
               value={freshness}
@@ -202,7 +214,7 @@ export function RunView({ onStatusChange, initialRunId, devMode }: Props) {
           {formError && <p className="error-msg">{formError}</p>}
         </div>
 
-        <HistoryPanel onLoadRun={loadHistoricRun} refreshKey={historyKey} />
+        <HistoryPanel onOpenRun={onOpenRunInNewTab} refreshKey={historyKey} />
       </div>
 
       {/* ── Run status strip ── */}

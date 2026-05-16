@@ -43,6 +43,16 @@ function faviconUrl(domain: string) {
   return `https://www.google.com/s2/favicons?domain=${domain}&sz=16`
 }
 
+function truncatePath(url: string): string {
+  try {
+    const u = new URL(url)
+    const path = u.pathname
+    return path.length > 40 ? path.slice(0, 38) + '…' : path
+  } catch {
+    return ''
+  }
+}
+
 function formatElapsed(ms: unknown): string {
   if (typeof ms !== 'number' || ms < 0) return ''
   return ms < 1000 ? `+${Math.round(ms)}ms` : `+${(ms / 1000).toFixed(1)}s`
@@ -165,14 +175,14 @@ function FetchBatchRow({ ev }: { ev: FoldedFetch }) {
         </div>
       )}
 
-      {/* Live URL feed — last 5 when collapsed, all when expanded */}
-      {!expanded && recentUrls.length > 0 && (
+      {/* URL list — last 3 when collapsed, all when expanded */}
+      {!expanded && recentUrls.slice(-3).length > 0 && (
         <div className="fetch-url-live">
-          {recentUrls.map(u => (
+          {recentUrls.slice(-3).map(u => (
             <a key={u.url} href={u.url} target="_blank" rel="noreferrer" className="fetch-url-link" title={u.url}>
               <img src={faviconUrl(u.domain)} alt="" width={11} height={11}
                 onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
-              <span className="clip-text">{u.url}</span>
+              <span className="fetch-url-domain">{providerName(u.domain)}</span>
               {u.item_count > 0 && <span className="url-item-badge">{u.item_count}</span>}
             </a>
           ))}
@@ -185,9 +195,10 @@ function FetchBatchRow({ ev }: { ev: FoldedFetch }) {
             <a key={u.url} href={u.url} target="_blank" rel="noreferrer" className="fetch-url-link" title={u.url}>
               <img src={faviconUrl(u.domain)} alt="" width={11} height={11}
                 onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
-              <span className="clip-text">{u.url}</span>
+              <span className="fetch-url-domain">{providerName(u.domain)}</span>
+              <span className="fetch-url-path">{truncatePath(u.url)}</span>
               {u.item_count > 0 && <span className="url-item-badge">{u.item_count}</span>}
-              <span className="duration-badge" style={{ marginLeft: 'auto', flexShrink: 0 }}>{formatDuration(u.fetch_ms)}</span>
+              <span className="duration-badge">{formatDuration(u.fetch_ms)}</span>
             </a>
           ))}
         </div>
@@ -199,20 +210,38 @@ function FetchBatchRow({ ev }: { ev: FoldedFetch }) {
 function ItemAnalyzedRow({ ev }: { ev: SSEEvent }) {
   const label = ev.detail.label as string
   const domain = ev.detail.domain as string | undefined
+  const url = ev.detail.url as string | undefined
   const summary = ev.detail.summary as string
   const credible = domain ? isHighCredibility(domain) : false
+
+  const badgeContent = (
+    <>
+      <img src={faviconUrl(domain ?? '')} alt="" width={12} height={12}
+        onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
+      {providerName(domain ?? '')}
+      {credible && <span className="credibility-star" title="High-credibility source">★</span>}
+    </>
+  )
+
   return (
     <span className="timeline-message">
       <span className={`sentiment-chip sentiment-chip--${label}`}>{label}</span>
       <span className="event-body" title={summary}>{summary}</span>
-      {domain && (
+      {domain && url ? (
+        <a
+          href={url}
+          target="_blank"
+          rel="noreferrer"
+          className={`event-source-badge event-source-badge--link${credible ? ' event-source-badge--credible' : ''}`}
+          title={url}
+        >
+          {badgeContent}
+        </a>
+      ) : domain ? (
         <span className={`event-source-badge${credible ? ' event-source-badge--credible' : ''}`} title={domain}>
-          <img src={faviconUrl(domain)} alt="" width={12} height={12}
-            onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
-          {providerName(domain)}
-          {credible && <span className="credibility-star" title="High-credibility source">★</span>}
+          {badgeContent}
         </span>
-      )}
+      ) : null}
       {typeof ev.detail.duration_ms === 'number' && (
         <span className="duration-badge">{formatDuration(ev.detail.duration_ms)}</span>
       )}
