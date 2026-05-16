@@ -18,7 +18,7 @@ from app.agents.nemoclaw import expand_queries, synthesize_report, synthesize_re
 from app.agents.ollama import GenerationCancelled
 from app.agents.types import SSEEventType, SentimentLabel
 from app.db.session import AsyncSessionLocal
-from app.ingest.fetch import classify_source_type, fetch_items
+from app.ingest.fetch import classify_source_type, fetch_items, read_url_cache, write_url_cache
 from app.models import EvidenceChunk, Run, RunEvent
 from app.reports.builder import (
     build_idea_graph,
@@ -236,7 +236,46 @@ async def run_research(
                     domain_sems[domain] = asyncio.Semaphore(_FETCH_CONCURRENCY_PER_DOMAIN)
                 return domain_sems[domain]
             fetched_items: list[FetchedItem] = []  # type: ignore[name-defined]
+            cache_hits = 0
             stage_started = perf_counter()
+
+            ttl_seconds = getattr(settings, "fetched_url_cache_ttl_seconds", 86_400)
+
+            # Serial cache reads to keep the shared db session safe.
+            cached_pairs: list[tuple[str, list]] = []
+            uncached_urls: list[str] = []
+            for url in urls:
+                cached = await read_url_cache(db, url, ttl_seconds)
+                if cached is not None:
+                    cached_pairs.append((url, cached))
+                else:
+                    uncached_urls.append(url)
+
+            # Emit cache hits up-front so the UI sees progress immediately.
+            for url, items in cached_pairs:
+                if is_cancelled(run_id):
+                    raise _CancelledByUser()
+                cache_hits += 1
+                remaining = settings.max_items_per_run - len(fetched_items)
+                selected = items[:remaining] if remaining > 0 else []
+                fetched_items.extend(selected)
+                source_type = (
+                    selected[0].source_type.value if selected else classify_source_type(url).value
+                )
+                domain = _domain_from_url(url)
+                await emit(
+                    SSEEventType.URL_FETCHED,
+                    f"Fetched {len(selected)} items from {domain} (cached)",
+                    {
+                        "url": url,
+                        "domain": domain,
+                        "source_type": source_type,
+                        "item_count": len(selected),
+                        "fetch_ms": 0.0,
+                        "cache_hit": True,
+                    },
+                )
+                await db.commit()
 
             async with httpx.AsyncClient(
                 timeout=10.0,
@@ -245,7 +284,7 @@ async def run_research(
             ) as fetch_client:
                 fetch_tasks = [
                     asyncio.create_task(_fetch_url_timed(url, global_sem, fetch_client, _domain_sem(_domain_from_url(url))))
-                    for url in urls
+                    for url in uncached_urls
                 ]
                 for future in asyncio.as_completed(fetch_tasks):
                     url, items, fetch_ms = await future
@@ -256,6 +295,10 @@ async def run_research(
                     remaining = settings.max_items_per_run - len(fetched_items)
                     selected = items[:remaining] if remaining > 0 else []
                     fetched_items.extend(selected)
+
+                    # Persist on cache miss so future runs reuse this fetch.
+                    if items and ttl_seconds > 0:
+                        await write_url_cache(db, url, items)
 
                     source_type = (
                         selected[0].source_type.value
@@ -272,10 +315,13 @@ async def run_research(
                             "source_type": source_type,
                             "item_count": len(selected),
                             "fetch_ms": round(fetch_ms, 1),
+                            "cache_hit": False,
                         },
                     )
                     await db.commit()
             timings["fetch_ms"] = _elapsed_ms(stage_started)
+            timings["fetch_cache_hits"] = float(cache_hits)
+            timings["fetch_cache_misses"] = float(len(uncached_urls))
 
             # ── Stage 4: sentiment analysis (parallel, capped by SentimentQueue) ──
             sentiment_queue = SentimentQueue(settings, cancel_check=_cancel_check)
@@ -555,8 +601,12 @@ async def _analyze_item_cached(
             _sel2(SentimentCache).where(SentimentCache.snippet_hash == snippet_hash)
         )).scalar_one_or_none()
         if row is not None:
-            from app.agents.types import SentimentResult
-            result = SentimentResult(label=row.label, summary=row.summary)
+            from app.agents.types import SentimentLabel as _SL, SentimentResult
+            try:
+                label_enum = _SL(row.label)
+            except ValueError:
+                label_enum = _SL.NEUTRAL
+            result = SentimentResult(label=label_enum, summary=row.summary)
             async def _cached_result():
                 return result
             sentiment_tasks[key] = asyncio.ensure_future(_cached_result())

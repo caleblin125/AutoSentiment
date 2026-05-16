@@ -454,5 +454,95 @@ def test_domain_from_url_strips_www() -> None:
     assert orchestrator._domain_from_url("https://techcrunch.com/2024/article") == "techcrunch.com"
 
 
+@pytest.mark.asyncio
+async def test_run_research_reuses_fetched_url_cache_across_runs(monkeypatch, session_factory) -> None:
+    """A second run for the same URL must hit FetchedURLCache and skip fetch_items."""
+    settings = Settings(max_queries_per_run=1, max_urls_per_run=1, max_items_per_run=4)
+    fetch_calls: list[str] = []
+
+    monkeypatch.setattr(orchestrator, "AsyncSessionLocal", session_factory)
+    monkeypatch.setattr(orchestrator, "expand_queries", lambda *_a, **_kw: _async(["q"]))
+    monkeypatch.setattr(orchestrator, "brave_search", lambda *_a, **_kw: _async(["https://news.example/cached"]))
+
+    async def tracked_fetch(url: str, **_kw):
+        fetch_calls.append(url)
+        return [FetchedItem(snippet="cached body text", url=url, source_type=SourceType.NEWS)]
+
+    monkeypatch.setattr(orchestrator, "fetch_items", tracked_fetch)
+    monkeypatch.setattr(
+        orchestrator.SentimentQueue,
+        "analyze",
+        lambda _self, _snippet: _async(SentimentResult(label=SentimentLabel.NEUTRAL, summary="ok")),
+    )
+    monkeypatch.setattr(orchestrator, "synthesize_report", lambda *_a, **_kw: _async({"themes": [], "narrative": ""}))
+    monkeypatch.setattr(orchestrator, "synthesize_report_streaming", lambda *_a, **_kw: _async({"themes": [], "narrative": ""}))
+
+    async def _run_once(topic: str) -> dict:
+        async with session_factory() as db:
+            run = Run(topic=topic, freshness=None, status="pending")
+            db.add(run)
+            await db.commit()
+            await db.refresh(run)
+            run_id = run.id
+        queue = event_bus.register(run_id)
+        await orchestrator.run_research(run_id, topic, None, settings)
+        while await queue.get() is not None:
+            pass
+        event_bus.deregister(run_id)
+        async with session_factory() as db:
+            stored = await db.get(Run, run_id)
+            return dict(stored.report) if stored and stored.report else {}
+
+    first = await _run_once("first run")
+    second = await _run_once("second run")
+
+    assert len(fetch_calls) == 1, f"Expected one network fetch across two runs, got {fetch_calls}"
+    assert first.get("timings", {}).get("fetch_cache_hits", 0) == 0
+    assert second.get("timings", {}).get("fetch_cache_hits", 0) >= 1
+    assert second.get("timings", {}).get("fetch_cache_misses", 0) == 0
+
+
+@pytest.mark.asyncio
+async def test_run_research_skips_cache_when_ttl_zero(monkeypatch, session_factory) -> None:
+    """ttl=0 disables the cache so every run re-fetches."""
+    settings = Settings(max_queries_per_run=1, max_urls_per_run=1, max_items_per_run=4, fetched_url_cache_ttl_seconds=0)
+    fetch_calls: list[str] = []
+
+    monkeypatch.setattr(orchestrator, "AsyncSessionLocal", session_factory)
+    monkeypatch.setattr(orchestrator, "expand_queries", lambda *_a, **_kw: _async(["q"]))
+    monkeypatch.setattr(orchestrator, "brave_search", lambda *_a, **_kw: _async(["https://news.example/ttl0"]))
+
+    async def tracked_fetch(url: str, **_kw):
+        fetch_calls.append(url)
+        return [FetchedItem(snippet="some body", url=url, source_type=SourceType.NEWS)]
+
+    monkeypatch.setattr(orchestrator, "fetch_items", tracked_fetch)
+    monkeypatch.setattr(
+        orchestrator.SentimentQueue,
+        "analyze",
+        lambda _self, _snippet: _async(SentimentResult(label=SentimentLabel.NEUTRAL, summary="ok")),
+    )
+    monkeypatch.setattr(orchestrator, "synthesize_report", lambda *_a, **_kw: _async({"themes": [], "narrative": ""}))
+    monkeypatch.setattr(orchestrator, "synthesize_report_streaming", lambda *_a, **_kw: _async({"themes": [], "narrative": ""}))
+
+    async def _run_once(topic: str) -> None:
+        async with session_factory() as db:
+            run = Run(topic=topic, freshness=None, status="pending")
+            db.add(run)
+            await db.commit()
+            await db.refresh(run)
+            run_id = run.id
+        queue = event_bus.register(run_id)
+        await orchestrator.run_research(run_id, topic, None, settings)
+        while await queue.get() is not None:
+            pass
+        event_bus.deregister(run_id)
+
+    await _run_once("a")
+    await _run_once("b")
+
+    assert len(fetch_calls) == 2
+
+
 async def _async(value):
     return value

@@ -2622,6 +2622,34 @@ button[type="submit"] {
 
 .timing-tip--highlight strong { color: var(--rog-red); }
 
+.timing-cache-stats {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+  padding: 6px 10px;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 11px;
+}
+.timing-cache-label {
+  color: var(--text);
+  font-family: var(--mono);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  margin-right: 4px;
+}
+.timing-cache-pill {
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-family: var(--mono);
+  font-size: 11px;
+}
+.timing-cache-pill--hit { background: rgba(0, 180, 60, 0.15); color: var(--positive); border: 1px solid rgba(0,180,60,0.3); }
+.timing-cache-pill--miss { background: rgba(100,100,100,0.12); color: var(--text); border: 1px solid var(--border); }
+
 /* ── Text clipping utility ──────────────────────────────────────────────── */
 
 .clip-text {

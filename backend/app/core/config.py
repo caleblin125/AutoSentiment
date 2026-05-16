@@ -34,6 +34,9 @@ class Settings(BaseSettings):
     # Leave empty to disable auth (default for localhost use).
     auth_api_key: str = Field(default="", validation_alias="AUTH_API_KEY")
 
+    # Cross-run cache TTL for raw URL fetches (seconds). 0 disables the cache.
+    fetched_url_cache_ttl_seconds: int = Field(default=86_400, validation_alias="FETCHED_URL_CACHE_TTL_SECONDS")
+
     @property
     def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]

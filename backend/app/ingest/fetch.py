@@ -7,13 +7,17 @@ News URLs:   httpx GET → trafilatura extraction → split into paragraphs.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 from dataclasses import dataclass
+from datetime import datetime, timedelta, UTC
 from urllib.parse import urlparse, urlsplit, urlunsplit
 
 import httpx
 import trafilatura
 
 from app.agents.types import SourceType
+
+_SNIPPET_DELIMITER = "\n␞\n"  # ASCII record separator wrapped in newlines
 
 REDDIT_COMMENTS_PER_THREAD = 20
 _USER_AGENT = (
@@ -91,6 +95,85 @@ async def fetch_items(url: str, client: httpx.AsyncClient | None = None) -> list
         return await _fetch_news(url, client=client)
     except Exception:
         return []
+
+
+def _url_hash(url: str) -> str:
+    return hashlib.sha256(url.encode("utf-8")).hexdigest()
+
+
+async def read_url_cache(
+    db,
+    url: str,
+    ttl_seconds: int,
+) -> list[FetchedItem] | None:
+    """Return cached FetchedItems for url if fresh, else None.
+
+    Must be awaited serially against db (no concurrent calls on the same session).
+    """
+    if db is None or ttl_seconds <= 0:
+        return None
+
+    from sqlalchemy import select
+    from app.models import FetchedURLCache
+
+    cache_key = _url_hash(url)
+    row = (
+        await db.execute(select(FetchedURLCache).where(FetchedURLCache.url_hash == cache_key))
+    ).scalar_one_or_none()
+    if row is None:
+        return None
+
+    cached_at = row.created_at
+    if cached_at.tzinfo is None:
+        cached_at = cached_at.replace(tzinfo=UTC)
+    if datetime.now(UTC) - cached_at > timedelta(seconds=ttl_seconds):
+        return None
+
+    try:
+        source_type = SourceType(row.source_type)
+    except ValueError:
+        source_type = classify_source_type(url)
+    snippets = [s for s in row.extracted_text.split(_SNIPPET_DELIMITER) if s.strip()]
+    return [FetchedItem(snippet=s, url=url, source_type=source_type) for s in snippets]
+
+
+async def write_url_cache(
+    db,
+    url: str,
+    items: list[FetchedItem],
+) -> None:
+    """Persist fetched items so a future run can skip the network round-trip.
+
+    Must be awaited serially against db. Silently swallows write errors so
+    cache problems never break a run.
+    """
+    if db is None or not items:
+        return
+
+    from sqlalchemy import select
+    from app.models import FetchedURLCache
+
+    cache_key = _url_hash(url)
+    snippets_blob = _SNIPPET_DELIMITER.join(item.snippet for item in items)
+    source_type_value = items[0].source_type.value
+    try:
+        row = (
+            await db.execute(select(FetchedURLCache).where(FetchedURLCache.url_hash == cache_key))
+        ).scalar_one_or_none()
+        if row is None:
+            db.add(FetchedURLCache(
+                url_hash=cache_key,
+                url=url,
+                extracted_text=snippets_blob,
+                source_type=source_type_value,
+            ))
+        else:
+            row.extracted_text = snippets_blob
+            row.source_type = source_type_value
+            row.created_at = datetime.now(UTC)
+        await db.flush()
+    except Exception:
+        pass
 
 
 async def _fetch_reddit(url: str, client: httpx.AsyncClient | None = None) -> list[FetchedItem]:

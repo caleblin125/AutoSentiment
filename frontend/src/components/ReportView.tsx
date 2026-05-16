@@ -84,6 +84,12 @@ function TimingSummary({ timings }: { timings: Record<string, number> }) {
     ? mainRows.reduce((max, r) => (r[1] > max[1] ? r : max), mainRows[0])
     : rows[0]
 
+  const urlHits = timings.fetch_cache_hits ?? 0
+  const urlMisses = timings.fetch_cache_misses ?? 0
+  const sentHits = timings.sentiment_cache_hits ?? 0
+  const sentCalls = timings.sentiment_model_calls ?? 0
+  const showCacheStats = (urlHits + urlMisses + sentHits + sentCalls) > 0
+
   return (
     <div className="timing-section">
       <div className="timing-header">
@@ -102,6 +108,23 @@ function TimingSummary({ timings }: { timings: Record<string, number> }) {
           </div>
         ))}
       </div>
+      {showCacheStats && (
+        <div className="timing-cache-stats">
+          <span className="timing-cache-label">Cache efficiency</span>
+          <span className="timing-cache-pill timing-cache-pill--hit">
+            {urlHits} URL {urlHits === 1 ? 'hit' : 'hits'}
+          </span>
+          <span className="timing-cache-pill timing-cache-pill--miss">
+            {urlMisses} URL {urlMisses === 1 ? 'miss' : 'misses'}
+          </span>
+          <span className="timing-cache-pill timing-cache-pill--hit">
+            {sentHits} sentiment {sentHits === 1 ? 'hit' : 'hits'}
+          </span>
+          <span className="timing-cache-pill timing-cache-pill--miss">
+            {sentCalls} model {sentCalls === 1 ? 'call' : 'calls'}
+          </span>
+        </div>
+      )}
       {showTips && (
         <div className="timing-tips">
           {mainRows.map(([label]) => (

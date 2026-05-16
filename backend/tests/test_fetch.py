@@ -102,3 +102,115 @@ def test_classify_source_type_identifies_platforms() -> None:
     assert fetch.classify_source_type("https://youtube.com/watch?v=1") == SourceType.VIDEO
     assert fetch.classify_source_type("https://x.com/example/status/1") == SourceType.SOCIAL
     assert fetch.classify_source_type("https://example.com/post") == SourceType.WEB
+
+
+@pytest.mark.asyncio
+async def test_read_url_cache_returns_none_when_db_or_ttl_disabled() -> None:
+    assert await fetch.read_url_cache(None, "https://x.example/", 60) is None
+
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+    from app.models import Base
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    try:
+        async with factory() as db:
+            assert await fetch.read_url_cache(db, "https://x.example/", 0) is None
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_url_cache_round_trip_writes_then_reads_items() -> None:
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+    from app.models import Base
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    try:
+        url = "https://news.example/article"
+        items = [
+            fetch.FetchedItem(snippet="First paragraph", url=url, source_type=SourceType.NEWS),
+            fetch.FetchedItem(snippet="Second paragraph", url=url, source_type=SourceType.NEWS),
+        ]
+        async with factory() as db:
+            await fetch.write_url_cache(db, url, items)
+            await db.commit()
+
+        async with factory() as db:
+            cached = await fetch.read_url_cache(db, url, ttl_seconds=3600)
+
+        assert cached is not None
+        assert [item.snippet for item in cached] == ["First paragraph", "Second paragraph"]
+        assert cached[0].source_type == SourceType.NEWS
+        assert cached[0].url == url
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_url_cache_expires_entries_past_ttl() -> None:
+    from datetime import datetime, UTC, timedelta
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+    from app.models import Base, FetchedURLCache
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    try:
+        url = "https://news.example/expired"
+        async with factory() as db:
+            items = [fetch.FetchedItem(snippet="text", url=url, source_type=SourceType.NEWS)]
+            await fetch.write_url_cache(db, url, items)
+            # Backdate the row past the TTL window.
+            row = (await db.execute(
+                FetchedURLCache.__table__.select().where(FetchedURLCache.url_hash == fetch._url_hash(url))
+            )).first()
+            assert row is not None
+            await db.execute(
+                FetchedURLCache.__table__.update()
+                .where(FetchedURLCache.url_hash == fetch._url_hash(url))
+                .values(created_at=datetime.now(UTC) - timedelta(seconds=120))
+            )
+            await db.commit()
+
+        async with factory() as db:
+            assert await fetch.read_url_cache(db, url, ttl_seconds=60) is None
+            assert await fetch.read_url_cache(db, url, ttl_seconds=300) is not None
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_write_url_cache_overwrites_existing_entry() -> None:
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+    from app.models import Base
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    try:
+        url = "https://news.example/refresh"
+        async with factory() as db:
+            await fetch.write_url_cache(
+                db, url,
+                [fetch.FetchedItem(snippet="old", url=url, source_type=SourceType.NEWS)],
+            )
+            await db.commit()
+        async with factory() as db:
+            await fetch.write_url_cache(
+                db, url,
+                [
+                    fetch.FetchedItem(snippet="new-1", url=url, source_type=SourceType.NEWS),
+                    fetch.FetchedItem(snippet="new-2", url=url, source_type=SourceType.NEWS),
+                ],
+            )
+            await db.commit()
+        async with factory() as db:
+            cached = await fetch.read_url_cache(db, url, ttl_seconds=3600)
+        assert cached is not None
+        assert [c.snippet for c in cached] == ["new-1", "new-2"]
+    finally:
+        await engine.dispose()
