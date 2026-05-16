@@ -142,6 +142,10 @@ function useFetchExpanded() {
   return useState(false)
 }
 
+// FetchBatchHeader renders only the compact one-line header inside the grid row.
+// The URL preview (live or expanded) is always a SIBLING <li> rendered by EventRow
+// so it never lives inside the 3-column grid cell and can't cause height-mismatch
+// layout bugs.
 function FetchBatchHeader({ ev, expanded, setExpanded }: {
   ev: FoldedFetch
   expanded: boolean
@@ -150,7 +154,6 @@ function FetchBatchHeader({ ev, expanded, setExpanded }: {
   const pct = ev._totalUrls > 0 ? Math.min(100, (ev._fetchCount / ev._totalUrls) * 100) : 0
   const done = ev._fetchCount >= ev._totalUrls && ev._totalUrls > 0
   const domains = [...new Set(ev._domains)].slice(0, 6)
-  const recentUrls = ev._urls.slice(-3)
 
   return (
     <div className="fetch-batch-message">
@@ -181,18 +184,6 @@ function FetchBatchHeader({ ev, expanded, setExpanded }: {
       {!done && (
         <div className="fetch-progress-bar">
           <div className="fetch-progress-fill" style={{ width: `${pct}%` }} />
-        </div>
-      )}
-      {!expanded && recentUrls.length > 0 && (
-        <div className="fetch-url-live">
-          {recentUrls.map(u => (
-            <a key={u.url} href={u.url} target="_blank" rel="noreferrer" className="fetch-url-link" title={u.url}>
-              <img src={faviconUrl(u.domain)} alt="" width={11} height={11}
-                onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
-              <span className="fetch-url-domain">{providerName(u.domain)}</span>
-              {u.item_count > 0 && <span className="url-item-badge">{u.item_count}</span>}
-            </a>
-          ))}
         </div>
       )}
     </div>
@@ -273,13 +264,31 @@ function EventRow({ ev }: { ev: FoldedEvent }) {
   const received = !isFolded(ev) ? ev.detail.received_at : undefined
 
   if (isFolded(ev)) {
+    const recentUrls = ev._urls.slice(-3)
     return (
       <Fragment>
+        {/* Header row — stays inside the 3-column grid, always compact */}
         <li className={`timeline-event timeline-event--${ev.type}`}>
           <span className="event-elapsed">{formatElapsed(elapsed)}</span>
           <time className="event-time">{formatWallTime(received)}</time>
           <FetchBatchHeader ev={ev} expanded={expanded} setExpanded={setExpanded} />
         </li>
+
+        {/* Live preview row (condensed) — sibling <li> so it never distorts the grid row above */}
+        {!expanded && recentUrls.length > 0 && (
+          <li className="timeline-url-list-row timeline-url-list-row--live">
+            {recentUrls.map(u => (
+              <a key={u.url} href={u.url} target="_blank" rel="noreferrer" className="fetch-url-link" title={u.url}>
+                <img src={faviconUrl(u.domain)} alt="" width={11} height={11}
+                  onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
+                <span className="fetch-url-domain">{providerName(u.domain)}</span>
+                {u.item_count > 0 && <span className="url-item-badge">{u.item_count}</span>}
+              </a>
+            ))}
+          </li>
+        )}
+
+        {/* Full expanded list row */}
         {expanded && (
           <li className="timeline-url-list-row">
             <div className="fetch-url-list">

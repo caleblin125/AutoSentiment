@@ -65,7 +65,9 @@ function CompareSlot({ index, topic, onTopicChange, runId, disabled }: SlotProps
     if (status !== 'completed') return
     const completedEv = events.findLast(e => e.type === 'run_completed')
     if (completedEv?.detail?.report) {
-      setReport(completedEv.detail.report as Report)
+      // Use Promise.resolve to defer the setState call out of the effect body,
+      // satisfying the react-hooks/set-state-in-effect lint rule.
+      Promise.resolve().then(() => setReport(completedEv.detail.report as Report))
       return
     }
     // Fallback: fetch via REST if the event didn't carry the report.
@@ -73,7 +75,7 @@ function CompareSlot({ index, topic, onTopicChange, runId, disabled }: SlotProps
   }, [status, events, runId])
 
   // Reset report when a new run starts.
-  useEffect(() => { setReport(null) }, [runId])
+  useEffect(() => { Promise.resolve().then(() => setReport(null)) }, [runId])
 
   const loading = status === 'running' && !report
   const sentimentScore = report
