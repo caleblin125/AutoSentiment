@@ -60,6 +60,8 @@ Thumbs.db
 AGENT_ACTIVE.md
 AGENT_LOG.md
 AGENT_MAILBOX.md
+AGENT_TASKS.md
+NEXT_AGENT_OBJECTIVES.md
 agent-run
 agent-relay
 prompt.txt
