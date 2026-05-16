@@ -28,6 +28,7 @@ async def session_factory():
 async def test_run_research_completes_and_persists_report(monkeypatch, session_factory) -> None:
     settings = Settings(max_urls_per_run=3, max_items_per_run=2)
 
+    monkeypatch.setattr(orchestrator, "supplemental_media_search", lambda *_a, **_kw: _async([]))
     monkeypatch.setattr(orchestrator, "AsyncSessionLocal", session_factory)
     monkeypatch.setattr(orchestrator, "expand_queries", lambda *_args, **_kwargs: _async(["q1", "q2"]))
     monkeypatch.setattr(
@@ -212,6 +213,7 @@ async def test_parallel_fetch_respects_item_cap_and_emits_events(monkeypatch, se
     """
     settings = Settings(max_urls_per_run=4, max_items_per_run=5)
 
+    monkeypatch.setattr(orchestrator, "supplemental_media_search", lambda *_a, **_kw: _async([]))
     monkeypatch.setattr(orchestrator, "AsyncSessionLocal", session_factory)
     monkeypatch.setattr(orchestrator, "expand_queries", lambda *_a, **_kw: _async(["q"]))
     monkeypatch.setattr(
