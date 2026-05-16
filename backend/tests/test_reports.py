@@ -499,3 +499,319 @@ def test_compute_threads_date_range_uses_retrieved_at_dates() -> None:
     assert start <= end
     assert start in {"2026-01-05", "2026-03-12"}
     assert end in {"2026-01-05", "2026-03-12"}
+
+
+# ---------------------------------------------------------------------------
+# Property-based invariant tests (no Hypothesis — manual multi-case approach)
+# Each test exercises the same invariant with several different inputs to act
+# as a lightweight parametrized property check without adding a new dependency.
+# ---------------------------------------------------------------------------
+
+import itertools
+
+
+def _make_chunks_mixed(labels: list[str], source_type: str = "news") -> list[EvidenceChunk]:
+    """Build a list of chunks with the given label sequence."""
+    return [
+        EvidenceChunk(
+            id=f"pb{i}",
+            run_id="r",
+            url=f"https://example.com/{i}",
+            source_type=source_type,
+            snippet=f"Snippet number {i}.",
+            label=label,
+            summary=f"Summary {i}.",
+        )
+        for i, label in enumerate(labels)
+    ]
+
+
+# --- compute_counts invariants ---
+
+def test_compute_counts_fractions_sum_to_one_invariant() -> None:
+    """Invariant: positive + neutral + negative == 1.0 for any non-empty chunk list."""
+    cases = [
+        ["positive"] * 5,
+        ["negative"] * 3,
+        ["neutral"] * 7,
+        ["positive", "negative", "neutral"],
+        ["positive"] * 10 + ["negative"] * 3 + ["neutral"] * 7,
+        ["negative"] * 1,
+        ["positive", "positive", "neutral"],
+    ]
+    for labels in cases:
+        counts = compute_counts(_make_chunks_mixed(labels))
+        total_frac = counts["overall"]["positive"] + counts["overall"]["neutral"] + counts["overall"]["negative"]
+        assert abs(total_frac - 1.0) < 1e-9, (
+            f"Fractions sum to {total_frac} for labels {labels}"
+        )
+
+
+def test_compute_counts_total_matches_chunk_count_invariant() -> None:
+    """Invariant: overall['total'] always equals len(chunks)."""
+    for n in [1, 2, 5, 10, 20]:
+        labels = (["positive", "negative", "neutral"] * n)[:n]
+        chunks = _make_chunks_mixed(labels)
+        assert compute_counts(chunks)["overall"]["total"] == n
+
+
+def test_compute_counts_empty_chunks_returns_zeros() -> None:
+    """Invariant: empty input produces all-zero fractions and total == 0."""
+    counts = compute_counts([])
+    assert counts["overall"]["total"] == 0
+    assert counts["overall"]["positive"] == 0.0
+    assert counts["overall"]["negative"] == 0.0
+    assert counts["overall"]["neutral"] == 0.0
+
+
+def test_compute_counts_fractions_in_unit_interval_invariant() -> None:
+    """Invariant: every fraction is in [0, 1]."""
+    for labels in [
+        ["positive"] * 3 + ["negative"] * 2,
+        ["neutral"] * 1,
+        ["positive", "negative"],
+    ]:
+        counts = compute_counts(_make_chunks_mixed(labels))
+        for key in ("positive", "neutral", "negative"):
+            val = counts["overall"][key]
+            assert 0.0 <= val <= 1.0, f"overall[{key}]={val} out of range"
+        for src_data in counts["by_source"].values():
+            for key in ("positive", "neutral", "negative"):
+                val = src_data[key]
+                assert 0.0 <= val <= 1.0, f"by_source [{key}]={val} out of range"
+
+
+# --- pick_top_quotes invariants ---
+
+def test_pick_top_quotes_never_exceeds_n_invariant() -> None:
+    """Invariant: result length <= n regardless of input size."""
+    chunks = [
+        EvidenceChunk(id=str(i), run_id="r", url=f"https://example.com/{i}",
+                      source_type="reddit", snippet="s", label="positive", summary="s")
+        for i in range(20)
+    ]
+    for n in [0, 1, 3, 5, 7, 10, 25]:
+        result = pick_top_quotes(chunks, SentimentLabel.POSITIVE, n=n)
+        assert len(result) <= n, f"pick_top_quotes returned {len(result)} for n={n}"
+
+
+def test_pick_top_quotes_only_returns_matching_label_invariant() -> None:
+    """Invariant: all returned quotes have the requested label."""
+    chunks = _make_chunks_mixed(["positive", "negative", "neutral", "positive", "negative"])
+    for label in (SentimentLabel.POSITIVE, SentimentLabel.NEGATIVE, SentimentLabel.NEUTRAL):
+        result = pick_top_quotes(chunks, label, n=10)
+        for q in result:
+            chunk = next(c for c in chunks if c.id == q["evidence_id"])
+            assert str(chunk.label) == label.value, (
+                f"Quote for {label.value} references chunk with label {chunk.label}"
+            )
+
+
+def test_pick_top_quotes_empty_when_no_matching_label() -> None:
+    """Invariant: returns [] when no chunks carry the requested label."""
+    chunks = _make_chunks_mixed(["positive", "positive"])
+    assert pick_top_quotes(chunks, SentimentLabel.NEGATIVE) == []
+    assert pick_top_quotes(chunks, SentimentLabel.NEUTRAL) == []
+
+
+def test_pick_top_quotes_credible_sources_rank_before_non_credible_invariant() -> None:
+    """Invariant: credible source always ranks before a non-credible one at equal confidence."""
+    chunks = [
+        EvidenceChunk(id="social", run_id="r", url="https://reddit.com/r/x/1",
+                      source_type="reddit", snippet="s", label="positive", summary="reddit opinion"),
+        EvidenceChunk(id="credible", run_id="r", url="https://reuters.com/story",
+                      source_type="news", snippet="s", label="positive", summary="reuters coverage"),
+    ]
+    confidence_map = {"social": 0.9, "credible": 0.9}
+    result = pick_top_quotes(chunks, SentimentLabel.POSITIVE, n=2, confidence_map=confidence_map)
+    assert len(result) == 2
+    assert result[0]["evidence_id"] == "credible", "Reuters (credible) must rank before reddit (non-credible)"
+    assert result[0]["credible"] is True
+    assert result[1]["credible"] is False
+
+
+def test_pick_top_quotes_result_keys_invariant() -> None:
+    """Invariant: every returned dict always has the required keys."""
+    required_keys = {"summary", "evidence_id", "url", "credible", "confidence"}
+    chunks = _make_chunks_mixed(["positive"] * 4)
+    for n in [1, 2, 4]:
+        result = pick_top_quotes(chunks, SentimentLabel.POSITIVE, n=n)
+        for q in result:
+            assert required_keys <= q.keys(), f"Missing keys: {required_keys - q.keys()}"
+            assert 0.0 <= q["confidence"] <= 1.0, f"confidence {q['confidence']} out of range"
+
+
+# --- _find_contradictions invariants ---
+
+def test_find_contradictions_strength_ge_two_invariant() -> None:
+    """Invariant: every contradiction has strength >= 2 (at least one from each side)."""
+    from app.reports.builder import _find_contradictions  # type: ignore[attr-defined]
+
+    chunks = [
+        EvidenceChunk(id="p1", run_id="r", url="https://reuters.com/a", source_type="news",
+                      snippet="s", label="positive", summary="battery life is excellent"),
+        EvidenceChunk(id="n1", run_id="r", url="https://reddit.com/r/x/1", source_type="reddit",
+                      snippet="s", label="negative", summary="battery life is terrible"),
+        EvidenceChunk(id="p2", run_id="r", url="https://bbc.com/b", source_type="news",
+                      snippet="s", label="positive", summary="battery life is excellent"),
+    ]
+    contradictions = _find_contradictions(chunks)
+    for c in contradictions:
+        assert c["strength"] >= 2, f"strength={c['strength']} is less than 2"
+
+
+def test_find_contradictions_at_most_limit_invariant() -> None:
+    """Invariant: result length never exceeds the limit argument."""
+    from app.reports.builder import _find_contradictions  # type: ignore[attr-defined]
+
+    chunks = []
+    for i in range(12):
+        summary = f"theme{i} aspect{i} always good for users"
+        chunks.append(EvidenceChunk(id=f"p{i}", run_id="r", url=f"https://news.example/p{i}",
+                                    source_type="news", snippet="s", label="positive", summary=summary))
+        chunks.append(EvidenceChunk(id=f"n{i}", run_id="r", url=f"https://reddit.com/r/x/n{i}",
+                                    source_type="reddit", snippet="s", label="negative", summary=summary))
+
+    for limit in [1, 3, 6, 10]:
+        result = _find_contradictions(chunks, limit=limit)
+        assert len(result) <= limit, f"limit={limit} but got {len(result)} contradictions"
+
+
+def test_find_contradictions_all_positive_yields_none_invariant() -> None:
+    """Invariant: homogeneous-label input cannot produce any contradiction."""
+    from app.reports.builder import _find_contradictions  # type: ignore[attr-defined]
+
+    for label in ("positive", "negative", "neutral"):
+        chunks = _make_chunks_mixed([label] * 6)
+        for c in chunks:
+            c.summary = "electric vehicle range improves consistently over time"
+        assert _find_contradictions(chunks) == [], f"Unexpected contradiction for all-{label} input"
+
+
+def test_find_contradictions_required_keys_invariant() -> None:
+    """Invariant: every contradiction dict has all required keys."""
+    from app.reports.builder import _find_contradictions  # type: ignore[attr-defined]
+
+    required = {"subject", "positive_claim", "negative_claim",
+                "positive_evidence_id", "negative_evidence_id",
+                "positive_domains", "negative_domains", "strength"}
+    chunks = [
+        EvidenceChunk(id="p1", run_id="r", url="https://bbc.com/a", source_type="news",
+                      snippet="s", label="positive", summary="battery range excellent improvement"),
+        EvidenceChunk(id="n1", run_id="r", url="https://reddit.com/b", source_type="reddit",
+                      snippet="s", label="negative", summary="battery range terrible drains fast"),
+    ]
+    for c in _find_contradictions(chunks):
+        assert required <= c.keys(), f"Missing keys: {required - c.keys()}"
+        assert c["positive_evidence_id"] != c["negative_evidence_id"]
+        assert c["strength"] >= 1
+
+
+# --- compute_aspects invariants ---
+
+def test_compute_aspects_at_most_limit_invariant() -> None:
+    """Invariant: result length never exceeds the limit kwarg."""
+    from app.reports.builder import compute_aspects
+
+    chunks = _make_chunks_mixed(["positive"] * 4 + ["negative"] * 4)
+    for chunk in chunks:
+        chunk.snippet = (
+            "The cost, safety, design, reliability, efficiency, trust, "
+            "environment, and policy are all relevant considerations."
+        )
+    for limit in [1, 3, 5, 8]:
+        result = compute_aspects(chunks, "Product", limit=limit)
+        assert len(result) <= limit, f"limit={limit} but got {len(result)} aspects"
+
+
+def test_compute_aspects_valid_sentiment_values_invariant() -> None:
+    """Invariant: every aspect's sentiment is one of the four expected values."""
+    from app.reports.builder import compute_aspects
+
+    valid = {"positive", "negative", "neutral", "mixed"}
+    labels = ["positive"] * 3 + ["negative"] * 3
+    chunks = _make_chunks_mixed(labels)
+    for chunk in chunks:
+        chunk.snippet = "battery efficiency and safety cost design reliability"
+    aspects = compute_aspects(chunks, "EV", limit=8)
+    for a in aspects:
+        assert a["sentiment"] in valid, f"Invalid aspect sentiment: {a['sentiment']}"
+
+
+def test_compute_aspects_count_positive_invariant() -> None:
+    """Invariant: every returned aspect has count >= 1 (otherwise it would be filtered)."""
+    from app.reports.builder import compute_aspects
+
+    chunks = _make_chunks_mixed(["positive", "negative", "neutral"])
+    for chunk in chunks:
+        chunk.snippet = "safety reliability cost trust policy"
+    aspects = compute_aspects(chunks, "Topic", limit=10)
+    for a in aspects:
+        assert a["count"] >= 1, f"Aspect {a['name']} has count={a['count']}"
+        assert "evidence_ids" in a
+
+
+# --- compute_claims invariants ---
+
+def test_compute_claims_confidence_in_range_invariant() -> None:
+    """Invariant: every claim has confidence in [0, 0.95]."""
+    from app.reports.builder import compute_claims
+
+    labels = ["positive", "negative", "neutral", "positive"]
+    chunks = _make_chunks_mixed(labels)
+    for i, c in enumerate(chunks):
+        c.snippet = f"The product was released on 2026-01-{10 + i} and costs $99."
+    result = compute_claims(chunks)
+    for claim in result["claims"]:
+        assert 0.0 <= claim["confidence"] <= 0.95, (
+            f"confidence={claim['confidence']} out of [0, 0.95]"
+        )
+
+
+def test_compute_claims_at_most_limit_invariant() -> None:
+    """Invariant: returned claims list never exceeds the limit argument."""
+    from app.reports.builder import compute_claims
+
+    chunks = []
+    for i in range(30):
+        chunks.append(EvidenceChunk(
+            id=f"c{i}", run_id="r", url=f"https://news.example/{i}",
+            source_type="news",
+            snippet=f"Claim {i}: the product has exactly {i + 1} defects reported.",
+            label="negative",
+            summary=f"defects reported claim {i}",
+        ))
+    for limit in [1, 5, 10]:
+        result = compute_claims(chunks, limit=limit)
+        assert len(result["claims"]) <= limit, (
+            f"limit={limit} but got {len(result['claims'])} claims"
+        )
+
+
+def test_compute_claims_required_keys_invariant() -> None:
+    """Invariant: every claim dict has all required keys."""
+    from app.reports.builder import compute_claims
+
+    required_claim_keys = {
+        "claim", "claim_type", "confidence", "supporting_domains",
+        "supporting_urls", "opposing_domains", "evidence_ids",
+        "source_types", "needs_verification",
+    }
+    required_result_keys = {"claims", "needs_verification", "contradictions", "summary"}
+    chunks = _make_chunks_mixed(["positive", "negative", "neutral"])
+    for c in chunks:
+        c.snippet = "The company released 2 million units on March 1, 2026."
+    result = compute_claims(chunks)
+    assert required_result_keys <= result.keys()
+    for claim in result["claims"]:
+        assert required_claim_keys <= claim.keys(), f"Missing: {required_claim_keys - claim.keys()}"
+
+
+def test_compute_claims_empty_input_returns_empty_lists() -> None:
+    """Invariant: empty chunk list produces empty claim/contradiction lists."""
+    from app.reports.builder import compute_claims
+
+    result = compute_claims([])
+    assert result["claims"] == []
+    assert result["contradictions"] == []
+    assert result["needs_verification"] == []
