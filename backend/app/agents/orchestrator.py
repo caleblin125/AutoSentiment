@@ -19,7 +19,14 @@ from app.agents.types import SSEEventType, SentimentLabel
 from app.db.session import AsyncSessionLocal
 from app.ingest.fetch import classify_source_type, fetch_items
 from app.models import EvidenceChunk, Run, RunEvent
-from app.reports.builder import build_idea_graph, compute_aspects, compute_counts, compute_source_facts, pick_top_quotes
+from app.reports.builder import (
+    build_idea_graph,
+    compute_aspects,
+    compute_counts,
+    compute_source_facts,
+    compute_timeline,
+    pick_top_quotes,
+)
 from app.search_planner import build_search_plan, record_brave_query
 from app.tools.search import brave_search, is_cached_search
 
@@ -286,6 +293,7 @@ async def run_research(
             top_negative = pick_top_quotes(chunks, SentimentLabel.NEGATIVE)
             aspects = compute_aspects(chunks, topic)
             source_facts = compute_source_facts(chunks)
+            timeline = compute_timeline(chunks, topic)
             synthesis_limit = _synthesis_limit(depth_budget)
             chunks_summary = _summaries_for_synthesis(chunks, limit=synthesis_limit)
 
@@ -320,6 +328,7 @@ async def run_research(
                 "timings": timings,
                 "aspects": aspects,
                 "source_facts": source_facts,
+                "timeline": timeline,
                 "graph": build_idea_graph(topic, chunks, themes, aspects),
             }
 

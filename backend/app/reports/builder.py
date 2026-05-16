@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 from collections import Counter, defaultdict
+from datetime import datetime
 from urllib.parse import urlparse
 from typing import TYPE_CHECKING
 
@@ -224,6 +225,110 @@ def compute_source_facts(chunks: list[EvidenceChunk], limit: int = 10) -> list[d
             }
         )
     return sorted(facts, key=lambda item: item["count"], reverse=True)[:limit]
+
+
+MONTH_LOOKUP = {
+    "january": 1, "jan": 1,
+    "february": 2, "feb": 2,
+    "march": 3, "mar": 3,
+    "april": 4, "apr": 4,
+    "may": 5,
+    "june": 6, "jun": 6,
+    "july": 7, "jul": 7,
+    "august": 8, "aug": 8,
+    "september": 9, "sep": 9, "sept": 9,
+    "october": 10, "oct": 10,
+    "november": 11, "nov": 11,
+    "december": 12, "dec": 12,
+}
+
+
+def compute_timeline(chunks: list[EvidenceChunk], topic: str, limit: int = 8) -> dict:
+    """Extract explicit dates from evidence and summarize the observed chronology.
+
+    The function only uses dates present in text or retrieval timestamps. It does
+    not infer missing event dates from model prose.
+    """
+    events: dict[str, dict] = {}
+    for chunk in chunks:
+        text = f"{chunk.summary}. {chunk.snippet}"
+        dates = _extract_dates(text)
+        if not dates and chunk.retrieved_at:
+            dates = [(chunk.retrieved_at.date().isoformat(), "source retrieved")]
+        for iso_date, source_text in dates:
+            event = events.setdefault(
+                iso_date,
+                {
+                    "date": iso_date,
+                    "label": _event_label(text, topic),
+                    "description": _event_description(chunk),
+                    "evidence_ids": [],
+                    "source_count": 0,
+                    "certainty": "explicit" if source_text != "source retrieved" else "retrieved_at",
+                    "source_text": source_text,
+                },
+            )
+            event["source_count"] += 1
+            if chunk.id not in event["evidence_ids"] and len(event["evidence_ids"]) < 5:
+                event["evidence_ids"].append(chunk.id)
+
+    ordered = sorted(events.values(), key=lambda item: item["date"])[:limit]
+    start_date = ordered[0]["date"] if ordered else None
+    end_date = ordered[-1]["date"] if ordered else None
+    if ordered:
+        event_summary = (
+            f"Observed chronology for {topic} runs from {start_date} to {end_date}, "
+            f"with {len(ordered)} dated evidence point{'s' if len(ordered) != 1 else ''}."
+        )
+    else:
+        event_summary = "No explicit dates were found in the analyzed evidence."
+
+    return {
+        "start_date": start_date,
+        "end_date": end_date,
+        "important_dates": ordered,
+        "event_summary": event_summary,
+        "supporting_evidence_ids": [
+            evidence_id
+            for event in ordered
+            for evidence_id in event["evidence_ids"]
+        ][:12],
+    }
+
+
+def _extract_dates(text: str) -> list[tuple[str, str]]:
+    dates: list[tuple[str, str]] = []
+    for match in re.finditer(r"\b(20\d{2})[-/](0?[1-9]|1[0-2])[-/](0?[1-9]|[12]\d|3[01])\b", text):
+        year, month, day = match.groups()
+        dates.append((f"{int(year):04d}-{int(month):02d}-{int(day):02d}", match.group(0)))
+    month_names = "|".join(MONTH_LOOKUP.keys())
+    pattern = rf"\b({month_names})\s+(\d{{1,2}})(?:st|nd|rd|th)?(?:,\s*|\s+)(20\d{{2}})\b"
+    for match in re.finditer(pattern, text, flags=re.IGNORECASE):
+        month_name, day, year = match.groups()
+        month = MONTH_LOOKUP[month_name.lower()]
+        dates.append((f"{int(year):04d}-{month:02d}-{int(day):02d}", match.group(0)))
+    seen = set()
+    deduped = []
+    for iso, source in dates:
+        if iso in seen:
+            continue
+        try:
+            datetime.fromisoformat(iso)
+        except ValueError:
+            continue
+        seen.add(iso)
+        deduped.append((iso, source))
+    return deduped
+
+
+def _event_label(text: str, topic: str) -> str:
+    cleaned = re.sub(re.escape(topic), "", text, flags=re.IGNORECASE).strip(" .")
+    sentence = re.split(r"(?<=[.!?])\s+", cleaned)[0] if cleaned else topic
+    return sentence[:90] + ("…" if len(sentence) > 90 else "")
+
+
+def _event_description(chunk: EvidenceChunk) -> str:
+    return chunk.summary[:140] + ("…" if len(chunk.summary) > 140 else "")
 
 
 def build_idea_graph(topic: str, chunks: list[EvidenceChunk], themes: list[str], aspects: list[dict]) -> dict:

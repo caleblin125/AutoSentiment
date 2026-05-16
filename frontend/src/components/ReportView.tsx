@@ -321,6 +321,34 @@ function SourceFacts({ facts }: { facts: NonNullable<Report['source_facts']> }) 
   )
 }
 
+function TimelineSummary({ timeline }: { timeline: NonNullable<Report['timeline']> }) {
+  if (!timeline.important_dates.length) return null
+  return (
+    <div className="insight-section">
+      <h3>Chronology</h3>
+      <div className="timeline-summary">
+        <div className="timeline-range">
+          <span>Start</span>
+          <strong>{timeline.start_date ?? 'unknown'}</strong>
+          <span>End</span>
+          <strong>{timeline.end_date ?? 'unknown'}</strong>
+        </div>
+        <p>{timeline.event_summary}</p>
+        <div className="timeline-events">
+          {timeline.important_dates.map(event => (
+            <div className="timeline-event-card" key={`${event.date}:${event.label}`}>
+              <time>{event.date}</time>
+              <strong>{event.label}</strong>
+              <span>{event.description}</span>
+              <small>{event.source_count} source{event.source_count !== 1 ? 's' : ''} · {event.certainty}</small>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Quotes ────────────────────────────────────────────────────────────────
 
 function QuoteList({ title, quotes, onCite, highlightedId, sectionRef }: {
@@ -511,7 +539,7 @@ export function ReportView({ runId, topic, report }: Props) {
 
   const {
     overall, by_source, top_positive, top_negative, themes, narrative,
-    timings, aspects, source_facts, graph, impacts, reasons, arguments: args,
+    timings, aspects, source_facts, timeline, graph, impacts, reasons, arguments: args,
   } = report
 
   return (
@@ -563,6 +591,8 @@ export function ReportView({ runId, topic, report }: Props) {
       )}
 
       <p className="narrative">{narrative}</p>
+
+      {timeline && <TimelineSummary timeline={timeline} />}
 
       <AnalysisSection impacts={impacts} reasons={reasons} arguments={args} />
 

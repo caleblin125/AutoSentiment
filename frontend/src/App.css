@@ -212,6 +212,49 @@ input:focus, select:focus, button:focus-visible {
   padding: 4px 7px;
 }
 
+.timeline-summary {
+  display: grid;
+  gap: 10px;
+}
+
+.timeline-range {
+  display: grid;
+  grid-template-columns: auto 1fr auto 1fr;
+  gap: 8px;
+  align-items: center;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text);
+}
+
+.timeline-range strong {
+  color: var(--text-bright);
+}
+
+.timeline-events {
+  display: grid;
+  gap: 8px;
+}
+
+.timeline-event-card {
+  display: grid;
+  gap: 3px;
+  border-left: 2px solid var(--rog-cyan);
+  background: var(--surface-muted);
+  padding: 8px 10px;
+}
+
+.timeline-event-card time,
+.timeline-event-card small {
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 10px;
+}
+
+.timeline-event-card strong {
+  color: var(--text-bright);
+}
+
 button {
   min-height: 40px;
   border: 1px solid var(--rog-red);

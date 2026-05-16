@@ -460,6 +460,14 @@ Implemented the first pass of Objective 2:
 
 Objective 2 still needs a richer long-term quota dashboard and configurable monthly limits, but the planner, preview, and accounting foundation are in place.
 
+Implemented the first pass of Objective 3:
+
+- Added `compute_timeline` to extract explicit dates from evidence text.
+- Report now includes `timeline.start_date`, `timeline.end_date`, `important_dates`, `event_summary`, and supporting evidence IDs.
+- Timeline extraction handles ISO dates and month/day/year dates without inventing dates.
+- Frontend report now renders a chronology section with start/end dates and dated event cards.
+- Added report tests for explicit date extraction and no fabricated calendar dates.
+
 ```bash
 cd /home/asus/AutoSentiment/frontend
 npm run lint

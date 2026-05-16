@@ -118,3 +118,36 @@ def test_expand_platform_queries_has_diverse_sources() -> None:
 
     # Must include international languages
     assert any("opinión" in q or "avis" in q or "Bewertung" in q for q in queries)
+
+
+def test_compute_timeline_extracts_explicit_dates_without_fabricating() -> None:
+    from app.reports.builder import compute_timeline
+
+    chunks = [
+        EvidenceChunk(
+            id="d1",
+            run_id="r",
+            url="https://example.com/launch",
+            source_type="news",
+            snippet="The trailer released on March 5, 2026 and reviews followed on 2026-03-10.",
+            label="neutral",
+            summary="trailer release",
+        ),
+        EvidenceChunk(
+            id="d2",
+            run_id="r",
+            url="https://example.com/no-date",
+            source_type="news",
+            snippet="No calendar date appears here.",
+            label="neutral",
+            summary="general discussion",
+        ),
+    ]
+
+    timeline = compute_timeline(chunks, "Movie")
+
+    dates = [item["date"] for item in timeline["important_dates"]]
+    assert "2026-03-05" in dates
+    assert "2026-03-10" in dates
+    assert timeline["start_date"] <= timeline["end_date"]
+    assert "d1" in timeline["supporting_evidence_ids"]

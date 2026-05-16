@@ -81,7 +81,26 @@ export interface Report {
   timings?: Record<string, number>
   aspects?: AspectInsight[]
   source_facts?: SourceFact[]
+  timeline?: ReportTimeline
   graph?: IdeaGraph
+}
+
+export interface TimelineEvent {
+  date: string
+  label: string
+  description: string
+  evidence_ids: string[]
+  source_count: number
+  certainty: 'explicit' | 'retrieved_at'
+  source_text: string
+}
+
+export interface ReportTimeline {
+  start_date: string | null
+  end_date: string | null
+  important_dates: TimelineEvent[]
+  event_summary: string
+  supporting_evidence_ids: string[]
 }
 
 export interface SourceStats {
