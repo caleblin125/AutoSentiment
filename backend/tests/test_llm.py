@@ -42,6 +42,28 @@ async def test_ollama_generate_posts_json_contract(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
+async def test_ollama_generate_parses_json_from_thinking_when_response_empty(monkeypatch) -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={"response": "", "thinking": "{\"label\": \"positive\", \"summary\": \"likes it\"}"},
+        )
+
+    async_client = httpx.AsyncClient
+    monkeypatch.setattr(
+        httpx,
+        "AsyncClient",
+        lambda **kwargs: async_client(
+            **{**kwargs, "transport": httpx.MockTransport(handler)}
+        ),
+    )
+
+    result = await ollama_generate("prompt", system="system", model="model", base_url="http://ollama")
+
+    assert result == {"label": "positive", "summary": "likes it"}
+
+
+@pytest.mark.asyncio
 async def test_ollama_generate_raises_value_error_for_unparseable_response(monkeypatch) -> None:
     def handler(_request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json={"response": "not json"})
