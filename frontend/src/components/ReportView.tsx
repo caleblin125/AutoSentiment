@@ -594,12 +594,26 @@ function EvidenceModal({ chunk, onClose }: { chunk: EvidenceChunk; onClose: () =
   )
 }
 
+// ── Report tabs ────────────────────────────────────────────────────────
+
+type ReportTab = 'summary' | 'timeline' | 'evidence' | 'claims' | 'graph' | 'performance'
+
+const REPORT_TABS: Array<{ id: ReportTab; label: string }> = [
+  { id: 'summary', label: 'Summary' },
+  { id: 'timeline', label: 'Timeline' },
+  { id: 'evidence', label: 'Evidence' },
+  { id: 'claims', label: 'Claims' },
+  { id: 'graph', label: 'Graph' },
+  { id: 'performance', label: 'Performance' },
+]
+
 // ── Main component ────────────────────────────────────────────────────────
 
 export function ReportView({ runId, topic, report }: Props) {
   const [activeChunk, setActiveChunk] = useState<EvidenceChunk | null>(null)
   const [loadingChunk, setLoadingChunk] = useState(false)
   const [highlightedId, setHighlightedId] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState<ReportTab>('summary')
   const posRef = useRef<HTMLDivElement | null>(null)
   const negRef = useRef<HTMLDivElement | null>(null)
 
@@ -702,81 +716,122 @@ export function ReportView({ runId, topic, report }: Props) {
         </div>
       </div>
 
-      {timings && <TimingSummary timings={timings} />}
-      <HistoryChart topic={topic} currentRunId={runId} />
+      {/* ── Report tabs ── */}
+      <nav className="report-tabs" role="tablist" aria-label="Report sections">
+        {REPORT_TABS.map(tab => (
+          <button
+            key={tab.id}
+            role="tab"
+            aria-selected={activeTab === tab.id}
+            className={`report-tab${activeTab === tab.id ? ' report-tab--active' : ''}`}
+            onClick={() => setActiveTab(tab.id)}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </nav>
 
-      {/* Sentiment bars */}
-      <div className="sentiment-bars">
-        <SentimentBar label="Positive" value={overall.positive} color="var(--positive)" />
-        <SentimentBar label="Neutral"  value={overall.neutral}  color="var(--neutral)" />
-        <SentimentBar label="Negative" value={overall.negative} color="var(--rog-red)" />
-        <p className="muted" style={{ fontFamily: 'var(--mono)', fontSize: 11 }}>
-          {overall.total} items analyzed
-        </p>
-      </div>
+      {/* ── Summary tab ── */}
+      {activeTab === 'summary' && (
+        <div className="report-tab-panel" role="tabpanel">
+          <HistoryChart topic={topic} currentRunId={runId} />
 
-      {/* Source breakdown */}
-      <table className="source-table">
-        <thead>
-          <tr>
-            <th>Source</th><th>Items</th><th>Positive</th><th>Neutral</th><th>Negative</th>
-          </tr>
-        </thead>
-        <tbody>
-          {Object.entries(by_source)
-            .filter(([, stats]) => (stats?.count ?? 0) > 0)
-            .map(([src, stats]) => (
-              <tr key={src}>
-                <td>{SOURCE_TYPE_LABEL[src] ?? src}</td>
-                <td style={{ fontFamily: 'var(--mono)' }}>{stats?.count ?? 0}</td>
-                <td style={{ color: 'var(--positive)', fontFamily: 'var(--mono)' }}>{pct(stats?.positive ?? 0)}</td>
-                <td style={{ fontFamily: 'var(--mono)' }}>{pct(stats?.neutral ?? 0)}</td>
-                <td style={{ color: 'var(--rog-red)', fontFamily: 'var(--mono)' }}>{pct(stats?.negative ?? 0)}</td>
-              </tr>
-            ))}
-        </tbody>
-      </table>
+          <div className="sentiment-bars">
+            <SentimentBar label="Positive" value={overall.positive} color="var(--positive)" />
+            <SentimentBar label="Neutral"  value={overall.neutral}  color="var(--neutral)" />
+            <SentimentBar label="Negative" value={overall.negative} color="var(--rog-red)" />
+            <p className="muted" style={{ fontFamily: 'var(--mono)', fontSize: 11 }}>
+              {overall.total} items analyzed
+            </p>
+          </div>
 
-      {themes.length > 0 && (
-        <div className="themes">
-          <strong style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--rog-cyan)', textTransform: 'uppercase', letterSpacing: 1 }}>
-            Key themes:
-          </strong>{' '}
-          {themes.join(' · ')}
+          {use_case_insights && <UseCaseInsightsSection insights={use_case_insights} />}
+
+          {themes.length > 0 && (
+            <div className="themes">
+              <strong style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--rog-cyan)', textTransform: 'uppercase', letterSpacing: 1 }}>
+                Key themes:
+              </strong>{' '}
+              {themes.join(' · ')}
+            </div>
+          )}
+
+          <p className="narrative">{narrative}</p>
+
+          <AnalysisSection impacts={impacts} reasons={reasons} arguments={args} />
+
+          {chart_data && <ChartDataSection chartData={chart_data} />}
         </div>
       )}
 
-      <p className="narrative">{narrative}</p>
-
-      {timeline && <TimelineSummary timeline={timeline} />}
-      {fact_check && <FactCheckSection factCheck={fact_check} />}
-      {use_case_insights && <UseCaseInsightsSection insights={use_case_insights} />}
-      {chart_data && <ChartDataSection chartData={chart_data} />}
-
-      <AnalysisSection impacts={impacts} reasons={reasons} arguments={args} />
-
-      {aspects && aspects.length > 0 && <AspectSummary aspects={aspects} />}
-      {source_facts && source_facts.length > 0 && <SourceFacts facts={source_facts} />}
-
-      {/* Graph — theme/aspect click → topic detail popover; sentiment click → scroll to quotes */}
-      {graph && graph.nodes.length > 0 && (
-        <ForceGraph graph={graph} runId={runId} onNodeClick={handleGraphNodeClick} />
+      {/* ── Timeline tab ── */}
+      {activeTab === 'timeline' && (
+        <div className="report-tab-panel" role="tabpanel">
+          {timeline ? <TimelineSummary timeline={timeline} /> : <p className="empty-tab-msg">No chronology data available for this run.</p>}
+        </div>
       )}
 
-      <QuoteList
-        title="Top positive"
-        quotes={top_positive}
-        onCite={openCitation}
-        highlightedId={highlightedId}
-        sectionRef={posRef}
-      />
-      <QuoteList
-        title="Top negative"
-        quotes={top_negative}
-        onCite={openCitation}
-        highlightedId={highlightedId}
-        sectionRef={negRef}
-      />
+      {/* ── Evidence tab ── */}
+      {activeTab === 'evidence' && (
+        <div className="report-tab-panel" role="tabpanel">
+          {source_facts && source_facts.length > 0 && <SourceFacts facts={source_facts} />}
+          <QuoteList
+            title="Top positive"
+            quotes={top_positive}
+            onCite={openCitation}
+            highlightedId={highlightedId}
+            sectionRef={posRef}
+          />
+          <QuoteList
+            title="Top negative"
+            quotes={top_negative}
+            onCite={openCitation}
+            highlightedId={highlightedId}
+            sectionRef={negRef}
+          />
+          {aspects && aspects.length > 0 && <AspectSummary aspects={aspects} />}
+        </div>
+      )}
+
+      {/* ── Claims tab ── */}
+      {activeTab === 'claims' && (
+        <div className="report-tab-panel" role="tabpanel">
+          {fact_check ? <FactCheckSection factCheck={fact_check} /> : <p className="empty-tab-msg">No claims extracted for this run.</p>}
+        </div>
+      )}
+
+      {/* ── Graph tab ── */}
+      {activeTab === 'graph' && (
+        <div className="report-tab-panel" role="tabpanel">
+          {graph && graph.nodes.length > 0 ? (
+            <ForceGraph graph={graph} runId={runId} onNodeClick={handleGraphNodeClick} />
+          ) : (
+            <p className="empty-tab-msg">No graph data available for this run.</p>
+          )}
+        </div>
+      )}
+
+      {/* ── Performance tab ── */}
+      {activeTab === 'performance' && (
+        <div className="report-tab-panel" role="tabpanel">
+          {timings ? (
+            <>
+              <TimingSummary timings={timings} />
+              <div style={{ marginTop: 16, padding: '12px 16px', background: 'var(--panel)', borderRadius: 6 }}>
+                <h4 style={{ margin: '0 0 8px' }}>Run metadata</h4>
+                <div style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--text)', display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '4px 12px' }}>
+                  <span>Topic:</span><span>{topic}</span>
+                  {report.metadata?.research_depth && <><span>Depth:</span><span>{report.metadata.research_depth}</span></>}
+                  {report.metadata?.use_case && <><span>Use case:</span><span>{report.metadata.use_case}</span></>}
+                  <span>Items:</span><span>{overall.total}</span>
+                </div>
+              </div>
+            </>
+          ) : (
+            <p className="empty-tab-msg">No performance data available.</p>
+          )}
+        </div>
+      )}
 
       {loadingChunk && (
         <div style={{ padding: '8px 0' }}>

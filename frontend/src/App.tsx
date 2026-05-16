@@ -101,8 +101,8 @@ export default function App() {
       })
       return session.tabs.map(t => ({
         ...t,
-        // Treat previously-running tabs as their terminal state on reload.
-        status: t.status === 'running' ? 'idle' : t.status,
+        // Optimistically keep running if the tab has a runId; RunView will correct via handleStatusChange.
+        status: t.status === 'running' && t.runId ? 'running' : t.status === 'running' ? 'idle' : t.status,
       }))
     }
     return [newTab()]

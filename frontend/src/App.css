@@ -384,6 +384,56 @@ input:focus, select:focus, button:focus-visible {
   flex-wrap: wrap;
 }
 
+/* ── Report tabs ── */
+.report-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 16px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.report-tab {
+  min-height: 36px;
+  height: 36px;
+  padding: 0 14px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: none;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0.3px;
+  transition: color 0.15s, border-color 0.15s;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.report-tab:hover {
+  color: var(--text-strong);
+  border-bottom-color: var(--border);
+}
+
+.report-tab--active {
+  color: var(--rog-red);
+  border-bottom-color: var(--rog-red);
+}
+
+.report-tab-panel {
+  min-height: 120px;
+}
+
+.empty-tab-msg {
+  color: var(--text);
+  font-size: 13px;
+  padding: 24px 0;
+  text-align: center;
+  opacity: 0.65;
+}
+
 button {
   min-height: 40px;
   border: 1px solid var(--rog-red);
