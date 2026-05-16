@@ -55,7 +55,7 @@ Last updated: 2026-05-16 20:40 UTC
 Audit run by nemotron-3-super. Full report: /tmp/autosentiment_self_analysis.md
 
 ### HIGH — Performance
-- [x] [pi]  Batch sentiment analysis: send multiple snippets per Ollama call instead of one-at-a-time
+- [ ] [pi]  Batch sentiment analysis: send multiple snippets per Ollama call instead of one-at-a-time
 - [ ] [pi]  GPU utilization: track model load/unload timing, avoid 30B/120B thrashing
 
 ### HIGH — Reliability (audit errors — already done before report)
@@ -73,7 +73,7 @@ Audit run by nemotron-3-super. Full report: /tmp/autosentiment_self_analysis.md
 - [ ] [pi]  Extract synthesis interface from builder.py: decouple LLM prompt engineering from pure analytics
 
 ### LOW — UX
-- [x] [pi]  Evidence modal: highlight matching terms, show why snippet got its sentiment label
+- [ ] [pi]  Evidence modal: highlight matching terms, show why snippet got its sentiment label
 - [ ] [pi]  Admin dashboard: quota usage over time, model availability, run success rate
 - [ ] [pi]  Automatic model fallback: try smaller model if 120B/30B unavailable
 
