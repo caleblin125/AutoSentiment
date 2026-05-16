@@ -67,7 +67,7 @@ function TimingSummary({ timings }: { timings: Record<string, number> }) {
     <div className="timing-section">
       <div className="timing-header">
         <h3>Performance</h3>
-        <button className="btn-secondary" style={{ fontSize: 11, height: 26, padding: '0 10px' }}
+        <button className="btn-secondary btn-secondary--compact"
           onClick={() => setShowTips(t => !t)}>
           {showTips ? '▲ hide tips' : '▼ optimization tips'}
         </button>
@@ -481,9 +481,9 @@ function SourceTimeSentimentChart({ series }: {
           <div className="source-timeline-tooltip">
             <strong>{selectedRow.date}</strong>
             <div className="source-timeline-bars">
-              <div><span style={{ color: 'var(--positive)' }}>pos</span><b>{selectedRow.positive}</b></div>
-              <div><span style={{ color: 'var(--neutral)' }}>neu</span><b>{selectedRow.neutral}</b></div>
-              <div><span style={{ color: 'var(--rog-red)' }}>neg</span><b>{selectedRow.negative}</b></div>
+              <div><span className="sent-label--pos">pos</span><b>{selectedRow.positive}</b></div>
+              <div><span className="sent-label--neu">neu</span><b>{selectedRow.neutral}</b></div>
+              <div><span className="sent-label--neg">neg</span><b>{selectedRow.negative}</b></div>
               <div><span>total</span><b>{selectedRow.total}</b></div>
             </div>
             <small>{selectedRow.certainty ?? 'source date'}</small>
@@ -585,7 +585,7 @@ function LocationSentimentMap({ locations }: {
         <button className="btn-secondary graph-ctrl-btn" onClick={() => setZoom(z => Math.min(6, z * 1.3))} title="Zoom in">+</button>
         <button className="btn-secondary graph-ctrl-btn" onClick={() => setZoom(z => Math.max(0.5, z * 0.77))} title="Zoom out">−</button>
         <button className="btn-secondary graph-ctrl-btn" onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }) }} title="Reset view">⟳</button>
-        <span style={{ fontSize: 10, color: 'var(--text)', fontFamily: 'var(--mono)' }}>Scroll to zoom · Drag to pan · Click to inspect</span>
+        <span className="map-hint">Scroll to zoom · Drag to pan · Click to inspect</span>
       </div>
       <div className="location-map-layout">
         <svg
@@ -629,10 +629,10 @@ function LocationSentimentMap({ locations }: {
           <strong>{selectedPoint.location}</strong>
           <span className={`sentiment-chip sentiment-chip--${selectedPoint.dominant}`}>{selectedPoint.dominant}</span>
           <p>{selectedPoint.total} mapped item{selectedPoint.total !== 1 ? 's' : ''}</p>
-          <small style={{ color: 'var(--text)' }}>{selectedPoint.certainty === 'mentioned' ? 'mentioned in text' : 'inferred from domain'}</small>
-          <div className="mini-metric"><span>Positive</span><b style={{ color: 'var(--positive)' }}>{selectedPoint.positive}</b></div>
+          <small className="map-certainty">{selectedPoint.certainty === 'mentioned' ? 'mentioned in text' : 'inferred from domain'}</small>
+          <div className="mini-metric"><span>Positive</span><b className="sent-val--pos">{selectedPoint.positive}</b></div>
           <div className="mini-metric"><span>Neutral</span><b>{selectedPoint.neutral}</b></div>
-          <div className="mini-metric"><span>Negative</span><b style={{ color: 'var(--rog-red)' }}>{selectedPoint.negative}</b></div>
+          <div className="mini-metric"><span>Negative</span><b className="sent-val--neg">{selectedPoint.negative}</b></div>
           {(selectedPoint.source_domains ?? []).length > 0 && (
             <div className="location-source-links">
               {(selectedPoint.source_domains ?? []).slice(0, 4).map((d: string) => (
@@ -1075,7 +1075,7 @@ export function ReportView({ runId, topic, report, onSearchTopic, autoScroll }: 
       )}
 
       {loadingChunk && (
-        <div style={{ padding: '8px 0' }}>
+        <div className="loading-chunk-wrap">
           <div className="skeleton skeleton-line skeleton-line--medium" />
         </div>
       )}
