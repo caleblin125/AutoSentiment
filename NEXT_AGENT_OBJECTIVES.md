@@ -501,6 +501,11 @@ Implemented a first pass of Objective 9:
 - Evidence modal now displays related dates, related claims, and related topics for the opened citation.
 - Added route coverage for evidence related-context serialization.
 
+Implemented an export slice from Objective 12:
+
+- Report view can export JSON, CSV, and Markdown summary files.
+- Export actions are available from the report header.
+
 ```bash
 cd /home/asus/AutoSentiment/frontend
 npm run lint

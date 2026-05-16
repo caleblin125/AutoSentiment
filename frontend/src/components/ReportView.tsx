@@ -653,9 +653,54 @@ export function ReportView({ runId, topic, report }: Props) {
     timings, aspects, source_facts, timeline, fact_check, use_case_insights, chart_data, graph, impacts, reasons, arguments: args,
   } = report
 
+  function exportReport(format: 'json' | 'csv' | 'markdown') {
+    const slug = topic.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'report'
+    if (format === 'json') {
+      downloadText(`${slug}.json`, JSON.stringify(report, null, 2), 'application/json')
+    } else if (format === 'csv') {
+      const rows = [
+        ['section', 'item', 'value'],
+        ['overall', 'positive', String(overall.positive)],
+        ['overall', 'neutral', String(overall.neutral)],
+        ['overall', 'negative', String(overall.negative)],
+        ...Object.entries(by_source).map(([source, stats]) => ['source', source, String(stats?.count ?? 0)]),
+        ...(report.aspects ?? []).map(aspect => ['aspect', aspect.name, `${aspect.sentiment}:${aspect.count}`]),
+        ...(report.fact_check?.claims ?? []).map(claim => ['claim', claim.claim_type, claim.claim]),
+      ]
+      downloadText(`${slug}.csv`, rows.map(csvRow).join('\n'), 'text/csv')
+    } else {
+      const markdown = [
+        `# ${topic}`,
+        '',
+        `Items analyzed: ${overall.total}`,
+        `Positive: ${pct(overall.positive)} · Neutral: ${pct(overall.neutral)} · Negative: ${pct(overall.negative)}`,
+        '',
+        '## Summary',
+        narrative,
+        '',
+        '## Key themes',
+        themes.map(theme => `- ${theme}`).join('\n') || '- None',
+        '',
+        '## Chronology',
+        report.timeline?.event_summary ?? 'No chronology available.',
+        '',
+        '## Fact check',
+        report.fact_check?.summary ?? 'No factual claims extracted.',
+      ].join('\n')
+      downloadText(`${slug}.md`, markdown, 'text/markdown')
+    }
+  }
+
   return (
     <section className="panel" aria-label="Report">
-      <h2>Report</h2>
+      <div className="report-header">
+        <h2>Report</h2>
+        <div className="export-actions">
+          <button className="btn-secondary" onClick={() => exportReport('json')}>JSON</button>
+          <button className="btn-secondary" onClick={() => exportReport('csv')}>CSV</button>
+          <button className="btn-secondary" onClick={() => exportReport('markdown')}>MD</button>
+        </div>
+      </div>
 
       {timings && <TimingSummary timings={timings} />}
       <HistoryChart topic={topic} currentRunId={runId} />
@@ -750,3 +795,15 @@ export function ReportView({ runId, topic, report }: Props) {
 
 function pct(r: number): string { return `${Math.round(r * 100)}%` }
 function fmtDuration(ms: number): string { return ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${Math.round(ms)}ms` }
+function csvRow(row: string[]): string {
+  return row.map(cell => `"${cell.replaceAll('"', '""')}"`).join(',')
+}
+function downloadText(filename: string, content: string, type: string) {
+  const blob = new Blob([content], { type })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+}
