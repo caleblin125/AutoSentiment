@@ -31,6 +31,14 @@ Last updated: 2026-05-16 20:40 UTC
 ## ✅ Claude Agent — compare mode (this session)
 - [x] [claude] Multi-topic compare mode frontend: CompareView.tsx with 2-3 side-by-side sentiment cards, independent useRunStream hooks per slot, ⊞ Compare button in header (569448e)
 
+## ✅ Claude Agent — UI polish (this session)
+- [x] [claude] Quote pagination: QuoteList shows 12 initially, show-more/less button
+- [x] [claude] Auto-scroll to report on fresh run completion (requestAnimationFrame + scrollIntoView)
+- [x] [claude] HistoryChart: CSS variables instead of hardcoded hex, subtle area fills under lines
+- [x] [claude] ForceGraph: hide source/url/sentiment labels at zoom < 0.65 (less clutter)
+- [x] [claude] CompareView: ↺ Reset button + ↗ Open full report per slot (wired to tab system)
+- [x] [claude] Inline style cleanup: 100+ inline styles replaced with semantic CSS classes across all components
+
 ## Next Tasks (high value, unclaimed)
 - [ ] [FREE]  Contradiction detection in claims (opposing claim pairs)
 - [ ] [FREE]  More Playwright E2E tests (saved search, thread click, shareable URL)
