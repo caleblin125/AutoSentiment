@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts'
 import {
   getEvidence,
   type ArgumentItem,
@@ -9,43 +10,10 @@ import {
   type Report,
   type ThreadItem,
 } from '../lib/api'
+import { KNOWN_PROVIDERS, providerName, faviconUrl } from '../lib/providers'
 import { ForceGraph } from './ForceGraph'
 
 interface Props { runId: string; topic: string; report: Report; onSearchTopic?: (topic: string) => void }
-
-// ── Favicon / provider helpers ────────────────────────────────────────────
-
-const KNOWN_PROVIDERS: Record<string, string> = {
-  'reddit.com': 'Reddit', 'news.ycombinator.com': 'Hacker News', 'youtube.com': 'YouTube',
-  'x.com': 'X / Twitter', 'twitter.com': 'X / Twitter', 'threads.net': 'Threads',
-  'quora.com': 'Quora', 'facebook.com': 'Facebook', 'linkedin.com': 'LinkedIn',
-  'tiktok.com': 'TikTok', 'nytimes.com': 'NY Times', 'bbc.com': 'BBC', 'bbc.co.uk': 'BBC',
-  'theverge.com': 'The Verge', 'techcrunch.com': 'TechCrunch', 'wired.com': 'Wired',
-  'bloomberg.com': 'Bloomberg', 'reuters.com': 'Reuters', 'wsj.com': 'WSJ',
-  'apnews.com': 'AP News', 'cnn.com': 'CNN', 'insideevs.com': 'InsideEVs',
-  'finance.yahoo.com': 'Yahoo Finance', 'seekingalpha.com': 'Seeking Alpha',
-  'marketwatch.com': 'MarketWatch', 'fool.com': 'Motley Fool', 'cnbc.com': 'CNBC',
-  'investopedia.com': 'Investopedia', 'benzinga.com': 'Benzinga', 'barrons.com': "Barron's",
-  'ft.com': 'Financial Times', 'economist.com': 'The Economist',
-  'sec.gov': 'SEC Filing', 'investors.com': "Investor's Business Daily",
-  'tipranks.com': 'TipRanks', 'stocktwits.com': 'StockTwits',
-}
-
-function domainFromUrl(url: string): string {
-  try { return new URL(url).hostname.replace(/^www\./, '') } catch { return url }
-}
-
-function providerName(url: string): string {
-  const d = domainFromUrl(url)
-  for (const key of Object.keys(KNOWN_PROVIDERS)) {
-    if (d === key || d.endsWith(`.${key}`)) return KNOWN_PROVIDERS[key]
-  }
-  return d.replace(/^(www|m|old|new)\./i, '')
-}
-
-function faviconUrl(url: string): string {
-  return `https://www.google.com/s2/favicons?domain=${domainFromUrl(url)}&sz=16`
-}
 
 function SourceLogo({ url }: { url: string }) {
   return (
@@ -748,6 +716,7 @@ function LocationSentimentMap({ locations }: {
   const [selected, setSelected] = useState(locations[0]?.location ?? '')
   const [zoom, setZoom] = useState(1)
   const [pan, setPan] = useState({ x: 0, y: 0 })
+  const [isMapPanning, setIsMapPanning] = useState(false)
   const panRef = useRef<{ sx: number; sy: number; sp: { x: number; y: number } } | null>(null)
   const svgRef = useRef<SVGSVGElement>(null)
 
@@ -771,11 +740,12 @@ function LocationSentimentMap({ locations }: {
     if (e.button !== 0) return
     if ((e.target as SVGElement).closest('.location-point')) return
     panRef.current = { sx: e.clientX, sy: e.clientY, sp: pan }
+    setIsMapPanning(true)
     const onMove = (me: MouseEvent) => {
       if (!panRef.current) return
       setPan({ x: panRef.current.sp.x + (me.clientX - panRef.current.sx) / zoom, y: panRef.current.sp.y + (me.clientY - panRef.current.sy) / zoom })
     }
-    const onUp = () => { panRef.current = null; window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
+    const onUp = () => { panRef.current = null; setIsMapPanning(false); window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
     window.addEventListener('mousemove', onMove)
     window.addEventListener('mouseup', onUp)
   }
@@ -798,7 +768,7 @@ function LocationSentimentMap({ locations }: {
           aria-label="Geographic sentiment map"
           onWheel={handleWheel}
           onMouseDown={handleSvgMouseDown}
-          style={{ cursor: panRef.current ? 'grabbing' : 'grab' }}
+          style={{ cursor: isMapPanning ? 'grabbing' : 'grab' }}
         >
           {/* Grid lines */}
           {[...Array(7)].map((_, i) => <line key={`lat-${i}`} x1="0" x2="1000" y1={i * 83.3} y2={i * 83.3} />)}

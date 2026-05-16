@@ -370,6 +370,7 @@ export function ForceGraph({ graph, runId, onNodeClick }: Props) {
   const [searchQuery, setSearchQuery] = useState('')
   const [zoom, setZoom] = useState(1)
   const [pan, setPan] = useState<Vec2>({ x: 0, y: 0 })
+  const [isPanning, setIsPanning] = useState(false)
   const panRef = useRef<{ startX: number; startY: number; startPan: Vec2 } | null>(null)
   const svgRef = useRef<SVGSVGElement>(null)
 
@@ -450,6 +451,7 @@ export function ForceGraph({ graph, runId, onNodeClick }: Props) {
     if (e.button !== 0) return
     if ((e.target as SVGElement).closest('.graph-node')) return
     panRef.current = { startX: e.clientX, startY: e.clientY, startPan: pan }
+    setIsPanning(true)
     const onMove = (me: MouseEvent) => {
       if (!panRef.current) return
       setPan({
@@ -459,6 +461,7 @@ export function ForceGraph({ graph, runId, onNodeClick }: Props) {
     }
     const onUp = () => {
       panRef.current = null
+      setIsPanning(false)
       window.removeEventListener('mousemove', onMove)
       window.removeEventListener('mouseup', onUp)
     }
@@ -517,7 +520,7 @@ export function ForceGraph({ graph, runId, onNodeClick }: Props) {
           onContextMenu={e => e.preventDefault()}
           onWheel={handleWheel}
           onMouseDown={handleSvgMouseDown}
-          style={{ cursor: panRef.current ? 'grabbing' : 'grab' }}
+          style={{ cursor: isPanning ? 'grabbing' : 'grab' }}
         >
           <defs>
             <marker id="arrow" markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto">

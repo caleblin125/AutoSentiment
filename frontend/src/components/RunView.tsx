@@ -184,7 +184,7 @@ export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMo
         form?.requestSubmit()
       }
     },
-    'Escape': () => { setActiveChunk?.(null); setShowSuggestions(false) },
+    'Escape': () => { setShowSuggestions(false) },
   })
 
   // Page title updates

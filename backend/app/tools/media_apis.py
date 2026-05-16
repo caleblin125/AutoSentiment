@@ -2,30 +2,77 @@
 
 These sources expand coverage without spending Brave quota. They are best-effort
 and never block the main Brave-backed search path.
+
+All five sources are queried in parallel via asyncio.gather; results are
+interleaved round-robin so no single platform can dominate the URL pool.
 """
 
 from __future__ import annotations
 
+import asyncio
 import xml.etree.ElementTree as ET
 
 import httpx
 
 
-async def supplemental_media_search(query: str, *, limit: int = 12) -> list[str]:
-    urls: list[str] = []
+async def supplemental_media_search(
+    query: str,
+    *,
+    limit: int = 12,
+    include_source_map: bool = False,
+) -> list[str] | tuple[list[str], dict[str, list[str]]]:
+    """Fetch supplemental URLs from GDELT, HN, Wikipedia, arXiv, and Reddit in parallel.
+
+    Args:
+        query: Search query string.
+        limit: Maximum total URLs to return.
+        include_source_map: If True, also return a dict mapping url -> [source_names].
+
+    Returns:
+        List of deduplicated URLs, or (urls, source_map) if include_source_map=True.
+    """
+    per_source = max(2, limit // 3)
+    reddit_limit = max(2, limit // 4)  # Reddit capped at ~25%
+
     async with httpx.AsyncClient(timeout=6.0, follow_redirects=True) as client:
-        # Prefer broad non-Reddit indexes first; Reddit is useful but should not
-        # dominate runs when other public sources are available.
-        for fn in (_search_gdelt, _search_hacker_news, _search_wikipedia, _search_arxiv, _search_reddit):
-            remaining = max(0, limit - len(urls))
-            if remaining <= 0:
-                break
-            fn_limit = min(remaining, max(2, limit // 4)) if fn.__name__ == "_search_reddit" else remaining
-            try:
-                urls.extend(await fn(client, query, fn_limit))
-            except Exception:
-                continue
-    return _dedupe(urls)[:limit]
+        results = await asyncio.gather(
+            _search_gdelt(client, query, per_source),
+            _search_hacker_news(client, query, per_source),
+            _search_wikipedia(client, query, per_source),
+            _search_arxiv(client, query, per_source),
+            _search_reddit(client, query, reddit_limit),
+            return_exceptions=True,
+        )
+
+    source_names = ["gdelt", "hn", "wikipedia", "arxiv", "reddit"]
+    valid: list[tuple[str, list[str]]] = []
+    for name, result in zip(source_names, results):
+        if isinstance(result, list):
+            valid.append((name, result))
+
+    # Round-robin interleaving: alternate between sources so the final list
+    # naturally diversifies across platforms rather than appending each source
+    # as a block.
+    urls: list[str] = []
+    source_map: dict[str, list[str]] = {}
+    max_len = max((len(lst) for _, lst in valid), default=0)
+
+    for i in range(max_len):
+        for name, lst in valid:
+            if i < len(lst):
+                url = lst[i]
+                source_map.setdefault(url, []).append(name)
+                urls.append(url)
+
+    deduped = _dedupe(urls)[:limit]
+
+    if include_source_map:
+        # Only keep entries for URLs that made the final cut.
+        final_set = set(deduped)
+        trimmed = {u: v for u, v in source_map.items() if u in final_set}
+        return deduped, trimmed
+
+    return deduped
 
 
 async def _search_gdelt(client: httpx.AsyncClient, query: str, limit: int) -> list[str]:
@@ -114,11 +161,10 @@ async def _search_reddit(client: httpx.AsyncClient, query: str, limit: int) -> l
 
 
 def _dedupe(urls: list[str]) -> list[str]:
-    seen = set()
-    deduped = []
+    seen: set[str] = set()
+    deduped: list[str] = []
     for url in urls:
-        if url in seen:
-            continue
-        seen.add(url)
-        deduped.append(url)
+        if url not in seen:
+            seen.add(url)
+            deduped.append(url)
     return deduped

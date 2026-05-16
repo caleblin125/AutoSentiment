@@ -291,6 +291,48 @@ async def test_url_cache_expires_entries_past_ttl() -> None:
 
 
 @pytest.mark.asyncio
+async def test_batch_read_url_cache_returns_all_in_one_query() -> None:
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+    from app.models import Base
+
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+
+    url_a = "https://news.example/batch-a"
+    url_b = "https://news.example/batch-b"
+    url_c = "https://news.example/batch-c-not-stored"
+
+    items_a = [fetch.FetchedItem(snippet="para-a", url=url_a, source_type=SourceType.NEWS)]
+    items_b = [fetch.FetchedItem(snippet="para-b", url=url_b, source_type=SourceType.NEWS)]
+
+    async with factory() as db:
+        await fetch.write_url_cache(db, url_a, items_a)
+        await fetch.write_url_cache(db, url_b, items_b)
+        await db.commit()
+
+    async with factory() as db:
+        result = await fetch.batch_read_url_cache(db, [url_a, url_b, url_c], ttl_seconds=3600)
+
+    assert result[url_a] is not None
+    assert result[url_b] is not None
+    assert result[url_c] is None
+    assert result[url_a][0].snippet == "para-a"
+    assert result[url_b][0].snippet == "para-b"
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_batch_read_url_cache_returns_none_for_all_when_ttl_disabled() -> None:
+    result = await fetch.batch_read_url_cache(None, ["https://x.example/"], 60)
+    assert result == {"https://x.example/": None}
+
+    result2 = await fetch.batch_read_url_cache(None, ["https://x.example/"], 0)
+    assert result2 == {"https://x.example/": None}
+
+
+@pytest.mark.asyncio
 async def test_write_url_cache_overwrites_existing_entry() -> None:
     from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
     from app.models import Base

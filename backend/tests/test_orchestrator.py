@@ -566,3 +566,173 @@ async def test_run_research_skips_cache_when_ttl_zero(monkeypatch, session_facto
 
 async def _async(value):
     return value
+
+
+# ── Quality scoring tests ─────────────────────────────────────────────────────
+
+
+def test_url_quality_score_credible_domain_adds_two() -> None:
+    score = orchestrator._url_quality_score("https://reuters.com/article", {})
+    assert score == 2
+
+
+def test_url_quality_score_cross_source_adds_one() -> None:
+    url = "https://example.com/post"
+    score = orchestrator._url_quality_score(url, {url: ["brave", "hn"]})
+    assert score == 1
+
+
+def test_url_quality_score_credible_and_cross_source_adds_three() -> None:
+    url = "https://bbc.com/news/story"
+    score = orchestrator._url_quality_score(url, {url: ["brave", "gdelt"]})
+    assert score == 3
+
+
+def test_url_quality_score_unknown_domain_is_zero() -> None:
+    assert orchestrator._url_quality_score("https://unknown-blog.example/", {}) == 0
+
+
+def test_select_diverse_urls_quality_sorts_credible_first() -> None:
+    """Credible URLs should be picked before non-credible within the same bucket."""
+    urls = [
+        "https://random-blog.example/post",
+        "https://reuters.com/finance/story",
+        "https://another-blog.example/post",
+    ]
+    selected = orchestrator._select_diverse_urls(urls, 2, {})
+    assert selected[0] == "https://reuters.com/finance/story"
+
+
+def test_select_diverse_urls_cross_source_promoted() -> None:
+    """A URL seen from 2 sources should rank above a single-source URL."""
+    credible = "https://reuters.com/story"
+    cross = "https://example.com/news"
+    single = "https://example.com/other"
+    url_sources = {
+        cross: ["brave", "gdelt"],  # cross-corroborated
+        single: ["brave"],
+    }
+    # All WEB/NEWS bucket; cross-corroborated + credible should come out first.
+    urls = [single, cross, credible]
+    selected = orchestrator._select_diverse_urls(urls, 3, url_sources)
+    assert selected.index(credible) < selected.index(single)
+
+
+# ── Degraded mode (no Brave key) tests ───────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_run_research_degraded_mode_uses_media_apis(monkeypatch, session_factory) -> None:
+    """When brave_api_key is empty, the pipeline should use supplemental_media_search."""
+    settings = Settings(
+        brave_api_key="",
+        max_urls_per_run=2,
+        max_items_per_run=2,
+        enable_media_api_search=True,
+    )
+    media_called = []
+
+    monkeypatch.setattr(orchestrator, "AsyncSessionLocal", session_factory)
+    monkeypatch.setattr(orchestrator, "expand_queries", lambda *_a, **_kw: _async(["q"]))
+    monkeypatch.setattr(orchestrator, "build_search_plan", _async_build_plan)
+
+    async def mock_media(topic, *, limit=12, include_source_map=False):
+        media_called.append(topic)
+        urls = ["https://hn.example/item1", "https://hn.example/item2"][:limit]
+        if include_source_map:
+            return urls, {u: ["hn"] for u in urls}
+        return urls
+
+    monkeypatch.setattr(orchestrator, "supplemental_media_search", mock_media)
+    monkeypatch.setattr(
+        orchestrator,
+        "fetch_items",
+        lambda url, **_kw: _async([FetchedItem(snippet="text", url=url, source_type=SourceType.NEWS)]),
+    )
+    monkeypatch.setattr(
+        orchestrator.SentimentQueue,
+        "analyze",
+        lambda _self, _s: _async(SentimentResult(label=SentimentLabel.NEUTRAL, summary="ok")),
+    )
+    monkeypatch.setattr(orchestrator, "synthesize_report_streaming", lambda *_a, **_kw: _async({"themes": [], "narrative": ""}))
+
+    async with session_factory() as db:
+        run = Run(topic="degraded", freshness=None, status="pending")
+        db.add(run)
+        await db.commit()
+        await db.refresh(run)
+        run_id = run.id
+
+    queue = event_bus.register(run_id)
+    await orchestrator.run_research(run_id, "degraded", None, settings)
+    while await queue.get() is not None:
+        pass
+    event_bus.deregister(run_id)
+
+    assert media_called, "supplemental_media_search should have been called in degraded mode"
+
+    async with session_factory() as db:
+        stored = await db.get(Run, run_id)
+        assert stored is not None
+        assert stored.status == "completed"
+
+
+async def _async_build_plan(*_a, **_kw):
+    """Minimal search-plan stub for tests that don't care about plan details."""
+    from app.search_planner import SearchPlan, PlannedQuery
+    return SearchPlan(queries=[PlannedQuery(query="q", reason="test", quota_cost=1)])
+
+
+# ── Timing breakdown tests ────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_run_research_report_includes_search_timing_breakdown(monkeypatch, session_factory) -> None:
+    settings = Settings(max_urls_per_run=1, max_items_per_run=1)
+
+    monkeypatch.setattr(orchestrator, "AsyncSessionLocal", session_factory)
+    monkeypatch.setattr(orchestrator, "expand_queries", lambda *_a, **_kw: _async(["q"]))
+    monkeypatch.setattr(orchestrator, "build_search_plan", _async_build_plan)
+    monkeypatch.setattr(orchestrator, "brave_search", lambda *_a, **_kw: _async(["https://news.example/t"]))
+
+    async def mock_media(topic, *, limit=12, include_source_map=False):
+        if include_source_map:
+            return [], {}
+        return []
+
+    monkeypatch.setattr(orchestrator, "supplemental_media_search", mock_media)
+    monkeypatch.setattr(
+        orchestrator,
+        "fetch_items",
+        lambda url, **_kw: _async([FetchedItem(snippet="body", url=url, source_type=SourceType.NEWS)]),
+    )
+    monkeypatch.setattr(
+        orchestrator.SentimentQueue,
+        "analyze",
+        lambda _self, _s: _async(SentimentResult(label=SentimentLabel.NEUTRAL, summary="ok")),
+    )
+    monkeypatch.setattr(orchestrator, "synthesize_report_streaming", lambda *_a, **_kw: _async({"themes": [], "narrative": ""}))
+
+    async with session_factory() as db:
+        run = Run(topic="timing-test", freshness=None, status="pending")
+        db.add(run)
+        await db.commit()
+        await db.refresh(run)
+        run_id = run.id
+
+    queue = event_bus.register(run_id)
+    await orchestrator.run_research(run_id, "timing-test", None, settings)
+    while await queue.get() is not None:
+        pass
+    event_bus.deregister(run_id)
+
+    async with session_factory() as db:
+        stored = await db.get(Run, run_id)
+        assert stored is not None
+        timings = stored.report.get("timings", {})
+
+    assert "search_brave_ms" in timings
+    assert "search_media_ms" in timings
+    assert "search_brave_cache_hits" in timings
+    assert "search_brave_api_calls" in timings
+    assert "search_cross_source_urls" in timings

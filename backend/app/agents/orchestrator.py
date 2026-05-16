@@ -19,7 +19,7 @@ from app.agents.nemoclaw import expand_queries, synthesize_report, synthesize_re
 from app.agents.ollama import GenerationCancelled
 from app.agents.types import SSEEventType, SentimentLabel
 from app.db.session import AsyncSessionLocal
-from app.ingest.fetch import classify_source_type, fetch_items, read_url_cache, write_url_cache
+from app.ingest.fetch import classify_source_type, fetch_items, batch_read_url_cache, read_url_cache, write_url_cache
 from app.models import EvidenceChunk, Run, RunEvent
 from app.reports.builder import (
     build_idea_graph,
@@ -67,7 +67,7 @@ logger = logging.getLogger(__name__)
 def _get_logger(run_id: str) -> StructuredLogger:
     return StructuredLogger(logger, {"run_id": run_id})
 
-_FETCH_CONCURRENCY = 8
+_FETCH_CONCURRENCY = 12        # Task 4: increased from 8; domain caps prevent hammering any one host
 _FETCH_CONCURRENCY_PER_DOMAIN = 2
 _FETCH_TIMEOUT_SECONDS = 15.0
 _FETCH_USER_AGENT = (
@@ -104,6 +104,11 @@ async def run_research(
     timings: dict[str, float] = {
         "query_expansion_ms": 0.0,
         "search_ms": 0.0,
+        "search_brave_ms": 0.0,
+        "search_media_ms": 0.0,
+        "search_brave_cache_hits": 0.0,
+        "search_brave_api_calls": 0.0,
+        "search_cross_source_urls": 0.0,
         "fetch_ms": 0.0,
         "sentiment_ms": 0.0,
         "synthesis_ms": 0.0,
@@ -183,66 +188,111 @@ async def run_research(
             if is_cancelled(run_id):
                 raise _CancelledByUser()
 
-            # ── Stage 2: Brave search (rate-limited, sequential) ────────────
+            # ── Stage 2: search ─────────────────────────────────────────────
+            # url_sources tracks which search backends found each URL so we can
+            # score cross-corroborated URLs higher in the quality ranking step.
             urls: list[str] = []
             seen_urls: set[str] = set()
+            url_sources: dict[str, list[str]] = {}  # url -> ["brave", "gdelt", ...]
 
             stage_started = perf_counter()
-            for query in queries:
-                if is_cancelled(run_id):
-                    raise _CancelledByUser()
+            brave_ms: float = 0.0
+            media_api_ms: float = 0.0
+            brave_cache_hits: int = 0
+            brave_api_calls: int = 0
 
-                await emit(SSEEventType.SEARCH_QUERIED, "Search queried", {"query": query})
-                await db.commit()
-
-                remaining = settings.max_urls_per_run - len(urls)
-                if remaining <= 0:
-                    break
-
-                # Wrap in wait_for so a pending cancel isn't blocked by a slow HTTP response.
-                try:
-                    if not is_cached_search(query, freshness=freshness, count=remaining):
+            # ── 2a: Brave search (rate-limited, sequential) ─────────────────
+            # Pre-classify queries to batch quota recording for non-cached ones.
+            if settings.brave_api_key:
+                uncached_queries = [
+                    q for q in queries
+                    if not is_cached_search(q, freshness=freshness, count=settings.max_urls_per_run)
+                ]
+                brave_cache_hits = len(queries) - len(uncached_queries)
+                if uncached_queries:
+                    for _ in uncached_queries:
                         await record_brave_query(db)
-                        await db.commit()
-                    search_results = await asyncio.wait_for(
-                        brave_search(query, freshness=freshness, count=remaining, settings=settings, db=db),
-                        timeout=12.0,
-                    )
-                except asyncio.TimeoutError:
+                    await db.commit()
+
+                _brave_t0 = perf_counter()
+                for query in queries:
                     if is_cancelled(run_id):
                         raise _CancelledByUser()
-                    logger.warning("Brave search timed out for query: %s", query)
-                    continue
-                if is_cancelled(run_id):
-                    raise _CancelledByUser()
-                for url in search_results:
-                    if url in seen_urls or url in skip_urls:
-                        continue
-                    seen_urls.add(url)
-                    urls.append(url)
-                    if len(urls) >= settings.max_urls_per_run:
+
+                    await emit(SSEEventType.SEARCH_QUERIED, "Search queried", {"query": query})
+                    await db.commit()
+
+                    remaining = settings.max_urls_per_run - len(urls)
+                    if remaining <= 0:
                         break
-            if (
-                getattr(settings, "enable_media_api_search", True)
-                and settings.brave_api_key
-                and len(urls) < settings.max_urls_per_run
-            ):
+
+                    try:
+                        search_results = await asyncio.wait_for(
+                            brave_search(query, freshness=freshness, count=remaining, settings=settings, db=db),
+                            timeout=12.0,
+                        )
+                        brave_api_calls += 1
+                    except asyncio.TimeoutError:
+                        if is_cancelled(run_id):
+                            raise _CancelledByUser()
+                        logger.warning("Brave search timed out: %s", query)
+                        continue
+                    if is_cancelled(run_id):
+                        raise _CancelledByUser()
+                    for url in search_results:
+                        if url in seen_urls or url in skip_urls:
+                            continue
+                        seen_urls.add(url)
+                        url_sources.setdefault(url, []).append("brave")
+                        urls.append(url)
+                        if len(urls) >= settings.max_urls_per_run:
+                            break
+                brave_ms = _elapsed_ms(_brave_t0)
+            else:
+                logger.warning("No BRAVE_API_KEY — running in degraded mode (media APIs only)")
+
+            # ── 2b: Supplemental media APIs (no key required, parallel) ─────
+            # Always run when enabled; not gated on Brave key so degraded mode works.
+            if getattr(settings, "enable_media_api_search", True) and len(urls) < settings.max_urls_per_run:
+                _media_t0 = perf_counter()
                 try:
-                    api_urls = await supplemental_media_search(
+                    api_result = await supplemental_media_search(
                         topic,
                         limit=settings.max_urls_per_run - len(urls),
+                        include_source_map=True,
                     )
+                    api_urls: list[str]
+                    api_source_map: dict[str, list[str]]
+                    if isinstance(api_result, tuple):
+                        api_urls, api_source_map = api_result
+                    else:
+                        api_urls, api_source_map = api_result, {}
                 except Exception:
-                    api_urls = []
+                    api_urls, api_source_map = [], {}
+                media_api_ms = _elapsed_ms(_media_t0)
+
                 for url in api_urls:
-                    if url in seen_urls or url in skip_urls:
+                    if url in skip_urls:
                         continue
-                    seen_urls.add(url)
-                    urls.append(url)
+                    for src in api_source_map.get(url, ["media_api"]):
+                        url_sources.setdefault(url, []).append(src)
+                    if url not in seen_urls:
+                        seen_urls.add(url)
+                        urls.append(url)
                     if len(urls) >= settings.max_urls_per_run:
                         break
-            urls = _select_diverse_urls(urls, settings.max_urls_per_run)
+
+            # ── 2c: Quality-ranked diversity selection ───────────────────────
+            urls = _select_diverse_urls(urls, settings.max_urls_per_run, url_sources)
+
             timings["search_ms"] = _elapsed_ms(stage_started)
+            timings["search_brave_ms"] = brave_ms
+            timings["search_media_ms"] = media_api_ms
+            timings["search_brave_cache_hits"] = float(brave_cache_hits)
+            timings["search_brave_api_calls"] = float(brave_api_calls)
+            timings["search_cross_source_urls"] = float(
+                sum(1 for srcs in url_sources.values() if len(set(srcs)) > 1)
+            )
 
             if is_cancelled(run_id):
                 raise _CancelledByUser()
@@ -263,15 +313,12 @@ async def run_research(
 
             ttl_seconds = getattr(settings, "fetched_url_cache_ttl_seconds", 86_400)
 
-            # Serial cache reads to keep the shared db session safe.
-            cached_pairs: list[tuple[str, list]] = []
-            uncached_urls: list[str] = []
-            for url in urls:
-                cached = await read_url_cache(db, url, ttl_seconds)
-                if cached is not None:
-                    cached_pairs.append((url, cached))
-                else:
-                    uncached_urls.append(url)
+            # Batch-read URL cache in one SELECT IN query (Task 3).
+            cache_batch = await batch_read_url_cache(db, urls, ttl_seconds)
+            cached_pairs: list[tuple[str, list]] = [
+                (url, items) for url, items in cache_batch.items() if items is not None
+            ]
+            uncached_urls: list[str] = [url for url, items in cache_batch.items() if items is None]
 
             # Emit cache hits up-front so the UI sees progress immediately.
             for url, items in cached_pairs:
@@ -778,21 +825,54 @@ def _expand_platform_queries(queries: list[str], topic: str) -> list[str]:
     return unique
 
 
-def _select_diverse_urls(urls: list[str], max_urls: int) -> list[str]:
+def _url_quality_score(url: str, url_sources: dict[str, list[str]]) -> int:
+    """Score a URL for quality ranking within its source bucket.
+
+    Higher scores surface first within each diversity bucket:
+      +2  URL is from a credible domain (established news, academic, etc.)
+      +1  URL was found by 2+ independent search backends (cross-corroborated)
+    """
+    score = 0
+    try:
+        domain = urlparse(url).netloc.removeprefix("www.")
+        if domain in _CREDIBLE_DOMAINS_SET or any(domain.endswith(f".{d}") for d in _CREDIBLE_DOMAINS_SET):
+            score += 2
+    except Exception:
+        pass
+    sources = url_sources.get(url, [])
+    if len(set(sources)) > 1:
+        score += 1
+    return score
+
+
+def _select_diverse_urls(
+    urls: list[str],
+    max_urls: int,
+    url_sources: dict[str, list[str]] | None = None,
+) -> list[str]:
     """Balance fetched URLs across source buckets before expensive extraction.
 
+    Within each bucket, URLs are ranked by quality score (credibility +
+    cross-source corroboration) so the best candidates are analysed first.
     Brave can return many same-platform URLs for broad public-opinion queries.
-    Round-robin selection keeps available news, forum, video, social, and web
-    sources in the run while still allowing Reddit to contribute heavily.
+    Round-robin selection keeps news, forum, video, social, and web sources
+    represented while still allowing Reddit to contribute.
     """
     if max_urls <= 0:
         return []
+
+    _sources = url_sources or {}
 
     priority = ["news", "web", "forum", "video", "social", "reddit"]
     groups: dict[str, list[str]] = {key: [] for key in priority}
     for url in urls:
         source = classify_source_type(url).value
         groups.setdefault(source, []).append(url)
+
+    # Sort within each bucket by quality score descending so we pick the best
+    # candidates when a bucket must be trimmed by the cap.
+    for bucket in groups.values():
+        bucket.sort(key=lambda u: _url_quality_score(u, _sources), reverse=True)
 
     caps = {
         "reddit": max(2, int(max_urls * 0.25 + 0.999)),
@@ -823,8 +903,8 @@ def _select_diverse_urls(urls: list[str], max_urls: int) -> list[str]:
         if not progressed:
             break
 
-    # Keep capped sources capped. Returning fewer URLs is better than spending
-    # extraction/sentiment budget on a single dominant platform.
+    # Fill any remaining slots from capped-but-available URLs, still respecting
+    # caps (so one platform still can't monopolise a run).
     for url in skipped:
         if len(selected) >= max_urls:
             break

@@ -152,6 +152,55 @@ async def read_url_cache(
     return [FetchedItem(snippet=s, url=url, source_type=source_type) for s in snippets]
 
 
+async def batch_read_url_cache(
+    db,
+    urls: list[str],
+    ttl_seconds: int,
+) -> dict[str, list[FetchedItem] | None]:
+    """Return a dict mapping url -> items (or None if uncached/stale).
+
+    Uses a single SELECT ... IN (...) query instead of N serial reads.
+    Safe to call from within the shared orchestrator DB session.
+    """
+    if not db or ttl_seconds <= 0 or not urls:
+        return {url: None for url in urls}
+
+    from sqlalchemy import select
+    from app.models import FetchedURLCache
+
+    url_to_hash = {url: _url_hash(url) for url in urls}
+    hash_to_url = {h: u for u, h in url_to_hash.items()}
+
+    rows = (
+        await db.execute(
+            select(FetchedURLCache).where(
+                FetchedURLCache.url_hash.in_(list(url_to_hash.values()))
+            )
+        )
+    ).scalars().all()
+
+    now = datetime.now(UTC)
+    result: dict[str, list[FetchedItem] | None] = {url: None for url in urls}
+
+    for row in rows:
+        url = hash_to_url.get(row.url_hash)
+        if url is None:
+            continue
+        cached_at = row.created_at
+        if cached_at.tzinfo is None:
+            cached_at = cached_at.replace(tzinfo=UTC)
+        if now - cached_at > timedelta(seconds=ttl_seconds):
+            continue
+        try:
+            source_type = SourceType(row.source_type)
+        except ValueError:
+            source_type = classify_source_type(url)
+        snippets = [s for s in row.extracted_text.split(_SNIPPET_DELIMITER) if s.strip()]
+        result[url] = [FetchedItem(snippet=s, url=url, source_type=source_type) for s in snippets]
+
+    return result
+
+
 async def write_url_cache(
     db,
     url: str,
