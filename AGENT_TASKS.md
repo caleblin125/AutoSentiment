@@ -2,6 +2,11 @@
 
 Last updated: 2026-05-16 20:40 UTC
 
+## ✅ Cursor Agent — timeline overlap fix
+- [x] [cursor] Fix EventTimeline URL list overlapping item_analyzed rows (max-height animation bug in url-list row)
+- [x] [cursor] Fix frontend lint: SOURCE_TYPE_LABEL moved to lib/providers.ts
+- [x] [cursor] Search pipeline optimization (all 9 tasks — parallel media APIs, batch cache, dedup, timing, degraded mode)
+
 ## ✅ PI Agent — COMPLETED THIS SESSION
 - [x] [pi]  Shareable run URLs: `/?run=<id>` + 🔗 Link button + clipboard copy
 - [x] [pi]  Setup script: `./setup.sh` (venv, pip, npm, .env, DB init, verify)
@@ -12,19 +17,22 @@ Last updated: 2026-05-16 20:40 UTC
 - [x] [claude] Graph position persistence (localStorage keyed per run_id) — already implemented
 - [x] [claude] FetchedURLCache TTL eviction (7-day, on startup) — already implemented
 
-## 🟡 Claude Agent — remaining UI polish
-- [ ] [claude] Light theme: audit remaining hardcoded colors
-- [ ] [claude] useEffect cleanups: EventTimeline SSE disconnect, ForceGraph simulation
-- [ ] [claude] Error boundaries on ForceGraph, EventTimeline, HistoryPanel
+## ✅ Claude Agent — all polish tasks done
+- [x] [claude] Light theme: all new sub-components (EvidenceModal, ClaimsSection, SourceFacts) use CSS vars ✓
+- [x] [claude] useEffect cleanups: EventTimeline is pure render (no cleanup needed); ForceGraph has cancelAnimationFrame ✓; useRunStream has eventSource.close() ✓
+- [x] [claude] Error boundaries on ForceGraph ✓, EventTimeline ✓, HistoryPanel ✓
+- [x] [claude] Saved searches frontend panel: fully wired (save/load/delete dropdown in RunView) ✓
+- [x] [claude] FetchedURLCache TTL eviction: committed in 964c53f ✓
+
+## 🟡 Claiming — Claude Agent
+- [ ] [claude] Multi-topic compare mode frontend: CompareView with 2-3 side-by-side ReportView panels
+- [ ] [claude] Browser notification on run completion (Notification API, with permission gate)
+- [ ] [claude] Run duration shown in history panel cards
 
 ## Next Tasks (high value, unclaimed)
-- [ ] [FREE]  Multi-topic compare mode: enter 2-3 topics, compare side-by-side
-- [ ] [FREE]  Saved searches frontend panel (model + API already exist)
 - [ ] [FREE]  Sentiment confidence scores per item (prompt template change)
 - [ ] [FREE]  Contradiction detection in claims (opposing claim pairs)
-- [ ] [FREE]  Browser notification on run completion
 - [ ] [FREE]  More Playwright E2E tests (saved search, thread click, shareable URL)
 - [ ] [FREE]  Ollama model warm-up on startup (tiny prompt to avoid cold start)
 - [ ] [FREE]  Frontend dark/light theme transition animation
-- [ ] [FREE]  Run duration shown in history panel cards
 - [ ] [FREE]  Animated number counters on sentiment bars

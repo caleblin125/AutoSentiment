@@ -35,6 +35,13 @@ function formatDate(iso: string) {
   }).format(new Date(iso))
 }
 
+function formatDuration(ms: number | null): string {
+  if (ms == null || ms <= 0) return ''
+  if (ms < 1000) return `${Math.round(ms)}ms`
+  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`
+  return `${Math.floor(ms / 60000)}m${Math.round((ms % 60000) / 1000)}s`
+}
+
 function MiniBar({ overall }: { overall: RunSummary['overall'] }) {
   if (!overall) return null
   return (
@@ -156,6 +163,7 @@ export function HistoryPanel({ onOpenRun, refreshKey }: Props) {
                       </span>
                       <span style={{ marginLeft: 'auto', color: 'var(--text)', fontFamily: 'var(--mono)', fontSize: 10 }}>
                         {run.overall.total} items
+                        {run.duration_ms ? <span className="history-duration"> · {formatDuration(run.duration_ms)}</span> : null}
                       </span>
                     </div>
                   )}

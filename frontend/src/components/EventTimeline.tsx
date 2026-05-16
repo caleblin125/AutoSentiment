@@ -281,9 +281,7 @@ function EventRow({ ev }: { ev: FoldedEvent }) {
           <FetchBatchHeader ev={ev} expanded={expanded} setExpanded={setExpanded} />
         </li>
         {expanded && (
-          <li className="timeline-event timeline-event--url-list">
-            <span />
-            <span />
+          <li className="timeline-url-list-row">
             <div className="fetch-url-list">
               {ev._urls.map(u => (
                 <a key={u.url} href={u.url} target="_blank" rel="noreferrer" className="fetch-url-link" title={u.url}>

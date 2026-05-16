@@ -173,6 +173,9 @@ export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMo
     onStatusChange(tabStatus, label, runId ?? undefined)
     if (status === 'completed') {
       queueMicrotask(() => setHistoryKey(k => k + 1))
+      if ('Notification' in window && Notification.permission === 'granted' && document.visibilityState === 'hidden') {
+        new Notification('AutoSentiment', { body: `"${label}" analysis complete`, icon: '/favicon.ico' })
+      }
     }
   }, [status, activeTopic, cached, runId, expanding, isExpandedRun, onStatusChange])
 
@@ -201,6 +204,9 @@ export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMo
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!topic.trim()) return
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission().catch(() => {})
+    }
     setLoading(true)
     setFormError(null)
     setNcRunId(null)

@@ -1291,6 +1291,7 @@ button[type="submit"] {
   padding-top: 2px;
   color: var(--rog-cyan);
   white-space: nowrap;
+  overflow: hidden;
   letter-spacing: 0.3px;
 }
 
@@ -1299,6 +1300,7 @@ button[type="submit"] {
   font-size: 10px;
   color: var(--text);
   white-space: nowrap;
+  overflow: hidden;
   padding-top: 2px;
 }
 
@@ -2854,6 +2856,11 @@ button[type="submit"] {
   margin-top: 4px;
 }
 
+.history-duration {
+  opacity: 0.6;
+  margin-left: 2px;
+}
+
 /* ── Fetch URL list in timeline ──────────────────────────────────────────── */
 
 .fetch-batch-message {
@@ -3728,21 +3735,27 @@ button[type="submit"] {
   animation: tab-fadein 0.15s ease-out;
 }
 
-/* ── Timeline URL list row — spans all columns ──────────────────────────── */
-.timeline-event--url-list {
+/* ── Timeline URL list row ───────────────────────────────────────────────
+   Standalone class — NOT a grid row. Using a separate class avoids the
+   css-cascade fight between .timeline-event (display:grid) and an
+   override class. The row renders as a plain block so its natural height
+   is immediately reflected in the flex layout, preventing the overlap bug
+   where animated max-height kept height at 0 while content grew over the
+   next rows. */
+.timeline-url-list-row {
   display: block;
   padding: 0 4px 4px;
+  border-bottom: 1px solid var(--border-dim);
 }
-.timeline-event--url-list .fetch-url-list {
-  margin-left: 0;
+.timeline-url-list-row .fetch-url-list {
   width: 100%;
+  /* Animate only opacity — NOT max-height. Animating max-height from 0
+     delays flex layout recomputation, causing subsequent rows to render
+     at the wrong vertical position while the list visually expands. */
+  animation: timeline-url-fade 0.15s ease-out;
 }
 
-/* ── EventTimeline collapse animation ───────────────────────────────────── */
-@keyframes timeline-expand {
-  from { opacity: 0; max-height: 0; }
-  to   { opacity: 1; max-height: 280px; }
-}
-.timeline-event--url-list .fetch-url-list {
-  animation: timeline-expand 0.18s ease-out;
+@keyframes timeline-url-fade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }

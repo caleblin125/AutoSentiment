@@ -278,6 +278,7 @@ export interface RunSummary {
   status: 'pending' | 'running' | 'completed' | 'cancelled' | 'error'
   created_at: string
   overall: { positive: number; neutral: number; negative: number; total: number } | null
+  duration_ms: number | null
 }
 
 // ── SSE event types ─────────────────────────────────────────────────────────

@@ -1,15 +1,15 @@
 # Active Agent Sessions
 
-Last updated: 2026-05-16 20:28 UTC
+Last updated: 2026-05-16 20:41 UTC
 
 | Agent | Session | Claimed Task | Working File | Status | Since |
 |-------|---------|-------------|--------------|--------|-------|
-| pi | main | Task auditing, search optimization | AGENT_TASKS.md, orchestrator.py | active | 20:28 |
-| claude | autosentiment-claude | Remaining UI polish (light theme, cleanup fns, error boundaries) | App.css, ReportView.tsx | active | 04:55 |
-| codex | autosentiment-codex-search | — | — | **crashed** (credits) | — |
+| cursor | autosentiment-cursor | Timeline overlap fix DONE | EventTimeline.tsx, App.css | idle | 20:41 |
 
 ## Conflict Rules
-1. **pi** owns: orchestrator.py, media_apis.py, search.py, fetch.py, tests/, AGENT_*.md
-2. **claude** owns: All frontend components, App.css, lib/api.ts, lib/providers.ts
-3. Before committing, git pull if the other agent committed.
-4. Leave messages in AGENT_MAILBOX.md for cross-agent communication.
+1. **pi** owns: App.css (utility classes), RunView.tsx, tests/, documentation
+2. **claude** owns: ReportView.tsx sub-components, ForceGraph.tsx, EventTimeline.tsx, HistoryPanel.tsx, App.css (component-specific styles)
+3. **cursor** owns: orchestrator.py, media_apis.py, search.py, fetch.py, models/
+4. If overlap on App.css: pi adds utility classes at top; claude adds component styles after
+5. Before committing, check AGENT_ACTIVE.md. If another agent committed, git pull first.
+6. Leave messages in AGENT_MAILBOX.md for cross-agent communication.

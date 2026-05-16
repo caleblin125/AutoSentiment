@@ -318,6 +318,7 @@ async def list_runs(
             "status": run.status,
             "created_at": run.created_at.isoformat(),
             "overall": run.report.get("overall") if run.report else None,
+            "duration_ms": run.report.get("timings", {}).get("total_ms") if run.report else None,
         }
         for run in runs
     ]
