@@ -296,6 +296,57 @@ def compute_timeline(chunks: list[EvidenceChunk], topic: str, limit: int = 8) ->
     }
 
 
+def compute_claims(chunks: list[EvidenceChunk], limit: int = 10) -> dict:
+    """Extract factual-looking claims and attach source/evidence signals.
+
+    This is deliberately conservative: it groups repeated declarative
+    statements and exposes corroboration signals without declaring truth.
+    """
+    grouped: dict[str, dict] = {}
+    for chunk in chunks:
+        for sentence in _claim_sentences(chunk.snippet):
+            key = _normalize_claim(sentence)
+            if not key:
+                continue
+            claim = grouped.setdefault(
+                key,
+                {
+                    "claim": sentence,
+                    "claim_type": _claim_type(sentence),
+                    "confidence": 0.0,
+                    "supporting_domains": [],
+                    "opposing_domains": [],
+                    "evidence_ids": [],
+                    "source_types": [],
+                    "needs_verification": False,
+                },
+            )
+            domain = urlparse(chunk.url).netloc.removeprefix("www.") or "unknown"
+            if domain not in claim["supporting_domains"]:
+                claim["supporting_domains"].append(domain)
+            if chunk.id not in claim["evidence_ids"]:
+                claim["evidence_ids"].append(chunk.id)
+            if chunk.source_type not in claim["source_types"]:
+                claim["source_types"].append(chunk.source_type)
+
+    claims = []
+    for claim in grouped.values():
+        corroboration = len(claim["supporting_domains"])
+        directness = 1 if any(st in {"news", "web"} for st in claim["source_types"]) else 0
+        claim["confidence"] = min(0.95, 0.35 + 0.15 * corroboration + 0.1 * directness)
+        claim["needs_verification"] = corroboration < 2 and not any(
+            domain.endswith((".gov", ".edu", ".org")) for domain in claim["supporting_domains"]
+        )
+        claims.append(claim)
+
+    claims.sort(key=lambda item: (item["needs_verification"], -len(item["supporting_domains"])))
+    return {
+        "claims": claims[:limit],
+        "needs_verification": [claim for claim in claims if claim["needs_verification"]][:limit],
+        "summary": _claim_summary(claims),
+    }
+
+
 def _extract_dates(text: str) -> list[tuple[str, str]]:
     dates: list[tuple[str, str]] = []
     for match in re.finditer(r"\b(20\d{2})[-/](0?[1-9]|1[0-2])[-/](0?[1-9]|[12]\d|3[01])\b", text):
@@ -319,6 +370,42 @@ def _extract_dates(text: str) -> list[tuple[str, str]]:
         seen.add(iso)
         deduped.append((iso, source))
     return deduped
+
+
+def _claim_sentences(text: str) -> list[str]:
+    sentences = re.split(r"(?<=[.!?])\s+", text)
+    factual_markers = re.compile(
+        r"\b(is|are|was|were|has|have|had|will|reported|announced|released|launched|costs?|priced|increased|decreased)\b|[$%]|\b\d{4}\b",
+        re.IGNORECASE,
+    )
+    claims = []
+    for sentence in sentences:
+        cleaned = " ".join(sentence.split())
+        if 35 <= len(cleaned) <= 240 and factual_markers.search(cleaned):
+            claims.append(cleaned)
+    return claims[:3]
+
+
+def _normalize_claim(sentence: str) -> str:
+    words = re.findall(r"[a-zA-Z0-9$%]+", sentence.lower())
+    meaningful = [w for w in words if w not in STOP_WORDS]
+    return " ".join(meaningful[:18])
+
+
+def _claim_type(sentence: str) -> str:
+    lowered = sentence.lower()
+    if any(token in lowered for token in ("$", "%", "price", "cost", "revenue", "box office", "sales")):
+        return "quantitative"
+    if any(token in lowered for token in ("announced", "released", "launched", "reported")):
+        return "event"
+    return "factual"
+
+
+def _claim_summary(claims: list[dict]) -> str:
+    if not claims:
+        return "No factual-looking claims were extracted from the evidence."
+    needs = sum(1 for claim in claims if claim["needs_verification"])
+    return f"Extracted {len(claims)} factual-looking claims; {needs} need additional verification."
 
 
 def _event_label(text: str, topic: str) -> str:

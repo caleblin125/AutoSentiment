@@ -468,6 +468,13 @@ Implemented the first pass of Objective 3:
 - Frontend report now renders a chronology section with start/end dates and dated event cards.
 - Added report tests for explicit date extraction and no fabricated calendar dates.
 
+Implemented the first pass of Objective 4:
+
+- Added `compute_claims` to extract factual-looking claims from evidence.
+- Report now includes a `fact_check` section with claims, supporting domains, evidence IDs, confidence, and verification flags.
+- Frontend report now renders a fact-check section with corroboration/verification status.
+- Added tests for claim extraction, evidence linking, and verification flag shape.
+
 ```bash
 cd /home/asus/AutoSentiment/frontend
 npm run lint

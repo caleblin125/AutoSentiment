@@ -82,7 +82,25 @@ export interface Report {
   aspects?: AspectInsight[]
   source_facts?: SourceFact[]
   timeline?: ReportTimeline
+  fact_check?: FactCheck
   graph?: IdeaGraph
+}
+
+export interface FactClaim {
+  claim: string
+  claim_type: string
+  confidence: number
+  supporting_domains: string[]
+  opposing_domains: string[]
+  evidence_ids: string[]
+  source_types: string[]
+  needs_verification: boolean
+}
+
+export interface FactCheck {
+  claims: FactClaim[]
+  needs_verification: FactClaim[]
+  summary: string
 }
 
 export interface TimelineEvent {

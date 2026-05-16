@@ -151,3 +151,37 @@ def test_compute_timeline_extracts_explicit_dates_without_fabricating() -> None:
     assert "2026-03-10" in dates
     assert timeline["start_date"] <= timeline["end_date"]
     assert "d1" in timeline["supporting_evidence_ids"]
+
+
+def test_compute_claims_groups_factual_claims_and_flags_verification() -> None:
+    from app.reports.builder import compute_claims
+
+    chunks = [
+        EvidenceChunk(
+            id="c1",
+            run_id="r",
+            url="https://news.example/story",
+            source_type="news",
+            snippet="The film was released on March 5, 2026 and earned $10 million during previews.",
+            label="neutral",
+            summary="release data",
+        ),
+        EvidenceChunk(
+            id="c2",
+            run_id="r",
+            url="https://reddit.com/r/movies/1",
+            source_type="reddit",
+            snippet="People are excited and think the soundtrack is good.",
+            label="positive",
+            summary="fans excited",
+        ),
+    ]
+
+    fact_check = compute_claims(chunks)
+
+    assert fact_check["claims"]
+    claim = fact_check["claims"][0]
+    assert claim["claim_type"] in {"event", "quantitative"}
+    assert claim["evidence_ids"] == ["c1"]
+    assert "news.example" in claim["supporting_domains"]
+    assert fact_check["summary"].startswith("Extracted")

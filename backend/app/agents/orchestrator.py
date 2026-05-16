@@ -22,6 +22,7 @@ from app.models import EvidenceChunk, Run, RunEvent
 from app.reports.builder import (
     build_idea_graph,
     compute_aspects,
+    compute_claims,
     compute_counts,
     compute_source_facts,
     compute_timeline,
@@ -294,6 +295,7 @@ async def run_research(
             aspects = compute_aspects(chunks, topic)
             source_facts = compute_source_facts(chunks)
             timeline = compute_timeline(chunks, topic)
+            fact_check = compute_claims(chunks)
             synthesis_limit = _synthesis_limit(depth_budget)
             chunks_summary = _summaries_for_synthesis(chunks, limit=synthesis_limit)
 
@@ -329,6 +331,7 @@ async def run_research(
                 "aspects": aspects,
                 "source_facts": source_facts,
                 "timeline": timeline,
+                "fact_check": fact_check,
                 "graph": build_idea_graph(topic, chunks, themes, aspects),
             }
 

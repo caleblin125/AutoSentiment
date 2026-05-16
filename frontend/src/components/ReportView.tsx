@@ -349,6 +349,30 @@ function TimelineSummary({ timeline }: { timeline: NonNullable<Report['timeline'
   )
 }
 
+function FactCheckSection({ factCheck }: { factCheck: NonNullable<Report['fact_check']> }) {
+  if (!factCheck.claims.length) return null
+  return (
+    <div className="insight-section">
+      <h3>Fact check</h3>
+      <p className="fact-check-summary">{factCheck.summary}</p>
+      <div className="claim-list">
+        {factCheck.claims.slice(0, 6).map((claim, idx) => (
+          <div className={`claim-card${claim.needs_verification ? ' claim-card--verify' : ''}`} key={`${claim.claim}:${idx}`}>
+            <div className="claim-card-header">
+              <span>{claim.claim_type}</span>
+              <strong>{Math.round(claim.confidence * 100)}%</strong>
+            </div>
+            <p>{claim.claim}</p>
+            <small>
+              {claim.supporting_domains.slice(0, 3).join(', ') || 'No supporting domains'} · {claim.needs_verification ? 'needs verification' : 'corroborated'}
+            </small>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // ── Quotes ────────────────────────────────────────────────────────────────
 
 function QuoteList({ title, quotes, onCite, highlightedId, sectionRef }: {
@@ -539,7 +563,7 @@ export function ReportView({ runId, topic, report }: Props) {
 
   const {
     overall, by_source, top_positive, top_negative, themes, narrative,
-    timings, aspects, source_facts, timeline, graph, impacts, reasons, arguments: args,
+    timings, aspects, source_facts, timeline, fact_check, graph, impacts, reasons, arguments: args,
   } = report
 
   return (
@@ -593,6 +617,7 @@ export function ReportView({ runId, topic, report }: Props) {
       <p className="narrative">{narrative}</p>
 
       {timeline && <TimelineSummary timeline={timeline} />}
+      {fact_check && <FactCheckSection factCheck={fact_check} />}
 
       <AnalysisSection impacts={impacts} reasons={reasons} arguments={args} />
 
