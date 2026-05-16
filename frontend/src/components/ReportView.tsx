@@ -18,7 +18,7 @@ import { SourceFacts } from './SourceFacts'
 import { SOURCE_TYPE_LABEL } from '../lib/providers'
 import { ForceGraph } from './ForceGraph'
 
-interface Props { runId: string; topic: string; report: Report; onSearchTopic?: (topic: string) => void }
+interface Props { runId: string; topic: string; report: Report; onSearchTopic?: (topic: string) => void; autoScroll?: boolean }
 
 function SourceLogo({ url }: { url: string }) {
   return (
@@ -114,14 +114,34 @@ function TimingSummary({ timings }: { timings: Record<string, number> }) {
 // ── Sentiment bars ────────────────────────────────────────────────────────
 
 function SentimentBar({ label, value, color }: { label: string; value: number; color: string }) {
+  const [displayed, setDisplayed] = useState(0)
+  const rafRef = useRef(0)
+
+  useEffect(() => {
+    const target = value
+    const duration = 700  // ms
+    const start = performance.now()
+    const from = displayed
+
+    const animate = (now: number) => {
+      const t = Math.min(1, (now - start) / duration)
+      // Ease-out cubic: decelerates into the final value
+      const eased = 1 - (1 - t) ** 3
+      setDisplayed(from + (target - from) * eased)
+      if (t < 1) rafRef.current = requestAnimationFrame(animate)
+    }
+    rafRef.current = requestAnimationFrame(animate)
+    return () => cancelAnimationFrame(rafRef.current)
+  }, [value]) // re-animates whenever the report data changes
+
   return (
     <div className="sentiment-row">
       <div className="sentiment-row__label">
         <span>{label}</span>
-        <strong className="mono">{pct(value)}</strong>
+        <strong className="mono">{pct(displayed)}</strong>
       </div>
       <div className="sentiment-track">
-        <div className="sentiment-fill" style={{ width: pct(value), background: color }} />
+        <div className="sentiment-fill" style={{ width: pct(displayed), background: color }} />
       </div>
     </div>
   )
@@ -147,7 +167,7 @@ function AnalysisSection({ impacts, reasons, arguments: args }: {
             {impacts.map((im, i) => (
               <div key={i} className="impact-item">
                 <span className="impact-icon">{im.direction === 'positive' ? '▲' : '▼'}</span>
-                <span style={{ color: im.direction === 'positive' ? 'var(--positive)' : 'var(--rog-red)' }}>
+                <span className={`impact-text impact-text--${im.direction}`}>
                   {im.description}
                 </span>
               </div>
@@ -626,6 +646,8 @@ function LocationSentimentMap({ locations }: {
 
 // ── Quotes ────────────────────────────────────────────────────────────────
 
+const QUOTES_INITIAL = 12
+
 function QuoteList({ title, quotes, onCite, highlightedId, sectionRef }: {
   title: string
   quotes: Quote[]
@@ -633,12 +655,15 @@ function QuoteList({ title, quotes, onCite, highlightedId, sectionRef }: {
   highlightedId?: string | null
   sectionRef?: React.RefObject<HTMLDivElement | null>
 }) {
+  const [showAll, setShowAll] = useState(false)
   if (!quotes.length) return null
+  const visible = showAll ? quotes : quotes.slice(0, QUOTES_INITIAL)
+  const hidden = quotes.length - visible.length
   return (
     <div className="quote-list" ref={sectionRef}>
-      <h3>{title}</h3>
+      <h3>{title} <span className="quote-count-badge">{quotes.length}</span></h3>
       <div className="quote-grid">
-        {quotes.map(q => (
+        {visible.map(q => (
           <article
             className={`quote-card${highlightedId === q.evidence_id ? ' quote-card--highlighted' : ''}`}
             key={q.evidence_id}
@@ -658,6 +683,16 @@ function QuoteList({ title, quotes, onCite, highlightedId, sectionRef }: {
           </article>
         ))}
       </div>
+      {hidden > 0 && (
+        <button className="show-all-btn" onClick={() => setShowAll(true)}>
+          Show {hidden} more
+        </button>
+      )}
+      {showAll && quotes.length > QUOTES_INITIAL && (
+        <button className="show-all-btn" onClick={() => setShowAll(false)}>
+          Show less
+        </button>
+      )}
     </div>
   )
 }
@@ -678,7 +713,7 @@ const REPORT_TABS: Array<{ id: ReportTab; label: string }> = [
 
 // ── Main component ────────────────────────────────────────────────────────
 
-export function ReportView({ runId, topic, report, onSearchTopic }: Props) {
+export function ReportView({ runId, topic, report, onSearchTopic, autoScroll }: Props) {
   const [activeChunk, setActiveChunk] = useState<EvidenceChunk | null>(null)
   const [loadingChunk, setLoadingChunk] = useState(false)
   const [highlightedId, setHighlightedId] = useState<string | null>(null)
@@ -686,6 +721,16 @@ export function ReportView({ runId, topic, report, onSearchTopic }: Props) {
   const [selectedThread, setSelectedThread] = useState<ThreadItem | null>(null)
   const posRef = useRef<HTMLDivElement | null>(null)
   const negRef = useRef<HTMLDivElement | null>(null)
+  const sectionRef = useRef<HTMLElement | null>(null)
+
+  useEffect(() => {
+    if (autoScroll && sectionRef.current) {
+      const id = requestAnimationFrame(() =>
+        sectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      )
+      return () => cancelAnimationFrame(id)
+    }
+  }, [autoScroll])
 
   // Report tab keyboard shortcuts (keys 1-7)
   useKeyboardShortcuts({
@@ -788,7 +833,7 @@ export function ReportView({ runId, topic, report, onSearchTopic }: Props) {
   const SUMMARY_TRUNCATE = 240
 
   return (
-    <section className="panel" aria-label="Report">
+    <section className="panel" aria-label="Report" ref={sectionRef}>
       <div className="report-header">
         <h2>Report {timings?.total_ms != null && <span className="duration-badge">{fmtDuration(timings.total_ms)}</span>}</h2>
         <div className="export-actions">
@@ -903,9 +948,9 @@ export function ReportView({ runId, topic, report, onSearchTopic }: Props) {
                           </span>
                         </div>
                         <div className="thread-card-bar">
-                          <div style={{ flex: thread.positive, background: 'var(--positive)' }} />
-                          <div style={{ flex: thread.neutral, background: 'var(--neutral)' }} />
-                          <div style={{ flex: thread.negative, background: 'var(--rog-red)' }} />
+                          <div className="thread-bar-pos" style={{ flex: thread.positive }} />
+                          <div className="thread-bar-neu" style={{ flex: thread.neutral }} />
+                          <div className="thread-bar-neg" style={{ flex: thread.negative }} />
                         </div>
                         <div className="thread-card-meta">
                           <span>{thread.evidence_count} mentions</span>

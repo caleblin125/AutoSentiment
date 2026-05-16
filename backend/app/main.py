@@ -1,5 +1,7 @@
+import asyncio
 import logging
 import signal
+import time
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 
@@ -15,6 +17,38 @@ from app.db.session import AsyncSessionLocal, create_tables
 logger = logging.getLogger(__name__)
 
 _CACHE_TTL_DAYS = 7
+
+
+async def _warmup_model(base_url: str, model: str) -> None:
+    """Send a tiny prompt to pre-load a model into GPU VRAM.
+
+    Uses the non-streaming Ollama API with a minimal payload so the model
+    weights are mapped before the first real user request arrives.
+    Errors are logged but never propagated — warm-up is best-effort.
+    """
+    import httpx
+    t0 = time.monotonic()
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            r = await client.post(
+                f"{base_url.rstrip('/')}/api/generate",
+                json={"model": model, "prompt": "hi", "stream": False, "keep_alive": "10m"},
+            )
+            r.raise_for_status()
+        elapsed = int((time.monotonic() - t0) * 1000)
+        logger.info("Warmed up model %s in %d ms", model, elapsed)
+    except Exception as exc:
+        logger.warning("Warm-up failed for model %s: %s", model, exc)
+
+
+async def _warmup_all_models() -> None:
+    """Fire parallel warm-up requests for all configured Ollama models."""
+    settings = get_settings()
+    models = {settings.nemoclaw_model, settings.lightweight_model, settings.suggestion_model}
+    await asyncio.gather(
+        *(_warmup_model(settings.ollama_base_url, m) for m in models),
+        return_exceptions=True,
+    )
 
 
 async def _evict_stale_cache() -> int:
@@ -37,6 +71,9 @@ async def lifespan(_app: FastAPI):
     evicted = await _evict_stale_cache()
     if evicted:
         logger.info("Evicted %d stale URL cache entries (>%d days old)", evicted, _CACHE_TTL_DAYS)
+
+    # Kick off model warm-up in the background — doesn't block server startup.
+    asyncio.create_task(_warmup_all_models())
 
     # Graceful shutdown: cancel all active runs on SIGTERM/SIGINT.
     from app.api import event_bus
