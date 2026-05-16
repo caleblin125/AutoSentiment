@@ -73,6 +73,26 @@ async def test_ollama_generate_parses_json_from_thinking_when_response_empty(mon
 
 
 @pytest.mark.asyncio
+async def test_ollama_generate_extracts_json_from_fenced_response(monkeypatch) -> None:
+    """Reasoning models sometimes wrap valid JSON in prose or markdown fences."""
+    response_text = 'Here is the JSON:\n```json\n{"label": "negative", "summary": "price concerns"}\n```'
+    body = json.dumps({"response": response_text, "done": True}).encode() + b"\n"
+
+    def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=body)
+
+    orig = httpx.AsyncClient
+    monkeypatch.setattr(
+        httpx, "AsyncClient",
+        lambda **kwargs: orig(**{**kwargs, "transport": httpx.MockTransport(handler)}),
+    )
+
+    result = await ollama_generate("prompt", system="system", model="model", base_url="http://ollama")
+
+    assert result == {"label": "negative", "summary": "price concerns"}
+
+
+@pytest.mark.asyncio
 async def test_ollama_generate_raises_value_error_for_unparseable_response(monkeypatch) -> None:
     body = json.dumps({"response": "not json", "done": True}).encode() + b"\n"
 
@@ -127,6 +147,19 @@ async def test_sentiment_queue_returns_parse_error_on_model_failure(monkeypatch)
 
     assert result.label == SentimentLabel.NEUTRAL
     assert result.summary == "parse error"
+
+
+@pytest.mark.asyncio
+async def test_sentiment_queue_normalizes_label_and_missing_summary(monkeypatch) -> None:
+    async def fake_generate(*_args, **_kwargs):
+        return {"label": "NEGATIVE"}
+
+    monkeypatch.setattr("app.agents.light_queue.ollama_generate", fake_generate)
+
+    result = await SentimentQueue(Settings()).analyze("snippet")
+
+    assert result.label == SentimentLabel.NEGATIVE
+    assert result.summary == "negative signal"
 
 
 @pytest.mark.asyncio

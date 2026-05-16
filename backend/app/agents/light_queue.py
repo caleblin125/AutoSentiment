@@ -15,6 +15,12 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+_SUMMARY_BY_LABEL = {
+    SentimentLabel.POSITIVE: "positive signal",
+    SentimentLabel.NEUTRAL: "neutral signal",
+    SentimentLabel.NEGATIVE: "negative signal",
+}
+
 
 class SentimentQueue:
     """Bounded-parallel queue for 30B sentiment calls.
@@ -51,12 +57,23 @@ class SentimentQueue:
                 base_url=self._settings.ollama_base_url,
                 cancel_check=self._cancel_check,
             )
+            label = _coerce_label(payload.get("label"))
+            summary = str(payload.get("summary") or _SUMMARY_BY_LABEL[label]).strip()
             return SentimentResult(
-                label=SentimentLabel(str(payload["label"])),
-                summary=str(payload["summary"]),
+                label=label,
+                summary=summary[:160] or _SUMMARY_BY_LABEL[label],
             )
         except GenerationCancelled:
             raise
         except Exception:
             logger.exception("Sentiment model call failed")
             return SentimentResult(label=SentimentLabel.NEUTRAL, summary="parse error")
+
+
+def _coerce_label(value: object) -> SentimentLabel:
+    normalized = str(value or "").strip().lower()
+    if normalized in {"pos", "positive", "favorable", "favourable", "supportive"}:
+        return SentimentLabel.POSITIVE
+    if normalized in {"neg", "negative", "unfavorable", "unfavourable", "critical"}:
+        return SentimentLabel.NEGATIVE
+    return SentimentLabel.NEUTRAL

@@ -5,6 +5,7 @@ between tokens rather than waiting for the full response.
 """
 
 import json
+import re
 from collections.abc import Callable
 
 import httpx
@@ -61,13 +62,7 @@ async def ollama_generate(
                 if chunk.get("done"):
                     break
 
-    raw = _pick_text(full_response, full_thinking)
-    if not raw:
-        raise ValueError("Empty response from model")
-    try:
-        return json.loads(raw)
-    except json.JSONDecodeError as exc:
-        raise ValueError(raw) from exc
+    return _parse_model_json(_pick_text(full_response, full_thinking))
 
 
 async def ollama_generate_streaming(
@@ -116,13 +111,7 @@ async def ollama_generate_streaming(
                 if chunk.get("done"):
                     break
 
-    raw = _pick_text(full_response, full_thinking)
-    if not raw:
-        raise ValueError("Empty response from model")
-    try:
-        return json.loads(raw)
-    except json.JSONDecodeError as exc:
-        raise ValueError(raw) from exc
+    return _parse_model_json(_pick_text(full_response, full_thinking))
 
 
 def _pick_text(response: str, thinking: str) -> str:
@@ -130,3 +119,58 @@ def _pick_text(response: str, thinking: str) -> str:
     if response.strip():
         return response.strip()
     return thinking.strip()
+
+
+def _parse_model_json(text: str) -> dict:
+    """Parse a JSON object even when the model adds prose or markdown fences.
+
+    Ollama's ``format=json`` strongly nudges structured output, but small local
+    models still occasionally include wrappers. Recovering the first balanced
+    object prevents otherwise useful sentiment calls from becoming parse errors.
+    """
+    raw = text.strip()
+    if not raw:
+        raise ValueError("Empty response from model")
+
+    candidates = [raw, *_json_candidates(raw)]
+    for candidate in candidates:
+        try:
+            parsed = json.loads(candidate)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(parsed, dict):
+            return parsed
+    raise ValueError(raw)
+
+
+def _json_candidates(text: str) -> list[str]:
+    candidates: list[str] = []
+    for match in re.finditer(r"```(?:json)?\s*(.*?)```", text, flags=re.DOTALL | re.IGNORECASE):
+        candidates.append(match.group(1).strip())
+
+    start = text.find("{")
+    while start != -1:
+        depth = 0
+        in_string = False
+        escaped = False
+        for idx in range(start, len(text)):
+            char = text[idx]
+            if in_string:
+                if escaped:
+                    escaped = False
+                elif char == "\\":
+                    escaped = True
+                elif char == '"':
+                    in_string = False
+                continue
+            if char == '"':
+                in_string = True
+            elif char == "{":
+                depth += 1
+            elif char == "}":
+                depth -= 1
+                if depth == 0:
+                    candidates.append(text[start:idx + 1])
+                    break
+        start = text.find("{", start + 1)
+    return candidates
