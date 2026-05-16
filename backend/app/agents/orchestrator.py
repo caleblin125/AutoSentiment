@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import asyncio
 from time import perf_counter
 from typing import TYPE_CHECKING
 
@@ -145,9 +146,10 @@ async def run_research(run_id: str, topic: str, freshness: str | None, settings:
             chunks: list[EvidenceChunk] = []
 
             stage_started = perf_counter()
-            for item in fetched_items:
-                item_started = perf_counter()
-                result = await sentiment_queue.analyze(item.snippet)
+            analyzed_items = await asyncio.gather(
+                *(_analyze_item(sentiment_queue, item) for item in fetched_items)
+            )
+            for item, result, duration_ms in analyzed_items:
                 chunk = EvidenceChunk(
                     run_id=run_id,
                     url=item.url,
@@ -169,7 +171,7 @@ async def run_research(run_id: str, topic: str, freshness: str | None, settings:
                         "summary": chunk.summary,
                         "url": chunk.url,
                         "source_type": chunk.source_type,
-                        "duration_ms": _elapsed_ms(item_started),
+                        "duration_ms": duration_ms,
                     },
                 )
                 await db.commit()
@@ -180,15 +182,7 @@ async def run_research(run_id: str, topic: str, freshness: str | None, settings:
             top_negative = pick_top_quotes(chunks, SentimentLabel.NEGATIVE)
             aspects = compute_aspects(chunks, topic)
             source_facts = compute_source_facts(chunks)
-            chunks_summary = [
-                {
-                    "label": chunk.label,
-                    "summary": chunk.summary,
-                    "url": chunk.url,
-                    "source_type": chunk.source_type,
-                }
-                for chunk in chunks
-            ]
+            chunks_summary = _summaries_for_synthesis(chunks)
 
             await emit(SSEEventType.SYNTHESIS_STARTED, "Synthesis started")
             await db.commit()
@@ -232,6 +226,33 @@ async def run_research(run_id: str, topic: str, freshness: str | None, settings:
 
 def _elapsed_ms(started_at: float) -> float:
     return round((perf_counter() - started_at) * 1000, 2)
+
+
+async def _analyze_item(sentiment_queue: SentimentQueue, item) -> tuple:
+    """Analyze one fetched item and retain timing for per-item telemetry."""
+    started_at = perf_counter()
+    result = await sentiment_queue.analyze(item.snippet)
+    return item, result, _elapsed_ms(started_at)
+
+
+def _summaries_for_synthesis(chunks: list[EvidenceChunk], limit: int = 40) -> list[dict]:
+    """Keep synthesis prompts bounded while preserving sentiment diversity."""
+    selected: list[EvidenceChunk] = []
+    per_label = max(1, limit // 3)
+    for label in SentimentLabel:
+        selected.extend([chunk for chunk in chunks if str(chunk.label) == label.value][:per_label])
+
+    seen = {chunk.id for chunk in selected}
+    selected.extend(chunk for chunk in chunks if chunk.id not in seen)
+    return [
+        {
+            "label": chunk.label,
+            "summary": chunk.summary,
+            "url": chunk.url,
+            "source_type": chunk.source_type,
+        }
+        for chunk in selected[:limit]
+    ]
 
 
 def _expand_platform_queries(queries: list[str], topic: str) -> list[str]:

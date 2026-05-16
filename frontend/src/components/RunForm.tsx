@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { createRun, type RunRequest } from '../lib/api'
 
 interface Props {
-  onRunCreated: (runId: string) => void
+  onRunCreated: (runId: string, topic: string) => void
 }
 
 const FRESHNESS_OPTIONS = [
@@ -30,7 +30,7 @@ export function RunForm({ onRunCreated }: Props) {
         ...(freshness ? { freshness: freshness as RunRequest['freshness'] } : {}),
       }
       const { run_id } = await createRun(req)
-      onRunCreated(run_id)
+      onRunCreated(run_id, req.topic)
       setTopic('')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to start run')

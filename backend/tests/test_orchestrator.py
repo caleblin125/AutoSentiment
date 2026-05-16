@@ -144,5 +144,23 @@ def test_expand_platform_queries_adds_unique_opinion_platforms() -> None:
     assert "Tesla Model 3 forum discussion" in queries
 
 
+def test_summaries_for_synthesis_limits_and_balances_labels() -> None:
+    chunks = [
+        EvidenceChunk(id=f"p{i}", run_id="r", url="u", source_type="reddit", snippet="s", label="positive", summary=f"p{i}")
+        for i in range(8)
+    ] + [
+        EvidenceChunk(id=f"n{i}", run_id="r", url="u", source_type="reddit", snippet="s", label="negative", summary=f"n{i}")
+        for i in range(8)
+    ] + [
+        EvidenceChunk(id=f"z{i}", run_id="r", url="u", source_type="reddit", snippet="s", label="neutral", summary=f"z{i}")
+        for i in range(8)
+    ]
+
+    summaries = orchestrator._summaries_for_synthesis(chunks, limit=9)
+
+    assert len(summaries) == 9
+    assert {summary["label"] for summary in summaries} == {"positive", "neutral", "negative"}
+
+
 async def _async(value):
     return value

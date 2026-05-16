@@ -8,6 +8,7 @@ import './App.css'
 
 export default function App() {
   const [runId, setRunId] = useState<string | null>(null)
+  const [activeTopic, setActiveTopic] = useState<string | null>(null)
   const { events, status } = useRunStream(runId)
 
   const report = useMemo(() => {
@@ -15,8 +16,9 @@ export default function App() {
     return (completed?.detail as { report?: Report } | undefined)?.report ?? null
   }, [events])
 
-  function handleRunCreated(id: string) {
+  function handleRunCreated(id: string, topic: string) {
     setRunId(id)
+    setActiveTopic(topic)
   }
 
   return (
@@ -32,6 +34,7 @@ export default function App() {
           <section className={`run-status run-status--${status}`} aria-live="polite">
             <div>
               <strong>{statusLabel(status, events.length)}</strong>
+              {activeTopic && <p className="run-topic">{activeTopic}</p>}
               <p className="muted">Run: <code>{runId}</code></p>
             </div>
             {(status === 'running' || status === 'idle') && <span className="status-spinner" />}

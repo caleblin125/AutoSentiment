@@ -144,6 +144,13 @@ button[type="submit"] {
   color: var(--text-strong);
 }
 
+.run-topic {
+  margin: 0 0 4px;
+  color: var(--text-strong);
+  font-size: 15px;
+  font-weight: 700;
+}
+
 .run-status--completed {
   border-color: color-mix(in srgb, var(--positive) 45%, var(--border));
 }
@@ -377,15 +384,20 @@ button[type="submit"] {
 .idea-graph {
   width: 100%;
   height: auto;
-  min-height: 300px;
+  min-height: 420px;
   border: 1px solid var(--border);
   border-radius: 8px;
-  background: radial-gradient(circle at center, #fff 0, #f8fafc 70%);
+  background:
+    linear-gradient(90deg, rgba(203, 213, 225, 0.25) 1px, transparent 1px),
+    linear-gradient(0deg, rgba(203, 213, 225, 0.18) 1px, transparent 1px),
+    #f8fafc;
+  background-size: 90px 90px;
 }
 
 .graph-edge {
   stroke: #cbd5e1;
-  stroke-opacity: 0.9;
+  stroke-linecap: round;
+  stroke-opacity: 0.75;
 }
 
 .graph-edge--direction {
@@ -399,8 +411,12 @@ button[type="submit"] {
 
 .graph-node text {
   fill: var(--text-strong);
-  font-size: 11px;
-  text-anchor: middle;
+  font-size: 12px;
+  font-weight: 650;
+  paint-order: stroke;
+  stroke: #f8fafc;
+  stroke-linejoin: round;
+  stroke-width: 5px;
 }
 
 .graph-node--topic circle {

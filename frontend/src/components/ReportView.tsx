@@ -170,7 +170,7 @@ function IdeaGraphView({ graph }: { graph: IdeaGraph }) {
   return (
     <div className="insight-section">
       <h3>Idea graph</h3>
-      <svg className="idea-graph" viewBox="0 0 720 360" role="img" aria-label="Topic relationship graph">
+      <svg className="idea-graph" viewBox="0 0 900 520" role="img" aria-label="Topic relationship graph">
         {graph.edges.map(edge => {
           const source = layout.get(edge.source)
           const target = layout.get(edge.target)
@@ -190,10 +190,17 @@ function IdeaGraphView({ graph }: { graph: IdeaGraph }) {
         {graph.nodes.map(node => {
           const point = layout.get(node.id)
           if (!point) return null
+          const radius = nodeRadius(node)
           return (
             <g key={node.id} className={`graph-node graph-node--${node.kind}`}>
-              <circle cx={point.x} cy={point.y} r={nodeRadius(node)} />
-              <text x={point.x} y={point.y + nodeRadius(node) + 14}>{shortLabel(node.label)}</text>
+              <circle cx={point.x} cy={point.y} r={radius} />
+              <text
+                className="graph-node-label"
+                x={point.x + radius + 8}
+                y={point.y + 4}
+              >
+                {shortLabel(node.label)}
+              </text>
             </g>
           )
         })}
@@ -248,17 +255,28 @@ function formatDuration(ms: number): string {
 
 function layoutGraph(nodes: GraphNode[]): Map<string, { x: number; y: number }> {
   const layout = new Map<string, { x: number; y: number }>()
-  const center = { x: 360, y: 180 }
-  const outer = nodes.filter(node => node.kind !== 'topic')
-  layout.set('topic', center)
-  outer.forEach((node, index) => {
-    const angle = (Math.PI * 2 * index) / Math.max(1, outer.length)
-    const radius = node.kind === 'sentiment' ? 110 : 150
-    layout.set(node.id, {
-      x: center.x + Math.cos(angle) * radius,
-      y: center.y + Math.sin(angle) * radius,
+  const topic = nodes.find(node => node.kind === 'topic')
+  if (topic) layout.set(topic.id, { x: 90, y: 260 })
+
+  const columns: Record<GraphNode['kind'], { x: number; top: number; bottom: number }> = {
+    topic: { x: 90, top: 260, bottom: 260 },
+    aspect: { x: 300, top: 80, bottom: 430 },
+    theme: { x: 475, top: 100, bottom: 420 },
+    sentiment: { x: 650, top: 150, bottom: 370 },
+    source: { x: 760, top: 100, bottom: 420 },
+  }
+
+  for (const kind of ['aspect', 'theme', 'sentiment', 'source'] as const) {
+    const group = nodes
+      .filter(node => node.kind === kind && (node.weight > 0 || kind !== 'sentiment'))
+      .sort((a, b) => b.weight - a.weight)
+      .slice(0, kind === 'source' ? 6 : 8)
+    const column = columns[kind]
+    group.forEach((node, index) => {
+      const step = group.length > 1 ? (column.bottom - column.top) / (group.length - 1) : 0
+      layout.set(node.id, { x: column.x, y: group.length === 1 ? (column.top + column.bottom) / 2 : column.top + step * index })
     })
-  })
+  }
   return layout
 }
 
@@ -267,5 +285,5 @@ function nodeRadius(node: GraphNode): number {
 }
 
 function shortLabel(label: string): string {
-  return label.length > 22 ? `${label.slice(0, 19)}...` : label
+  return label.length > 28 ? `${label.slice(0, 25)}...` : label
 }
