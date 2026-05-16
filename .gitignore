@@ -65,3 +65,7 @@ NEXT_AGENT_OBJECTIVES.md
 agent-run
 agent-relay
 prompt.txt
+
+# Local handoff docs
+OPENCODE_HANDOFF.md
+docs/HANDOFF.md
