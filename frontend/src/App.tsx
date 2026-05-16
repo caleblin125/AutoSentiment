@@ -12,7 +12,7 @@ import { TabBar } from './components/TabBar'
 import { RunView } from './components/RunView'
 import { DevOverlay } from './components/DevOverlay'
 import type { Tab } from './components/TabBar'
-import { cancelRun } from './lib/api'
+import { cancelRun, getRun } from './lib/api'
 import './App.css'
 
 const SESSION_KEY = 'autosentiment_session'
@@ -137,6 +137,23 @@ export default function App() {
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
   }, [])
+
+  // ── Shareable URL: ?run=<id> loads a read-only report ──────────────────
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const sharedRunId = params.get('run')
+    if (!sharedRunId) return
+    // Avoid loading the same shared run twice.
+    if (tabs.some(t => t.runId === sharedRunId)) return
+    getRun(sharedRunId).then(run => {
+      const tab = newTab()
+      tab.label = run.topic
+      tab.runId = sharedRunId
+      tab.status = 'completed'
+      setTabs(prev => [...prev, tab])
+      setActiveId(tab.id)
+    }).catch(() => {})
+  }, [])  // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Stable per-tab callback (status + label + runId) ────────────────────
   const handleStatusChange = useCallback((tabId: string, status: string, label: string, runId?: string) => {
