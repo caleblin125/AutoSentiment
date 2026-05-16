@@ -452,6 +452,54 @@ test.describe('Session restore', () => {
   })
 })
 
+test.describe('Shareable URL (?run=<id>)', () => {
+  test('loads a completed run report from query param', async ({ page }) => {
+    await mockBackend(page)
+    await page.goto(`/?run=${RUN_ID}`)
+
+    // Report should be visible without needing to submit anything.
+    await expect(page.locator('section[aria-label="Report"]')).toBeVisible({ timeout: 10_000 })
+    // The topic is "test product" from the mock run hydration.
+    await expect(page.locator('.run-topic')).toContainText('test product')
+  })
+})
+
+test.describe('Compare mode', () => {
+  test('opens compare tab and renders side-by-side inputs', async ({ page }) => {
+    await mockBackend(page)
+
+    // Create runs for compare mode
+    await page.route('**/api/runs', (r: Route) => {
+      if (r.request().method() === 'POST')
+        return r.fulfill({ status: 200, json: { run_id: RUN_ID, cached: false } })
+      return r.continue()
+    })
+
+    await page.goto('/')
+
+    // Click the Compare button in the header
+    await page.locator('button:has-text("Compare")').click()
+
+    // Should show the compare view with topic inputs
+    await expect(page.locator('.compare-view')).toBeVisible()
+    await expect(page.locator('.compare-topic-input, .compare-form-input')).toHaveCount({ min: 2 })
+  })
+})
+
+test.describe('Keyboard shortcuts', () => {
+  test('Ctrl+T opens a new search tab', async ({ page }) => {
+    await mockBackend(page)
+    await page.goto('/')
+
+    const initialTabCount = await page.locator('.tab').count()
+
+    await page.keyboard.press('Control+t')
+
+    const newTabCount = await page.locator('.tab').count()
+    expect(newTabCount).toBe(initialTabCount + 1)
+  })
+})
+
 test.describe('Mobile layout', () => {
   test.use({ viewport: { width: 390, height: 844 } })
 

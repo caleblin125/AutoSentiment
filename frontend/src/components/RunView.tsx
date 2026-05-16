@@ -54,9 +54,10 @@ interface Props {
   onOpenRunInNewTab: (runId: string, topic: string) => void
   initialRunId?: string
   devMode?: boolean
+  openRunIds?: Set<string>
 }
 
-export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMode }: Props) {
+export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMode, openRunIds }: Props) {
   const [topic, setTopic] = useState('')
   const [freshness, setFreshness] = useState<string>('pm')
   const [researchDepth, setResearchDepth] = useState<ResearchDepth>('standard')
@@ -554,7 +555,7 @@ export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMo
         </div>
 
         <ErrorBoundary>
-          <HistoryPanel onOpenRun={onOpenRunInNewTab} refreshKey={historyKey} />
+          <HistoryPanel onOpenRun={onOpenRunInNewTab} refreshKey={historyKey} openRunIds={openRunIds} />
         </ErrorBoundary>
       </div>
 

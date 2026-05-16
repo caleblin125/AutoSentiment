@@ -8,8 +8,9 @@ import { useEffect, useRef, useState } from 'react'
 import { cancelRun, clearHistory, listRuns, type RunSummary } from '../lib/api'
 
 interface Props {
-  onOpenRun: (runId: string, topic: string) => void  // always opens in a new tab
+  onOpenRun: (runId: string, topic: string) => void  // switches to existing tab or creates new
   refreshKey?: number
+  openRunIds?: Set<string>  // runIds already open in tabs
 }
 
 const STATUS_ICON: Record<string, string> = {
@@ -57,6 +58,7 @@ export function HistoryPanel({ onOpenRun, refreshKey }: Props) {
   const [open, setOpen] = useState(false)
   const [runs, setRuns] = useState<RunSummary[]>([])
   const [loading, setLoading] = useState(false)
+  const [openedIds, setOpenedIds] = useState<Set<string>>(new Set())
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   async function fetchRuns() {
@@ -130,10 +132,16 @@ export function HistoryPanel({ onOpenRun, refreshKey }: Props) {
             return (
               <div key={run.id} className="history-item-wrap">
                 <button
-                  className="history-item"
-                  onClick={() => { if (!isActive) { onOpenRun(run.id, run.topic); setOpen(false) } }}
+                  className={`history-item${openedIds.has(run.id) ? ' history-item--open' : ''}`}
+                  onClick={() => {
+                    if (!isActive) {
+                      setOpenedIds(prev => new Set(prev).add(run.id))
+                      onOpenRun(run.id, run.topic)
+                      setOpen(false)
+                    }
+                  }}
                   disabled={isActive}
-                  title={isActive ? 'Currently running' : run.topic}
+                  title={isActive ? 'Currently running' : openedIds.has(run.id) ? `${run.topic} (already open — click to switch)` : run.topic}
                 >
                   <div className="history-item-top">
                     <span

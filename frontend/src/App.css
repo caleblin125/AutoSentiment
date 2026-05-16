@@ -3035,6 +3035,7 @@ button[type="submit"] {
   border-left: 2px solid var(--rog-cyan);
   padding-left: 14px;
 }
+.history-item--open { border-left: 2px solid var(--rog-cyan); padding-left: 14px; opacity: 0.75; }
 
 .history-item-top {
   display: flex;

@@ -178,12 +178,7 @@ export default function App() {
     // Avoid loading the same shared run twice.
     if (tabs.some(t => t.runId === sharedRunId)) return
     getRun(sharedRunId).then(run => {
-      const tab = newTab()
-      tab.label = run.topic
-      tab.runId = sharedRunId
-      tab.status = 'completed'
-      setTabs(prev => [...prev, tab])
-      setActiveId(tab.id)
+      openRunInNewTab(sharedRunId, run.topic)
     }).catch(() => {})
   }, [])  // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -221,6 +216,10 @@ export default function App() {
     const tab = newTab()
     setTabs(prev => [...prev, tab])
     setActiveId(tab.id)
+  }
+
+  function closeActiveTab() {
+    closeTab(activeId)
   }
 
   function addCompareTab() {
