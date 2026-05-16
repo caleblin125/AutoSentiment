@@ -166,6 +166,25 @@ def test_expand_platform_queries_adds_unique_opinion_platforms() -> None:
     assert any("opinión" in q or "avis" in q or "Bewertung" in q for q in queries)
 
 
+def test_select_diverse_urls_preserves_non_reddit_sources() -> None:
+    urls = [
+        *[f"https://www.reddit.com/r/example/comments/{i}" for i in range(10)],
+        "https://reuters.com/article/1",
+        "https://news.ycombinator.com/item?id=1",
+        "https://youtube.com/watch?v=1",
+        "https://example.com/post",
+    ]
+
+    selected = orchestrator._select_diverse_urls(urls, max_urls=8)
+
+    assert len(selected) == 8
+    assert "https://reuters.com/article/1" in selected
+    assert "https://news.ycombinator.com/item?id=1" in selected
+    assert "https://youtube.com/watch?v=1" in selected
+    assert "https://example.com/post" in selected
+    assert sum("reddit.com" in url for url in selected) <= 4
+
+
 def test_summaries_for_synthesis_limits_and_balances_labels() -> None:
     chunks = [
         EvidenceChunk(id=f"p{i}", run_id="r", url="u", source_type="reddit", snippet="s", label="positive", summary=f"p{i}")

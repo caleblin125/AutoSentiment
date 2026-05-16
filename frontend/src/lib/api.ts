@@ -61,7 +61,7 @@ export interface Run {
   topic: string
   freshness: string | null
   research_depth: ResearchDepth
-  status: 'pending' | 'running' | 'completed' | 'error'
+  status: 'pending' | 'running' | 'completed' | 'cancelled' | 'error'
   created_at: string
   report: Report | null
 }
@@ -180,7 +180,7 @@ export interface EvidenceChunk {
   id: string
   run_id: string
   url: string
-  source_type: 'reddit' | 'news'
+  source_type: 'reddit' | 'news' | 'forum' | 'social' | 'video' | 'web'
   snippet: string
   label: 'positive' | 'neutral' | 'negative'
   summary: string

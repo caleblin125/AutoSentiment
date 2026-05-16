@@ -93,6 +93,8 @@ const MOCK_REPORT = {
   threads: [
     {
       phrase: 'battery life',
+      cluster: ['battery life'],
+      total_mentions: 5,
       dominant_sentiment: 'positive',
       positive: 0.7,
       neutral: 0.2,
@@ -100,6 +102,7 @@ const MOCK_REPORT = {
       evidence_count: 5,
       source_count: 3,
       domains: ['example.com'],
+      evidence_ids: ['ev-1'],
       sample_snippets: ['Great battery life reported by users.'],
       date_range: ['2024-01-15', '2024-02-20'],
       search_query: 'battery life review',
@@ -120,12 +123,16 @@ const MOCK_REPORT = {
   },
   graph: {
     nodes: [
-      { id: 'sentiment:positive', label: 'Positive', kind: 'sentiment', count: 12, urls: [] },
-      { id: 'sentiment:negative', label: 'Negative', kind: 'sentiment', count: 3, urls: [] },
-      { id: 'theme:performance', label: 'performance', kind: 'theme', count: 8, urls: [] },
+      { id: 'topic', label: 'test product', kind: 'topic', weight: 20, urls: [] },
+      { id: 'sentiment:positive', label: 'Positive', kind: 'sentiment', weight: 12, urls: [] },
+      { id: 'sentiment:negative', label: 'Negative', kind: 'sentiment', weight: 3, urls: [] },
+      { id: 'theme:performance', label: 'performance', kind: 'theme', weight: 8, urls: [], evidence_ids: ['ev-1'] },
+      { id: 'source:example.com', label: 'example.com', kind: 'source', weight: 10, urls: ['https://example.com/article-1'] },
     ],
     edges: [
-      { source: 'sentiment:positive', target: 'theme:performance' },
+      { source: 'topic', target: 'sentiment:positive', kind: 'sentiment', weight: 12 },
+      { source: 'topic', target: 'theme:performance', kind: 'theme', weight: 8 },
+      { source: 'theme:performance', target: 'source:example.com', kind: 'source', weight: 4 },
     ],
   },
   metadata: {
@@ -184,6 +191,22 @@ async function mockBackend(page: Page) {
       return r.fulfill({ status: 200, json: { run_id: RUN_ID, cached: false } })
     return r.continue()
   })
+
+  // Run hydration for restored/history tabs
+  await page.route(`**/api/runs/${RUN_ID}`, (r: Route) =>
+    r.fulfill({
+      status: 200,
+      json: {
+        id: RUN_ID,
+        topic: 'test product',
+        freshness: 'pm',
+        research_depth: 'standard',
+        status: 'completed',
+        created_at: new Date().toISOString(),
+        report: MOCK_REPORT,
+      },
+    }),
+  )
 
   // SSE event stream
   await page.route(`**/api/runs/${RUN_ID}/events**`, (r: Route) =>
@@ -302,6 +325,39 @@ test.describe('Golden path: submit → complete → tabs', () => {
     await expect(page.locator('.claim-list')).toBeVisible()
   })
 
+  test('Graph tab renders SVG and opens theme detail popover', async ({ page }) => {
+    await expect(page.locator('section[aria-label="Report"]')).toBeVisible({ timeout: 10_000 })
+
+    await page.locator('button[role="tab"]:has-text("Graph")').click()
+    await expect(page.locator('.idea-graph')).toBeVisible()
+    await expect(page.locator('.graph-detail-panel')).toBeVisible()
+    await expect(page.locator('.graph-node').first()).toBeVisible()
+    await page.locator('.graph-node').filter({ hasText: 'performance' }).locator('circle').first().click()
+    await expect(page.locator('.topic-detail-popover')).toBeVisible()
+    await expect(page.locator('.topic-detail-title')).toContainText('performance')
+  })
+
+  test('Topics tab opens thread detail with verifiable sources', async ({ page }) => {
+    await expect(page.locator('section[aria-label="Report"]')).toBeVisible({ timeout: 10_000 })
+
+    await page.locator('button[role="tab"]:has-text("Topics")').click()
+    await page.locator('.thread-card', { hasText: 'battery life' }).click()
+    await expect(page.locator('.thread-detail')).toBeVisible()
+    await expect(page.locator('.thread-detail')).toContainText('Great battery life')
+    await expect(page.locator('.thread-detail-sources a')).toBeVisible()
+  })
+
+  test('export buttons download JSON, CSV, and Markdown files', async ({ page }) => {
+    await expect(page.locator('section[aria-label="Report"]')).toBeVisible({ timeout: 10_000 })
+
+    for (const label of ['JSON', 'CSV', 'MD']) {
+      const downloadPromise = page.waitForEvent('download')
+      await page.locator('.export-actions button', { hasText: label }).click()
+      const download = await downloadPromise
+      expect(download.suggestedFilename()).toMatch(/test-product\.(json|csv|md)$/)
+    }
+  })
+
   test('evidence modal opens and closes', async ({ page }) => {
     await expect(page.locator('section[aria-label="Report"]')).toBeVisible({ timeout: 10_000 })
 
@@ -312,6 +368,23 @@ test.describe('Golden path: submit → complete → tabs', () => {
 
     await page.locator('.modal-close').click()
     await expect(page.locator('.evidence-modal')).not.toBeVisible()
+  })
+})
+
+test.describe('Session restore', () => {
+  test('hydrates topic and report for a completed run tab', async ({ page }) => {
+    await mockBackend(page)
+    await page.addInitScript(({ runId }) => {
+      localStorage.setItem('autosentiment_session', JSON.stringify({
+        activeId: 'tab-1',
+        tabs: [{ id: 'tab-1', label: 'test product', status: 'completed', runId }],
+      }))
+    }, { runId: RUN_ID })
+
+    await page.goto('/')
+
+    await expect(page.locator('.run-topic')).toContainText('test product', { timeout: 10_000 })
+    await expect(page.locator('section[aria-label="Report"]')).toBeVisible()
   })
 })
 

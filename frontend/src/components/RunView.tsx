@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   cancelRun, createRun, createSavedSearch, deleteSavedSearch, expandRun,
-  listSavedSearches, previewSearchPlan, startNemoClaw, suggestAngles,
+  getRun, listSavedSearches, previewSearchPlan, startNemoClaw, suggestAngles,
   type Report, type ResearchDepth, type RunRequest, type SavedSearch, type SearchPlan, type UseCase,
 } from '../lib/api'
 import { useRunStream } from '../hooks/useRunStream'
@@ -84,6 +84,7 @@ export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMo
   const savedDropdownRef = useRef<HTMLDivElement>(null)
 
   const { events, status } = useRunStream(runId)
+  const isExpandedRun = Boolean(preExpandRunId && runId && runId !== preExpandRunId)
 
   const report = useMemo<Report | null>(() => {
     const completed = events.findLast(e => e.type === 'run_completed')
@@ -122,6 +123,21 @@ export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMo
       window.clearTimeout(timeout)
     }
   }, [topic, freshness, researchDepth, useCase])
+
+  // Historic tabs only provide a run id. Hydrate the run metadata so completed
+  // reports can render even when the original tab state is gone.
+  useEffect(() => {
+    if (!initialRunId) return
+    getRun(initialRunId)
+      .then(run => {
+        setActiveTopic(run.topic)
+        setFreshness(run.freshness ?? '')
+        setResearchDepth(run.research_depth)
+        const restoredUseCase = run.report?.metadata?.use_case
+        if (restoredUseCase) setUseCase(restoredUseCase)
+      })
+      .catch(() => {})
+  }, [initialRunId])
 
   // Restore the pre-expand run when an expanded run is cancelled.
   useEffect(() => {
@@ -280,6 +296,7 @@ export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMo
   const isRunning   = status === 'running'
   const isCompleted = status === 'completed'
   const isCancelled = status === 'cancelled'
+  const canCancelCurrentRun = isRunning || (isExpandedRun && !isCompleted && !isCancelled && status !== 'error')
 
   return (
     <div className="run-view">
@@ -477,8 +494,9 @@ export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMo
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
             {cached && !isRunning && <span className="cached-badge">⚡ cached</span>}
             {isCancelled && <span className="cancelled-badge">⊘ cancelled</span>}
+            {isExpandedRun && !isCompleted && <span className="expanded-run-badge">expanded search</span>}
 
-            {isRunning && (
+            {canCancelCurrentRun && (
               <button className="btn-cancel" onClick={handleCancel} disabled={cancelling}>
                 {cancelling ? <span className="spinner" style={{ borderTopColor: 'var(--rog-red)' }} /> : '⊘'}
                 {cancelling ? 'Stopping…' : 'Cancel'}

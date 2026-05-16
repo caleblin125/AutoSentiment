@@ -220,6 +220,7 @@ async def run_research(
                     urls.append(url)
                     if len(urls) >= settings.max_urls_per_run:
                         break
+            urls = _select_diverse_urls(urls, settings.max_urls_per_run)
             timings["search_ms"] = _elapsed_ms(stage_started)
 
             if is_cancelled(run_id):
@@ -748,3 +749,55 @@ def _expand_platform_queries(queries: list[str], topic: str) -> list[str]:
             seen.add(normalized.lower())
             unique.append(normalized)
     return unique
+
+
+def _select_diverse_urls(urls: list[str], max_urls: int) -> list[str]:
+    """Balance fetched URLs across source buckets before expensive extraction.
+
+    Brave can return many same-platform URLs for broad public-opinion queries.
+    Round-robin selection keeps available news, forum, video, social, and web
+    sources in the run while still allowing Reddit to contribute heavily.
+    """
+    if max_urls <= 0:
+        return []
+
+    priority = ["news", "web", "forum", "video", "social", "reddit"]
+    groups: dict[str, list[str]] = {key: [] for key in priority}
+    for url in urls:
+        source = classify_source_type(url).value
+        groups.setdefault(source, []).append(url)
+
+    caps = {
+        "reddit": max(2, int(max_urls * 0.35 + 0.999)),
+        "social": max(2, int(max_urls * 0.45 + 0.999)),
+        "forum": max(2, int(max_urls * 0.45 + 0.999)),
+    }
+    selected: list[str] = []
+    skipped: list[str] = []
+    counts: dict[str, int] = {}
+
+    while len(selected) < max_urls and any(groups.values()):
+        progressed = False
+        for source in priority:
+            bucket = groups.get(source)
+            if not bucket:
+                continue
+            url = bucket.pop(0)
+            cap = caps.get(source, max_urls)
+            if counts.get(source, 0) >= cap and any(groups.values()):
+                skipped.append(url)
+                progressed = True
+                continue
+            selected.append(url)
+            counts[source] = counts.get(source, 0) + 1
+            progressed = True
+            if len(selected) >= max_urls:
+                break
+        if not progressed:
+            break
+
+    for url in skipped:
+        if len(selected) >= max_urls:
+            break
+        selected.append(url)
+    return selected

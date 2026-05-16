@@ -7,6 +7,7 @@ import {
   type ImpactItem,
   type Quote,
   type Report,
+  type ThreadItem,
 } from '../lib/api'
 import { ForceGraph } from './ForceGraph'
 import { HistoryChart } from './HistoryChart'
@@ -347,11 +348,74 @@ function SourceFacts({ facts }: { facts: NonNullable<Report['source_facts']> }) 
   if (!groups.length) return null
   return (
     <div className="insight-section">
-      <h3>Evidence sources</h3>
+      <h3>Source mix</h3>
       <div className="source-group-list">
         {groups.map(g => <SourceGroupCard key={g.type} group={g} />)}
       </div>
     </div>
+  )
+}
+
+function ThreadDetail({ thread, runId, onSearchTopic }: {
+  thread: ThreadItem
+  runId: string
+  onSearchTopic?: (topic: string) => void
+}) {
+  const [chunkState, setChunkState] = useState<{ key: string; chunks: EvidenceChunk[] }>({ key: '', chunks: [] })
+  const chunks = chunkState.key === thread.phrase ? chunkState.chunks : []
+  const loading = thread.evidence_ids.length > 0 && chunkState.key !== thread.phrase
+
+  useEffect(() => {
+    const ids = thread.evidence_ids.slice(0, 8)
+    if (!ids.length) return
+    let active = true
+    Promise.all(ids.map(id => getEvidence(runId, id)))
+      .then(results => {
+        if (active) setChunkState({ key: thread.phrase, chunks: results.filter(Boolean) })
+      })
+      .catch(() => {})
+    return () => { active = false }
+  }, [runId, thread])
+
+  return (
+    <aside className="thread-detail">
+      <div className="thread-detail-header">
+        <div>
+          <span className="thread-detail-kicker">Topic detail</span>
+          <h4>{thread.phrase}</h4>
+        </div>
+        <span className={`sentiment-chip sentiment-chip--${thread.dominant_sentiment}`}>
+          {thread.dominant_sentiment}
+        </span>
+      </div>
+      <p className="thread-detail-summary">
+        {thread.total_mentions} mentions across {thread.source_count} source{thread.source_count !== 1 ? 's' : ''}
+        {thread.date_range ? ` from ${thread.date_range[0]} to ${thread.date_range[1]}` : ''}.
+      </p>
+      <div className="thread-detail-points">
+        {thread.sample_snippets.slice(0, 4).map((snippet, idx) => (
+          <p key={`${idx}:${snippet}`}>{snippet}</p>
+        ))}
+      </div>
+      <div className="thread-detail-sources">
+        <strong>Verifiable sources</strong>
+        {loading && <span className="muted">Loading source links…</span>}
+        {!loading && chunks.length === 0 && (
+          <div className="thread-domain-row">
+            {thread.domains.map(domain => <span key={domain} className="thread-domain-tag">{domain}</span>)}
+          </div>
+        )}
+        {chunks.map(chunk => (
+          <a key={chunk.id} href={chunk.url} target="_blank" rel="noreferrer" title={chunk.url}>
+            <SourceLogo url={chunk.url} />
+            <span className={`sentiment-chip sentiment-chip--${chunk.label}`}>{chunk.label}</span>
+          </a>
+        ))}
+      </div>
+      <button className="btn-secondary" onClick={() => onSearchTopic?.(thread.search_query)}>
+        Search this topic
+      </button>
+    </aside>
   )
 }
 
@@ -649,6 +713,7 @@ export function ReportView({ runId, topic, report, onSearchTopic }: Props) {
   const [loadingChunk, setLoadingChunk] = useState(false)
   const [highlightedId, setHighlightedId] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<ReportTab>('summary')
+  const [selectedThread, setSelectedThread] = useState<ThreadItem | null>(null)
   const posRef = useRef<HTMLDivElement | null>(null)
   const negRef = useRef<HTMLDivElement | null>(null)
 
@@ -822,51 +887,57 @@ export function ReportView({ runId, topic, report, onSearchTopic }: Props) {
           {threads && threads.length > 0 ? (
             <div className="insight-section">
               <h3>Recurring topic threads</h3>
-              <p className="muted" style={{ fontSize: 12, marginBottom: 12 }}>
-                Fine-grain phrases appearing across multiple sources. Click any thread to search for deeper sentiment on that topic.
-              </p>
-              <div className="thread-grid">
-                {threads.map(thread => {
-                  return (
-                    <div
-                      className="thread-card"
-                      key={thread.phrase}
-                      onClick={() => onSearchTopic?.(thread.search_query)}
-                      title={`Search for "${thread.search_query}"`}
-                    >
-                      <div className="thread-card-header">
-                        <strong className="clip-text">{thread.phrase}</strong>
-                        <span className={`sentiment-chip sentiment-chip--${thread.dominant_sentiment}`}>
-                          {thread.dominant_sentiment}
-                        </span>
-                      </div>
-                      <div className="thread-card-bar">
-                        <div style={{ flex: thread.positive, background: 'var(--positive)' }} />
-                        <div style={{ flex: thread.neutral, background: 'var(--neutral)' }} />
-                        <div style={{ flex: thread.negative, background: 'var(--rog-red)' }} />
-                      </div>
-                      <div className="thread-card-meta">
-                        <span>{thread.evidence_count} mentions</span>
-                        <span>{thread.source_count} sources</span>
-                        {thread.date_range && (
-                          <span>{thread.date_range[0]} → {thread.date_range[1]}</span>
+              <div className="thread-layout">
+                <div className="thread-grid">
+                  {threads.map(thread => {
+                    const isSelected = (selectedThread ?? threads[0]).phrase === thread.phrase
+                    return (
+                      <button
+                        type="button"
+                        className={`thread-card${isSelected ? ' thread-card--selected' : ''}`}
+                        key={thread.phrase}
+                        onClick={() => setSelectedThread(thread)}
+                        title={thread.search_query}
+                      >
+                        <div className="thread-card-header">
+                          <strong className="clip-text">{thread.phrase}</strong>
+                          <span className={`sentiment-chip sentiment-chip--${thread.dominant_sentiment}`}>
+                            {thread.dominant_sentiment}
+                          </span>
+                        </div>
+                        <div className="thread-card-bar">
+                          <div style={{ flex: thread.positive, background: 'var(--positive)' }} />
+                          <div style={{ flex: thread.neutral, background: 'var(--neutral)' }} />
+                          <div style={{ flex: thread.negative, background: 'var(--rog-red)' }} />
+                        </div>
+                        <div className="thread-card-meta">
+                          <span>{thread.evidence_count} mentions</span>
+                          <span>{thread.source_count} sources</span>
+                          {thread.date_range && (
+                            <span>{thread.date_range[0]} → {thread.date_range[1]}</span>
+                          )}
+                        </div>
+                        {thread.sample_snippets.length > 0 && (
+                          <div className="thread-card-snippets">
+                            {thread.sample_snippets.slice(0, 2).map((snip, i) => (
+                              <p key={i} className="clip-text">"{snip}"</p>
+                            ))}
+                          </div>
                         )}
-                      </div>
-                      {thread.sample_snippets.length > 0 && (
-                        <div className="thread-card-snippets">
-                          {thread.sample_snippets.slice(0, 2).map((snip, i) => (
-                            <p key={i} className="clip-text">"{snip}"</p>
+                        <div className="thread-card-domains">
+                          {thread.domains.map(d => (
+                            <span key={d} className="thread-domain-tag">{d}</span>
                           ))}
                         </div>
-                      )}
-                      <div className="thread-card-domains">
-                        {thread.domains.map(d => (
-                          <span key={d} className="thread-domain-tag">{d}</span>
-                        ))}
-                      </div>
-                    </div>
-                  )
-                })}
+                      </button>
+                    )
+                  })}
+                </div>
+                <ThreadDetail
+                  thread={selectedThread ?? threads[0]}
+                  runId={runId}
+                  onSearchTopic={onSearchTopic}
+                />
               </div>
             </div>
           ) : (

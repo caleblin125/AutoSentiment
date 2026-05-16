@@ -31,6 +31,14 @@ const KIND_COLOR: Record<GraphNode['kind'], string> = {
   source:    '#00c8d4',
 }
 
+const KIND_LABEL: Record<GraphNode['kind'], string> = {
+  topic: 'Search topic',
+  theme: 'Theme',
+  aspect: 'Directional topic',
+  sentiment: 'Sentiment',
+  source: 'Source',
+}
+
 function nodeRadius(node: GraphNode): number {
   const base = node.kind === 'topic' ? 22 : node.kind === 'source' ? 12 : 13
   return Math.max(base, Math.min(base + 14, base + Math.sqrt(Math.max(0, node.weight)) * 1.5))
@@ -40,12 +48,18 @@ function shortLabel(label: string): string {
   return label.length > 20 ? `${label.slice(0, 17)}…` : label
 }
 
+function domainLabel(url: string): string {
+  try { return new URL(url).hostname.replace(/^www\./, '') }
+  catch { return url }
+}
+
 // ── Force simulation ──────────────────────────────────────────────────────
 
 function useForce(nodes: GraphNode[], edges: GraphEdge[], storageKey: string) {
   const simRef = useRef<NodeSim[]>([])
   const [positions, setPositions] = useState<Map<string, Vec2>>(new Map())
   const rafRef = useRef(0)
+  const tickRef = useRef(0)
   const idxMap = useRef(new Map<string, number>())
   const rightDragRef = useRef<{ id: string } | null>(null)
 
@@ -62,6 +76,7 @@ function useForce(nodes: GraphNode[], edges: GraphEdge[], storageKey: string) {
       }
     })
     idxMap.current = new Map(simRef.current.map((s, i) => [s.id, i]))
+    tickRef.current = 0
   }, [nodes, storageKey])
 
   useEffect(() => {
@@ -103,6 +118,7 @@ function useForce(nodes: GraphNode[], edges: GraphEdge[], storageKey: string) {
       }
 
       const next = new Map<string, Vec2>()
+      let totalSpeed = 0
       for (let i = 0; i < states.length; i++) {
         const s = states[i]
         if (!s.fixed) {
@@ -111,11 +127,16 @@ function useForce(nodes: GraphNode[], edges: GraphEdge[], storageKey: string) {
           s.pos.x = Math.max(36, Math.min(W - 36, s.pos.x + s.vel.x))
           s.pos.y = Math.max(24, Math.min(H - 24, s.pos.y + s.vel.y))
         }
+        totalSpeed += Math.abs(s.vel.x) + Math.abs(s.vel.y)
         next.set(s.id, { x: s.pos.x, y: s.pos.y })
       }
       setPositions(next)
       persistPositions(storageKey, states)
-      rafRef.current = requestAnimationFrame(tick)
+      tickRef.current += 1
+      const averageSpeed = totalSpeed / Math.max(1, states.length)
+      if (tickRef.current < 180 && averageSpeed > 0.02) {
+        rafRef.current = requestAnimationFrame(tick)
+      }
     }
 
     rafRef.current = requestAnimationFrame(tick)
@@ -142,6 +163,7 @@ function useForce(nodes: GraphNode[], edges: GraphEdge[], storageKey: string) {
       const svgPt = pt.matrixTransform(svg.getScreenCTM()!.inverse())
       st.pos = { x: svgPt.x, y: svgPt.y }
       st.vel = { x: 0, y: 0 }
+      setPositions(new Map(simRef.current.map(state => [state.id, { x: state.pos.x, y: state.pos.y }])))
     }
 
     function onUp() {
@@ -330,6 +352,7 @@ interface Props {
 export function ForceGraph({ graph, runId, onNodeClick }: Props) {
   const [showSources, setShowSources] = useState(true)
   const [showAspects, setShowAspects] = useState(true)
+  const [selectedNode, setSelectedNode] = useState<GraphNode | null>(() => graph.nodes[0] ?? null)
   const visibleNodes = useMemo(() => graph.nodes.filter(node => {
     if (node.kind === 'sentiment' && node.weight <= 0) return false
     if (node.kind === 'source' && !showSources) return false
@@ -349,6 +372,7 @@ export function ForceGraph({ graph, runId, onNodeClick }: Props) {
 
   function handleLeftClick(node: GraphNode, e: React.MouseEvent) {
     e.stopPropagation()
+    setSelectedNode(node)
     if (node.kind === 'source' && (node.urls?.length || node.url)) {
       setTopicDetail(null)
       setPopover({ nodeId: node.id, x: e.clientX + 12, y: e.clientY + 4 })
@@ -379,72 +403,90 @@ export function ForceGraph({ graph, runId, onNodeClick }: Props) {
     <div className="insight-section">
       <h3>
         Idea graph
-        <span className="graph-hint">left-click theme/sentiment = jump to quotes · left-click source = links · right-drag = reposition</span>
       </h3>
       <div className="graph-controls">
         <label><input type="checkbox" checked={showSources} onChange={e => setShowSources(e.target.checked)} /> sources</label>
         <label><input type="checkbox" checked={showAspects} onChange={e => setShowAspects(e.target.checked)} /> topics</label>
       </div>
 
-      <svg
-        className="idea-graph idea-graph--force"
-        viewBox={`0 0 ${W} ${H}`}
-        aria-label="Topic relationship graph"
-        onContextMenu={e => e.preventDefault()}
-      >
-        <defs>
-          <marker id="arrow" markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto">
-            <path d="M0,0 L0,6 L7,3 z" fill="rgba(0,212,232,0.3)" />
-          </marker>
-        </defs>
+      <div className="graph-workspace">
+        <svg
+          className="idea-graph idea-graph--force"
+          viewBox={`0 0 ${W} ${H}`}
+          aria-label="Topic relationship graph"
+          onContextMenu={e => e.preventDefault()}
+        >
+          <defs>
+            <marker id="arrow" markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto">
+              <path d="M0,0 L0,6 L7,3 z" fill="var(--rog-cyan)" opacity="0.35" />
+            </marker>
+          </defs>
 
-        {/* Edges */}
-        {visibleEdges.map(edge => {
-          const s = positions.get(edge.source)
-          const t = positions.get(edge.target)
-          if (!s || !t) return null
-          return (
-            <line
-              key={`${edge.source}→${edge.target}`}
-              className={`graph-edge graph-edge--${edge.kind}`}
-              x1={s.x} y1={s.y} x2={t.x} y2={t.y}
-              strokeWidth={Math.max(1, Math.min(4, edge.weight / 10))}
-              markerEnd={edge.kind === 'direction' ? 'url(#arrow)' : undefined}
-            />
-          )
-        })}
+          {visibleEdges.map(edge => {
+            const s = positions.get(edge.source)
+            const t = positions.get(edge.target)
+            if (!s || !t) return null
+            return (
+              <line
+                key={`${edge.source}→${edge.target}`}
+                className={`graph-edge graph-edge--${edge.kind}`}
+                x1={s.x} y1={s.y} x2={t.x} y2={t.y}
+                strokeWidth={Math.max(1, Math.min(4, edge.weight / 10))}
+                markerEnd={edge.kind === 'direction' ? 'url(#arrow)' : undefined}
+              />
+            )
+          })}
 
-        {/* Nodes */}
-        {visibleNodes.map(node => {
-          const pos = positions.get(node.id)
-          if (!pos) return null
-          const r = nodeRadius(node)
-          const color = KIND_COLOR[node.kind] ?? '#4a6080'
-          const hasLinks = node.kind === 'source' && (node.urls?.length || node.url)
-          const isClickable = hasLinks || node.kind === 'sentiment' || node.kind === 'theme' || node.kind === 'aspect'
-          return (
-            <g
-              key={node.id}
-              className="graph-node"
-              style={{ cursor: isClickable ? 'pointer' : 'default' }}
-              onClick={e => handleLeftClick(node, e)}
-              onContextMenu={e => onContextMenu(node.id, e)}
-              onMouseEnter={e => handleMouseEnter(node, e)}
-              onMouseLeave={handleMouseLeave}
-            >
-              <circle cx={pos.x} cy={pos.y} r={r} fill={color} stroke="#0c1018" strokeWidth={2} />
-              {/* Link indicator dot */}
-              {hasLinks && (
-                <circle cx={pos.x + r - 4} cy={pos.y - r + 4} r={3.5}
-                  fill="var(--rog-cyan)" stroke="#0c1018" strokeWidth={1} />
-              )}
-              <text x={pos.x + r + 5} y={pos.y + 4} className="graph-node-label">
-                {shortLabel(node.label)}
-              </text>
-            </g>
-          )
-        })}
-      </svg>
+          {visibleNodes.map(node => {
+            const pos = positions.get(node.id)
+            if (!pos) return null
+            const r = nodeRadius(node)
+            const color = KIND_COLOR[node.kind] ?? '#4a6080'
+            const hasLinks = node.kind === 'source' && (node.urls?.length || node.url)
+            const isClickable = hasLinks || node.kind === 'sentiment' || node.kind === 'theme' || node.kind === 'aspect'
+            return (
+              <g
+                key={node.id}
+                className={`graph-node${selectedNode?.id === node.id ? ' graph-node--selected' : ''}`}
+                style={{ cursor: isClickable ? 'pointer' : 'default' }}
+                onClick={e => handleLeftClick(node, e)}
+                onContextMenu={e => onContextMenu(node.id, e)}
+                onMouseEnter={e => handleMouseEnter(node, e)}
+                onMouseLeave={handleMouseLeave}
+              >
+                <circle cx={pos.x} cy={pos.y} r={r} fill={color} stroke="var(--graph-node-stroke)" strokeWidth={2} />
+                {hasLinks && (
+                  <circle cx={pos.x + r - 4} cy={pos.y - r + 4} r={3.5}
+                    fill="var(--rog-cyan)" stroke="var(--graph-node-stroke)" strokeWidth={1} />
+                )}
+                <text x={pos.x + r + 5} y={pos.y + 4} className="graph-node-label">
+                  {shortLabel(node.label)}
+                </text>
+              </g>
+            )
+          })}
+        </svg>
+
+        {selectedNode && (
+          <aside className="graph-detail-panel">
+            <span className={`topic-detail-kind topic-detail-kind--${selectedNode.kind}`}>
+              {KIND_LABEL[selectedNode.kind]}
+            </span>
+            <h4>{selectedNode.label}</h4>
+            <div className="graph-detail-metrics">
+              <span>Weight</span><strong>{Math.round(selectedNode.weight)}</strong>
+              <span>Connections</span><strong>{graph.edges.filter(e => e.source === selectedNode.id || e.target === selectedNode.id).length}</strong>
+              <span>Evidence</span><strong>{selectedNode.evidence_ids?.length ?? 0}</strong>
+              <span>Links</span><strong>{selectedNode.urls?.length ?? (selectedNode.url ? 1 : 0)}</strong>
+            </div>
+            {selectedNode.urls?.slice(0, 5).map(url => (
+              <a key={url} href={url} target="_blank" rel="noreferrer" className="graph-detail-link">
+                {domainLabel(url)}
+              </a>
+            ))}
+          </aside>
+        )}
+      </div>
 
       {/* Legend */}
       <div className="graph-legend">
