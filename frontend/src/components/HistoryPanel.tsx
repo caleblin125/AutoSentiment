@@ -45,10 +45,10 @@ function formatDuration(ms: number | null): string {
 function MiniBar({ overall }: { overall: RunSummary['overall'] }) {
   if (!overall) return null
   return (
-    <div style={{ display: 'flex', height: 3, borderRadius: 2, overflow: 'hidden', background: 'var(--surface-muted)', marginTop: 4 }}>
-      <div style={{ flex: overall.positive, background: 'var(--positive)' }} />
-      <div style={{ flex: overall.neutral,  background: 'var(--neutral)' }} />
-      <div style={{ flex: overall.negative, background: 'var(--rog-red)' }} />
+    <div className="history-mini-bar">
+      <div className="thread-bar-pos" style={{ flex: overall.positive }} />
+      <div className="thread-bar-neu" style={{ flex: overall.neutral }} />
+      <div className="thread-bar-neg" style={{ flex: overall.negative }} />
     </div>
   )
 }
@@ -115,16 +115,14 @@ export function HistoryPanel({ onOpenRun, refreshKey }: Props) {
             </div>
           )}
           {loading && runs.length === 0 && (
-            <div style={{ padding: '12px 16px' }}>
+            <div className="history-loading-wrap">
               <div className="skeleton skeleton-line skeleton-line--medium" />
-              <div className="skeleton skeleton-line skeleton-line--full" style={{ marginTop: 8 }} />
+              <div className="skeleton skeleton-line skeleton-line--full skeleton-line--mb" />
             </div>
           )}
 
           {!loading && runs.length === 0 && (
-            <p style={{ padding: '12px 16px', color: 'var(--text)', fontSize: 13, margin: 0 }}>
-              No searches yet.
-            </p>
+            <p className="history-empty">No searches yet.</p>
           )}
 
           {runs.map(run => {
@@ -143,7 +141,7 @@ export function HistoryPanel({ onOpenRun, refreshKey }: Props) {
                       style={{ color: STATUS_COLOR[run.status] ?? 'var(--text)' }}
                     >
                       {run.status === 'running'
-                        ? <span className="inline-spinner" style={{ width: 8, height: 8 }} />
+                        ? <span className="inline-spinner inline-spinner--xs" />
                         : STATUS_ICON[run.status] ?? '?'}
                     </span>
                     <span className="history-topic" title={run.topic}>{run.topic}</span>
@@ -152,16 +150,10 @@ export function HistoryPanel({ onOpenRun, refreshKey }: Props) {
 
                   {run.overall && (
                     <div className="history-item-stats">
-                      <span style={{ color: 'var(--positive)', fontFamily: 'var(--mono)', fontSize: 10 }}>
-                        +{Math.round(run.overall.positive * 100)}%
-                      </span>
-                      <span style={{ color: 'var(--neutral)', fontFamily: 'var(--mono)', fontSize: 10, margin: '0 6px' }}>
-                        ~{Math.round(run.overall.neutral * 100)}%
-                      </span>
-                      <span style={{ color: 'var(--rog-red)', fontFamily: 'var(--mono)', fontSize: 10 }}>
-                        -{Math.round(run.overall.negative * 100)}%
-                      </span>
-                      <span style={{ marginLeft: 'auto', color: 'var(--text)', fontFamily: 'var(--mono)', fontSize: 10 }}>
+                      <span className="history-stat history-stat--pos">+{Math.round(run.overall.positive * 100)}%</span>
+                      <span className="history-stat history-stat--neu">~{Math.round(run.overall.neutral * 100)}%</span>
+                      <span className="history-stat history-stat--neg">-{Math.round(run.overall.negative * 100)}%</span>
+                      <span className="history-stat history-stat--total">
                         {run.overall.total} items
                         {run.duration_ms ? <span className="history-duration"> · {formatDuration(run.duration_ms)}</span> : null}
                       </span>

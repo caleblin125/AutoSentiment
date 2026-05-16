@@ -1314,6 +1314,7 @@ button[type="submit"] {
 .status-spinner--sm { width: 16px; height: 16px; border-width: 2px; }
 
 .inline-spinner { width: 16px; height: 16px; }
+.inline-spinner--xs { width: 8px; height: 8px; }
 
 /* ── Skeleton loaders ───────────────────────────────────────────────────── */
 
@@ -3052,6 +3053,15 @@ button[type="submit"] {
   opacity: 0.6;
   margin-left: 2px;
 }
+
+.history-mini-bar { display: flex; height: 3px; border-radius: 2px; overflow: hidden; background: var(--surface-muted); margin-top: 4px; }
+.history-loading-wrap { padding: 12px 16px; }
+.history-empty { padding: 12px 16px; color: var(--text); font-size: 13px; margin: 0; }
+.history-stat { font-family: var(--mono); font-size: 10px; }
+.history-stat--pos { color: var(--positive); }
+.history-stat--neu { color: var(--neutral); margin: 0 6px; }
+.history-stat--neg { color: var(--rog-red); }
+.history-stat--total { margin-left: auto; color: var(--text); }
 
 /* ── Fetch URL list in timeline ──────────────────────────────────────────── */
 
