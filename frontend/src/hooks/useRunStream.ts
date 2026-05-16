@@ -49,11 +49,17 @@ export function useRunStream(runId: string | null): { events: SSEEvent[]; status
     }
 
     eventSource.onerror = () => {
-      setStreamState(prev => ({
-        runId,
-        events: prev.runId === runId ? prev.events : [],
-        status: 'error',
-      }))
+      setStreamState(prev => {
+        // Don't overwrite a terminal status — onerror fires on natural connection close too.
+        if (prev.runId === runId && (prev.status === 'completed' || prev.status === 'cancelled')) {
+          return prev
+        }
+        return {
+          runId,
+          events: prev.runId === runId ? prev.events : [],
+          status: 'error',
+        }
+      })
       eventSource.close()
     }
 

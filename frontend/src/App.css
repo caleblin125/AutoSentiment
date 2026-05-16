@@ -6,14 +6,31 @@
   --border: #252530;
   --text: #8a8a9a;
   --text-strong: #d0d0e0;
+  --text-bright: #e8e8f8;
   --positive: #00d68f;
+  --positive-dim: rgba(0, 214, 143, 0.12);
   --neutral: #8a8aaa;
+  --negative: #e62e4b;
+  --negative-dim: rgba(230, 46, 75, 0.12);
   --rog-red: #e62e4b;
   --rog-red-dim: rgba(230, 46, 75, 0.12);
+  --rog-red-glow: 0 0 20px rgba(230, 46, 75, 0.25);
   --rog-cyan: #00d4d4;
   --rog-cyan-dim: rgba(0, 212, 212, 0.12);
+  --rog-cyan-glow: 0 0 20px rgba(0, 212, 212, 0.2);
+  --rog-orange: #ff7700;
+  --rog-orange-dim: rgba(255, 119, 0, 0.12);
   --skeleton: #1a1a28;
   --graph-node-stroke: #0c1018;
+  --surface-muted: #14141e;
+  --surface-elevated: #161622;
+  --surface-hover: #1c1c2a;
+  --surface-base: #0e0e18;
+  --panel-bg: #111118;
+  --card-bg: #141420;
+  --border-dim: #1c1c28;
+  --shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+  --shadow-panel: 0 4px 20px rgba(0, 0, 0, 0.4);
 }
 
 [data-theme="light"] {
@@ -532,17 +549,86 @@ input:focus, select:focus, button:focus-visible {
 
 .graph-controls {
   display: flex;
-  gap: 12px;
+  align-items: center;
+  gap: 6px;
   margin-bottom: 8px;
   color: var(--text);
   font-family: var(--mono);
   font-size: 11px;
+  flex-wrap: wrap;
 }
 
 .graph-controls label {
   display: inline-flex;
   align-items: center;
   gap: 5px;
+}
+
+.graph-search {
+  min-height: 26px;
+  height: 26px;
+  font-size: 11px;
+  padding: 0 8px;
+  border-radius: 3px;
+  width: 150px;
+  font-family: var(--mono);
+}
+
+.graph-ctrl-btn {
+  min-height: 26px;
+  height: 26px;
+  padding: 0 10px;
+  font-size: 13px;
+  line-height: 1;
+  letter-spacing: 0;
+  font-family: var(--mono);
+}
+
+.graph-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+  align-items: center;
+}
+
+.graph-legend-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text);
+  text-transform: capitalize;
+  background: transparent;
+  border: 1px solid var(--border-dim);
+  border-radius: 10px;
+  padding: 2px 8px;
+  min-height: unset;
+  height: auto;
+  letter-spacing: 0;
+  cursor: pointer;
+  transition: border-color 0.12s, opacity 0.12s;
+}
+
+.graph-legend-btn:hover:not(:disabled) {
+  border-color: var(--rog-cyan);
+  color: var(--text-strong);
+  background: var(--surface-muted);
+  box-shadow: none;
+}
+
+.graph-legend-btn--hidden {
+  opacity: 0.45;
+  text-decoration: line-through;
+}
+
+.graph-legend-hint {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--text);
+  opacity: 0.5;
+  margin-left: 4px;
 }
 
 .report-header {
@@ -1618,8 +1704,10 @@ button[type="submit"] {
 
 .idea-graph--force { touch-action: none; user-select: none; }
 
-.graph-edge { stroke: rgba(30, 45, 61, 0.9); stroke-linecap: round; }
-.graph-edge--direction { stroke: rgba(0, 212, 232, 0.25); }
+.graph-edge { stroke: var(--border); stroke-linecap: round; }
+.graph-edge--direction { stroke: var(--rog-cyan-dim); }
+[data-theme="light"] .graph-edge { stroke: rgba(0, 0, 0, 0.18); }
+[data-theme="light"] .graph-edge--direction { stroke: rgba(0, 138, 138, 0.2); }
 
 .graph-node { transition: filter 0.12s; }
 .graph-node:hover { filter: drop-shadow(0 0 8px rgba(0, 212, 232, 0.5)); }
@@ -1644,9 +1732,7 @@ button[type="submit"] {
   pointer-events: none;
 }
 
-.graph-hint { font-family: var(--mono); font-size: 10px; font-weight: 400; color: var(--text); margin-left: 8px; letter-spacing: 0.5px; }
-.graph-legend { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
-.graph-legend-item { display: flex; align-items: center; gap: 5px; font-family: var(--mono); font-size: 10px; color: var(--text); text-transform: capitalize; }
+.graph-hint { font-family: var(--mono); font-size: 10px; font-weight: 400; color: var(--text); opacity: 0.6; flex: 1; min-width: 0; letter-spacing: 0.3px; }
 .graph-legend-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 
 .graph-detail-panel {
@@ -2772,8 +2858,6 @@ button[type="submit"] {
   gap: 5px;
   width: 100%;
   min-width: 0;
-  position: static;
-  isolation: isolate;
 }
 
 .fetch-batch-header {
@@ -2816,9 +2900,12 @@ button[type="submit"] {
   flex-direction: column;
   gap: 1px;
   width: 100%;
-  max-height: none;
-  overflow: visible;
+  max-height: 260px;
+  overflow-y: auto;
   margin-top: 4px;
+  border: 1px solid var(--border-dim);
+  border-radius: 4px;
+  padding: 2px 0;
 }
 
 /* Collapsed view: one compact row per URL */

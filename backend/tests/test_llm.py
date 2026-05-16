@@ -137,8 +137,13 @@ async def test_ollama_generate_cancel_check_raises_cancelled(monkeypatch) -> Non
 
 
 @pytest.mark.asyncio
-async def test_sentiment_queue_returns_parse_error_on_model_failure(monkeypatch) -> None:
+async def test_sentiment_queue_returns_neutral_on_model_failure(monkeypatch) -> None:
+    """Transient model failures should degrade to neutral, not expose 'parse error' text."""
+    call_count = 0
+
     async def failing_generate(*_args, **_kwargs):
+        nonlocal call_count
+        call_count += 1
         raise ValueError("bad")
 
     monkeypatch.setattr("app.agents.light_queue.ollama_generate", failing_generate)
@@ -146,7 +151,9 @@ async def test_sentiment_queue_returns_parse_error_on_model_failure(monkeypatch)
     result = await SentimentQueue(Settings()).analyze("snippet")
 
     assert result.label == SentimentLabel.NEUTRAL
-    assert result.summary == "parse error"
+    assert result.summary != "parse error", "summary must not expose internal error text to users"
+    # Retry should have been attempted (_MAX_RETRIES = 2 → 3 total calls).
+    assert call_count == 3
 
 
 @pytest.mark.asyncio

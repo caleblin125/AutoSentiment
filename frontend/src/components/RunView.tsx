@@ -66,6 +66,7 @@ export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMo
   const [loading, setLoading] = useState(false)
   const [cancelling, setCancelling] = useState(false)
   const [expanding, setExpanding] = useState(false)
+  const expandAbortRef = useRef<AbortController | null>(null)
   const [formError, setFormError] = useState<string | null>(null)
   const [historyKey, setHistoryKey] = useState(0)
   const [ncRunId, setNcRunId] = useState<string | null>(null)
@@ -95,7 +96,7 @@ export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMo
     const completed = events.findLast(e => e.type === 'run_completed')
     return (completed?.detail as { report?: Report } | undefined)?.report ?? null
   }, [events])
-  const visibleReport = report ?? (isExpandedRun ? retainedReport : null)
+  const visibleReport = report ?? retainedReport
   const activeDepth = visibleReport?.metadata?.research_depth ?? researchDepth
   const selectedDepth = DEPTH_OPTIONS.find(o => o.value === researchDepth) ?? DEPTH_OPTIONS[1]
   const activeDepthOption = DEPTH_OPTIONS.find(o => o.value === activeDepth) ?? selectedDepth
@@ -131,8 +132,8 @@ export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMo
     }
   }, [topic, freshness, researchDepth, useCase])
 
-  // Historic tabs only provide a run id. Hydrate the run metadata so completed
-  // reports can render even when the original tab state is gone.
+  // Historic tabs only provide a run id. Hydrate the run metadata and report
+  // directly from the REST endpoint so completed runs display without SSE replay.
   useEffect(() => {
     if (!initialRunId) return
     getRun(initialRunId)
@@ -142,6 +143,7 @@ export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMo
         setResearchDepth(run.research_depth)
         const restoredUseCase = run.report?.metadata?.use_case
         if (restoredUseCase) setUseCase(restoredUseCase)
+        if (run.report) setRetainedReport(run.report)
       })
       .catch(() => {})
   }, [initialRunId])
@@ -173,6 +175,8 @@ export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMo
     setFormError(null)
     setNcRunId(null)
     setShowSuggestions(false)
+    setRetainedReport(null)
+    setPreExpandRunId(null)
     try {
       const req: RunRequest = {
         topic: topic.trim(),
@@ -206,20 +210,33 @@ export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMo
   async function handleExpand() {
     if (!runId) return
     if (visibleReport) setRetainedReport(visibleReport)
+    const abort = new AbortController()
+    expandAbortRef.current = abort
     setExpanding(true)
     setNcRunId(null)
-    setPreExpandRunId(runId)  // remember so we can restore on cancel
+    setPreExpandRunId(runId)
     try {
       const { run_id } = await expandRun(runId, { research_depth: expandDepthOption.value })
+      if (abort.signal.aborted) return
       setRunId(run_id)
       setResearchDepth(expandDepthOption.value)
       setCached(false)
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : 'Expand failed')
-      setPreExpandRunId(null)
+      if (!abort.signal.aborted) {
+        setFormError(err instanceof Error ? err.message : 'Expand failed')
+        setPreExpandRunId(null)
+      }
     } finally {
+      expandAbortRef.current = null
       setExpanding(false)
     }
+  }
+
+  function handleCancelExpand() {
+    expandAbortRef.current?.abort()
+    setExpanding(false)
+    setPreExpandRunId(null)
+    setRetainedReport(null)
   }
 
   async function handleNemoClaw() {
@@ -537,6 +554,12 @@ export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMo
                 title="Launch NemoClaw autonomous deep-dive"
               >
                 ⬡ NemoClaw
+              </button>
+            )}
+
+            {expanding && (
+              <button className="btn-cancel" onClick={handleCancelExpand}>
+                ⊘ Cancel expand
               </button>
             )}
 

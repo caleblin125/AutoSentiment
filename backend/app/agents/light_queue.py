@@ -21,6 +21,11 @@ _SUMMARY_BY_LABEL = {
     SentimentLabel.NEGATIVE: "negative signal",
 }
 
+# Snippet length sent to the model — long inputs degrade JSON compliance.
+_MAX_SNIPPET_CHARS = 900
+# Retries on transient failures (connection errors, empty responses).
+_MAX_RETRIES = 2
+
 
 class SentimentQueue:
     """Bounded-parallel queue for 30B sentiment calls.
@@ -40,34 +45,50 @@ class SentimentQueue:
             return await self._call_model(snippet)
 
     async def _call_model(self, snippet: str) -> SentimentResult:
-        """POST to Ollama /api/generate with the 30B model. Return label + 3-5 word summary."""
-        system = "You are a sentiment classifier. Respond with JSON only. No explanation."
+        """POST to Ollama /api/generate with the 30B model. Return label + 3-5 word summary.
+
+        Retries up to _MAX_RETRIES times on transient failures with a short backoff.
+        The snippet is truncated to _MAX_SNIPPET_CHARS to keep JSON compliance high.
+        """
+        truncated = snippet[:_MAX_SNIPPET_CHARS]
+        system = (
+            "You are a JSON-only sentiment classifier. "
+            "Output must be valid JSON. No explanations, no markdown."
+        )
         prompt = (
             "Classify the sentiment of the following text.\n"
             "Return exactly: {\"label\": \"positive\" | \"neutral\" | \"negative\", "
             "\"summary\": \"<3-5 words describing the author's opinion>\"}\n\n"
-            f"Text:\n{snippet}"
+            f"Text:\n{truncated}"
         )
 
-        try:
-            payload = await ollama_generate(
-                prompt,
-                system=system,
-                model=self._settings.lightweight_model,
-                base_url=self._settings.ollama_base_url,
-                cancel_check=self._cancel_check,
-            )
-            label = _coerce_label(payload.get("label"))
-            summary = str(payload.get("summary") or _SUMMARY_BY_LABEL[label]).strip()
-            return SentimentResult(
-                label=label,
-                summary=summary[:160] or _SUMMARY_BY_LABEL[label],
-            )
-        except GenerationCancelled:
-            raise
-        except Exception:
-            logger.exception("Sentiment model call failed")
-            return SentimentResult(label=SentimentLabel.NEUTRAL, summary="parse error")
+        last_exc: Exception | None = None
+        for attempt in range(_MAX_RETRIES + 1):
+            try:
+                payload = await ollama_generate(
+                    prompt,
+                    system=system,
+                    model=self._settings.lightweight_model,
+                    base_url=self._settings.ollama_base_url,
+                    cancel_check=self._cancel_check,
+                )
+                label = _coerce_label(payload.get("label"))
+                summary = str(payload.get("summary") or _SUMMARY_BY_LABEL[label]).strip()
+                return SentimentResult(
+                    label=label,
+                    summary=summary[:160] or _SUMMARY_BY_LABEL[label],
+                )
+            except GenerationCancelled:
+                raise
+            except Exception as exc:
+                last_exc = exc
+                if attempt < _MAX_RETRIES:
+                    await asyncio.sleep(0.5 * (attempt + 1))
+                    logger.warning("Sentiment call failed (attempt %d), retrying: %s", attempt + 1, exc)
+                    continue
+
+        logger.exception("Sentiment model call failed after %d attempts", _MAX_RETRIES + 1, exc_info=last_exc)
+        return SentimentResult(label=SentimentLabel.NEUTRAL, summary=_SUMMARY_BY_LABEL[SentimentLabel.NEUTRAL])
 
 
 def _coerce_label(value: object) -> SentimentLabel:
