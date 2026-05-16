@@ -1035,7 +1035,9 @@ export function ReportView({ runId, topic, report, onSearchTopic, autoScroll }: 
       {/* ── Claims tab ── */}
       {activeTab === 'claims' && (
         <div className="report-tab-panel" role="tabpanel">
-          {fact_check ? <FactCheckSection factCheck={fact_check} /> : <p className="empty-tab-msg">No claims extracted for this run.</p>}
+          {fact_check
+            ? <FactCheckSection factCheck={fact_check} onCite={async (id) => { try { setActiveChunk(await getEvidence(runId, id)) } catch { /* best-effort */ } }} />
+            : <p className="empty-tab-msg">No claims extracted for this run.</p>}
         </div>
       )}
 

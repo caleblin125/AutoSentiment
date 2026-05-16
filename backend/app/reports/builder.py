@@ -424,10 +424,12 @@ def compute_claims(chunks: list[EvidenceChunk], limit: int = 10) -> dict:
         claims.append(claim)
 
     claims.sort(key=lambda item: (item["needs_verification"], -len(item["supporting_domains"])))
+    contradictions = _find_contradictions(chunks, limit=6)
     return {
         "claims": claims[:limit],
         "needs_verification": [claim for claim in claims if claim["needs_verification"]][:limit],
-        "summary": _claim_summary(claims),
+        "contradictions": contradictions,
+        "summary": _claim_summary(claims, contradictions),
     }
 
 
@@ -698,11 +700,73 @@ def _claim_type(sentence: str) -> str:
     return "factual"
 
 
-def _claim_summary(claims: list[dict]) -> str:
+def _find_contradictions(chunks: list[EvidenceChunk], limit: int = 6) -> list[dict]:
+    """Detect opposing claims about the same subject from different evidence chunks.
+
+    Strategy: group chunks by a shared 3–5-token noun phrase extracted from their
+    summary. If the same phrase appears in both positive and negative chunks, it is a
+    contradiction candidate. The pair with the most domain diversity is surfaced first.
+    """
+    from collections import defaultdict
+
+    # Map subject_key → {label → [(chunk, summary)]}
+    groups: dict[str, dict[str, list[tuple[EvidenceChunk, str]]]] = defaultdict(lambda: {"positive": [], "negative": []})
+
+    for chunk in chunks:
+        label = str(chunk.label)
+        if label not in ("positive", "negative"):
+            continue
+        text = (chunk.summary or "").lower()
+        # Extract meaningful 2–3-grams as subject keys.
+        tokens = [w for w in re.findall(r"[a-z]{3,}", text) if w not in STOP_WORDS]
+        for i in range(len(tokens) - 1):
+            bigram = f"{tokens[i]} {tokens[i + 1]}"
+            groups[bigram][label].append((chunk, chunk.summary or ""))
+
+    contradictions = []
+    seen_pairs: set[tuple[str, str]] = set()
+
+    for key, polarity_map in groups.items():
+        pos_items = polarity_map["positive"]
+        neg_items = polarity_map["negative"]
+        if not pos_items or not neg_items:
+            continue
+
+        # Pick the most credible representative from each side.
+        best_pos = max(pos_items, key=lambda t: _credibility_score(t[0].url))
+        best_neg = max(neg_items, key=lambda t: _credibility_score(t[0].url))
+
+        # Deduplicate: skip if both evidence IDs were already part of a contradiction.
+        pair_key = tuple(sorted([best_pos[0].id, best_neg[0].id]))
+        if pair_key in seen_pairs:
+            continue
+        seen_pairs.add(pair_key)
+
+        pos_domains = list({urlparse(t[0].url).netloc.removeprefix("www.") for t in pos_items})[:3]
+        neg_domains = list({urlparse(t[0].url).netloc.removeprefix("www.") for t in neg_items})[:3]
+        contradictions.append({
+            "subject": key,
+            "positive_claim": best_pos[1],
+            "negative_claim": best_neg[1],
+            "positive_evidence_id": best_pos[0].id,
+            "negative_evidence_id": best_neg[0].id,
+            "positive_domains": pos_domains,
+            "negative_domains": neg_domains,
+            "strength": len(pos_items) + len(neg_items),
+        })
+
+    # Surface the strongest (most mentions on both sides) contradictions first.
+    contradictions.sort(key=lambda c: -c["strength"])
+    return contradictions[:limit]
+
+
+def _claim_summary(claims: list[dict], contradictions: list[dict] | None = None) -> str:
     if not claims:
         return "No factual-looking claims were extracted from the evidence."
     needs = sum(1 for claim in claims if claim["needs_verification"])
-    return f"Extracted {len(claims)} factual-looking claims; {needs} need additional verification."
+    n_contradictions = len(contradictions) if contradictions else 0
+    suffix = f" {n_contradictions} contradiction{'s' if n_contradictions != 1 else ''} detected." if n_contradictions else ""
+    return f"Extracted {len(claims)} factual-looking claims; {needs} need additional verification.{suffix}"
 
 
 def _pulse_sentence(positive_share: float, negative_share: float) -> str:

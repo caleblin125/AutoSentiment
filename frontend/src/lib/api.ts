@@ -156,9 +156,21 @@ export interface FactClaim {
   best_source_credibility?: number
 }
 
+export interface Contradiction {
+  subject: string
+  positive_claim: string
+  negative_claim: string
+  positive_evidence_id: string
+  negative_evidence_id: string
+  positive_domains: string[]
+  negative_domains: string[]
+  strength: number
+}
+
 export interface FactCheck {
   claims: FactClaim[]
   needs_verification: FactClaim[]
+  contradictions?: Contradiction[]
   summary: string
 }
 

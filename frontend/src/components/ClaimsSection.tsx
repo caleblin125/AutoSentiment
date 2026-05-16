@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { FactCheck } from '../lib/api'
+import type { Contradiction, FactCheck } from '../lib/api'
 import { faviconUrl, providerName } from '../lib/providers'
 
 function ClaimCard({ claim, idx }: { claim: FactCheck['claims'][number]; idx: number }) {
@@ -51,12 +51,63 @@ function ClaimCard({ claim, idx }: { claim: FactCheck['claims'][number]; idx: nu
   )
 }
 
-export function FactCheckSection({ factCheck }: { factCheck: FactCheck }) {
+function ContradictionCard({ item, onCite }: { item: Contradiction; onCite?: (id: string) => void }) {
+  return (
+    <div className="contradiction-card">
+      <div className="contradiction-header">
+        <span className="contradiction-subject">{item.subject}</span>
+        <span className="contradiction-badge">⇄ conflicting sources</span>
+      </div>
+      <div className="contradiction-sides">
+        <div className="contradiction-side contradiction-side--pos">
+          <span className="contradiction-polarity">Positive</span>
+          <p className="contradiction-claim">{item.positive_claim}</p>
+          <div className="contradiction-domains">
+            {item.positive_domains.map(d => (
+              <span key={d} className="contradiction-domain">
+                <img src={`https://www.google.com/s2/favicons?domain=${d}&sz=12`} alt="" width={10} height={10}
+                  onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
+                {d}
+              </span>
+            ))}
+          </div>
+          {onCite && (
+            <button className="contradiction-cite-btn" onClick={() => onCite(item.positive_evidence_id)}>
+              inspect ↗
+            </button>
+          )}
+        </div>
+        <div className="contradiction-vs">vs</div>
+        <div className="contradiction-side contradiction-side--neg">
+          <span className="contradiction-polarity">Negative</span>
+          <p className="contradiction-claim">{item.negative_claim}</p>
+          <div className="contradiction-domains">
+            {item.negative_domains.map(d => (
+              <span key={d} className="contradiction-domain">
+                <img src={`https://www.google.com/s2/favicons?domain=${d}&sz=12`} alt="" width={10} height={10}
+                  onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
+                {d}
+              </span>
+            ))}
+          </div>
+          {onCite && (
+            <button className="contradiction-cite-btn" onClick={() => onCite(item.negative_evidence_id)}>
+              inspect ↗
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export function FactCheckSection({ factCheck, onCite }: { factCheck: FactCheck; onCite?: (id: string) => void }) {
   const [showAll, setShowAll] = useState(false)
-  if (!factCheck.claims.length) return null
+  if (!factCheck.claims.length && !factCheck.contradictions?.length) return null
   const displayed = showAll ? factCheck.claims : factCheck.claims.slice(0, 4)
   const needsCheck = factCheck.claims.filter(c => c.needs_verification).length
   const corroborated = factCheck.claims.length - needsCheck
+  const contradictions = factCheck.contradictions ?? []
 
   return (
     <div className="insight-section">
@@ -64,8 +115,21 @@ export function FactCheckSection({ factCheck }: { factCheck: FactCheck }) {
       <div className="claim-summary-row">
         <span className="claim-summary-stat claim-summary-stat--ok">✓ {corroborated} corroborated</span>
         <span className="claim-summary-stat claim-summary-stat--verify">⚠ {needsCheck} need verification</span>
+        {contradictions.length > 0 && (
+          <span className="claim-summary-stat claim-summary-stat--conflict">⇄ {contradictions.length} conflicting</span>
+        )}
         <p className="fact-check-summary">{factCheck.summary}</p>
       </div>
+
+      {contradictions.length > 0 && (
+        <div className="contradiction-section">
+          <h4 className="contradiction-section-title">Conflicting Evidence</h4>
+          {contradictions.map((item, i) => (
+            <ContradictionCard key={`${item.subject}:${i}`} item={item} onCite={onCite} />
+          ))}
+        </div>
+      )}
+
       <div className="claim-list2">
         {displayed.map((claim, idx) => <ClaimCard key={`${idx}:${claim.claim}`} claim={claim} idx={idx} />)}
       </div>

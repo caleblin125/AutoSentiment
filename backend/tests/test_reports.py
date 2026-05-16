@@ -98,6 +98,50 @@ def test_report_aspects_source_facts_and_graph_link_evidence() -> None:
     assert any(edge["kind"] == "source" for edge in graph["edges"])
 
 
+def test_compute_claims_detects_contradictions() -> None:
+    """Contradictions should be surfaced when positive and negative chunks share a subject phrase."""
+    from app.reports.builder import compute_claims
+
+    chunks = [
+        EvidenceChunk(id="p1", run_id="r", url="https://techreview.com/a", source_type="news",
+                      snippet="The battery life is excellent.", label="positive",
+                      summary="battery life is excellent and lasts all day"),
+        EvidenceChunk(id="n1", run_id="r", url="https://complaints.com/b", source_type="reddit",
+                      snippet="The battery life is terrible.", label="negative",
+                      summary="battery life is terrible drains quickly"),
+    ]
+
+    result = compute_claims(chunks)
+
+    assert "contradictions" in result
+    assert isinstance(result["contradictions"], list)
+    # The phrase "battery life" should be detected as a contradiction subject.
+    subjects = {c["subject"] for c in result["contradictions"]}
+    assert any("battery" in s for s in subjects), f"Expected 'battery' in contradiction subjects, got {subjects}"
+    # Each contradiction must have both sides' evidence.
+    for contradiction in result["contradictions"]:
+        assert "positive_evidence_id" in contradiction
+        assert "negative_evidence_id" in contradiction
+        assert "positive_domains" in contradiction
+        assert "negative_domains" in contradiction
+
+
+def test_compute_claims_no_contradictions_without_opposing_chunks() -> None:
+    """When all chunks have the same label, no contradictions should be returned."""
+    from app.reports.builder import compute_claims
+
+    chunks = [
+        EvidenceChunk(id="p1", run_id="r", url="https://example.com/a", source_type="news",
+                      snippet="Great product all around.", label="positive", summary="great product overall"),
+        EvidenceChunk(id="p2", run_id="r", url="https://example.com/b", source_type="news",
+                      snippet="Really good value for money.", label="positive", summary="good value for money"),
+    ]
+
+    result = compute_claims(chunks)
+
+    assert result["contradictions"] == []
+
+
 def test_stop_words_filter_out_common_english_tokens() -> None:
     """Bogus tokens like 'for', 'not', 'its', 'use' must not appear as aspects."""
     from app.reports.builder import STOP_WORDS, compute_aspects
