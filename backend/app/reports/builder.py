@@ -477,9 +477,11 @@ def compute_chart_data(chunks: list[EvidenceChunk], aspects: list[dict], fact_ch
     labels = [label.value for label in SentimentLabel]
     source_mix = Counter(str(chunk.source_type) for chunk in chunks)
     sentiment_by_date: dict[str, Counter] = defaultdict(Counter)
+    date_certainty: dict[str, Counter] = defaultdict(Counter)
     for chunk in chunks:
-        date = chunk.retrieved_at.date().isoformat() if chunk.retrieved_at else "unknown"
+        date, certainty = _chunk_source_date(chunk)
         sentiment_by_date[date][str(chunk.label)] += 1
+        date_certainty[date][certainty] += 1
 
     return {
         "source_mix": [
@@ -491,9 +493,11 @@ def compute_chart_data(chunks: list[EvidenceChunk], aspects: list[dict], fact_ch
                 "date": date,
                 **{label: counts[label] for label in labels},
                 "total": sum(counts.values()),
+                "certainty": date_certainty[date].most_common(1)[0][0],
             }
             for date, counts in sorted(sentiment_by_date.items())
         ],
+        "location_sentiment": compute_location_sentiment(chunks),
         "aspect_matrix": [
             {
                 "aspect": aspect["name"],
@@ -513,6 +517,109 @@ def compute_chart_data(chunks: list[EvidenceChunk], aspects: list[dict], fact_ch
             for claim in fact_check.get("claims", [])
         ],
     }
+
+
+def _chunk_source_date(chunk: EvidenceChunk) -> tuple[str, str]:
+    """Return the best available source date and the certainty behind it."""
+    dates = _extract_dates(f"{chunk.summary}. {chunk.snippet}")
+    if dates:
+        return dates[0][0], "explicit"
+    if chunk.retrieved_at:
+        return chunk.retrieved_at.date().isoformat(), "retrieved_at"
+    return "unknown", "unknown"
+
+
+_LOCATION_GAZETTEER = {
+    "united states": (39.8, -98.6, ("united states", "u.s.", "us ", "usa", "america", "american")),
+    "canada": (56.1, -106.3, ("canada", "canadian")),
+    "united kingdom": (54.0, -2.5, ("united kingdom", "uk", "britain", "british", "london")),
+    "europe": (50.1, 14.4, ("europe", "european", "eu ")),
+    "china": (35.9, 104.2, ("china", "chinese", "beijing", "shanghai")),
+    "japan": (36.2, 138.3, ("japan", "japanese", "tokyo")),
+    "south korea": (36.5, 127.8, ("south korea", "korea", "korean", "seoul")),
+    "india": (20.6, 78.9, ("india", "indian", "delhi", "mumbai")),
+    "australia": (-25.3, 133.8, ("australia", "australian", "sydney", "melbourne")),
+    "germany": (51.2, 10.5, ("germany", "german", "berlin")),
+    "france": (46.2, 2.2, ("france", "french", "paris")),
+    "brazil": (-14.2, -51.9, ("brazil", "brazilian")),
+    "california": (36.8, -119.4, ("california", "los angeles", "san francisco", "silicon valley")),
+    "new york": (43.0, -75.0, ("new york", "nyc", "manhattan")),
+    "texas": (31.0, -99.9, ("texas", "houston", "austin", "dallas")),
+}
+
+_TLD_LOCATION_HINTS = {
+    ".uk": "united kingdom",
+    ".ca": "canada",
+    ".au": "australia",
+    ".jp": "japan",
+    ".de": "germany",
+    ".fr": "france",
+    ".br": "brazil",
+    ".in": "india",
+    ".kr": "south korea",
+    ".cn": "china",
+}
+
+
+def compute_location_sentiment(chunks: list[EvidenceChunk]) -> list[dict]:
+    """Aggregate sentiment by mentioned or source-inferred geography.
+
+    Location extraction is deliberately conservative. Direct text mentions get
+    higher certainty; domain country-code hints are retained as low-certainty
+    source-origin signals for the map.
+    """
+    buckets: dict[str, dict] = {}
+    labels = [label.value for label in SentimentLabel]
+
+    def ensure(location: str, certainty: str) -> dict:
+        lat, lon, _aliases = _LOCATION_GAZETTEER[location]
+        bucket = buckets.setdefault(location, {
+            "location": location.title(),
+            "lat": lat,
+            "lon": lon,
+            "certainty": certainty,
+            "evidence_ids": [],
+            "source_domains": [],
+            **{label: 0 for label in labels},
+        })
+        if bucket["certainty"] != "mentioned" and certainty == "mentioned":
+            bucket["certainty"] = certainty
+        return bucket
+
+    for chunk in chunks:
+        text = f" {chunk.summary} {chunk.snippet} ".lower()
+        domain = urlparse(chunk.url).netloc.removeprefix("www.").lower()
+        matches: set[tuple[str, str]] = set()
+        for location, (_lat, _lon, aliases) in _LOCATION_GAZETTEER.items():
+            if any(re.search(rf"\b{re.escape(alias.strip())}\b", text) for alias in aliases):
+                matches.add((location, "mentioned"))
+        if not matches:
+            for suffix, location in _TLD_LOCATION_HINTS.items():
+                if domain.endswith(suffix):
+                    matches.add((location, "source_domain"))
+                    break
+        for location, certainty in matches:
+            bucket = ensure(location, certainty)
+            label = str(chunk.label)
+            if label in labels:
+                bucket[label] += 1
+            if chunk.id not in bucket["evidence_ids"]:
+                bucket["evidence_ids"].append(chunk.id)
+            if domain and domain not in bucket["source_domains"]:
+                bucket["source_domains"].append(domain)
+
+    results = []
+    for bucket in buckets.values():
+        total = sum(bucket[label] for label in labels)
+        if total == 0:
+            continue
+        results.append({
+            **bucket,
+            "total": total,
+            "evidence_ids": bucket["evidence_ids"][:8],
+            "source_domains": bucket["source_domains"][:6],
+        })
+    return sorted(results, key=lambda row: row["total"], reverse=True)[:12]
 
 
 def _extract_dates(text: str) -> list[tuple[str, str]]:

@@ -126,7 +126,19 @@ export interface UseCaseInsights {
 
 export interface ChartData {
   source_mix: Array<{ source_type: string; count: number }>
-  sentiment_over_time: Array<{ date: string; positive: number; neutral: number; negative: number; total: number }>
+  sentiment_over_time: Array<{ date: string; positive: number; neutral: number; negative: number; total: number; certainty?: string }>
+  location_sentiment?: Array<{
+    location: string
+    lat: number
+    lon: number
+    positive: number
+    neutral: number
+    negative: number
+    total: number
+    certainty: 'mentioned' | 'source_domain' | string
+    evidence_ids: string[]
+    source_domains: string[]
+  }>
   aspect_matrix: Array<{ aspect: string; positive: number; neutral: number; negative: number; count: number }>
   claim_corroboration: Array<{ claim: string; supporting_sources: number; needs_verification: boolean }>
 }

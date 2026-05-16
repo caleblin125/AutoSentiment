@@ -10,7 +10,6 @@ import {
   type ThreadItem,
 } from '../lib/api'
 import { ForceGraph } from './ForceGraph'
-import { HistoryChart } from './HistoryChart'
 
 interface Props { runId: string; topic: string; report: Report; onSearchTopic?: (topic: string) => void }
 
@@ -539,6 +538,103 @@ function ChartDataSection({ chartData }: { chartData: NonNullable<Report['chart_
   )
 }
 
+function SourceTimeSentimentChart({ series }: {
+  series: NonNullable<Report['chart_data']>['sentiment_over_time']
+}) {
+  const rows = series.filter(row => row.date !== 'unknown').slice(-18)
+  const maxTotal = Math.max(1, ...rows.map(row => row.total))
+  if (!rows.length) return null
+  return (
+    <div className="insight-section">
+      <h3>Sentiment over source time</h3>
+      <div className="source-time-chart" role="img" aria-label="Sentiment by source publication or mentioned date">
+        {rows.map(row => {
+          const pos = row.total ? row.positive / row.total : 0
+          const neu = row.total ? row.neutral / row.total : 0
+          const neg = row.total ? row.negative / row.total : 0
+          return (
+            <div className="source-time-row" key={row.date}>
+              <time>{row.date}</time>
+              <div className="source-time-stack" style={{ width: `${Math.max(8, (row.total / maxTotal) * 100)}%` }}>
+                <span style={{ flex: pos, background: 'var(--positive)' }} />
+                <span style={{ flex: neu, background: 'var(--neutral)' }} />
+                <span style={{ flex: neg, background: 'var(--rog-red)' }} />
+              </div>
+              <b>{row.total}</b>
+              <small>{row.certainty ?? 'source date'}</small>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function LocationSentimentMap({ locations }: {
+  locations: NonNullable<NonNullable<Report['chart_data']>['location_sentiment']>
+}) {
+  const [selected, setSelected] = useState(locations[0]?.location ?? '')
+  const points = locations.map(location => {
+    const x = ((location.lon + 180) / 360) * 1000
+    const y = ((90 - location.lat) / 180) * 500
+    const dominant = location.negative > location.positive && location.negative >= location.neutral
+      ? 'negative'
+      : location.positive >= location.neutral ? 'positive' : 'neutral'
+    return { ...location, x, y, dominant }
+  })
+  if (!points.length) return null
+  const minX = Math.min(...points.map(p => p.x))
+  const maxX = Math.max(...points.map(p => p.x))
+  const minY = Math.min(...points.map(p => p.y))
+  const maxY = Math.max(...points.map(p => p.y))
+  const pad = 120
+  const viewBox = [
+    Math.max(0, minX - pad),
+    Math.max(0, minY - pad),
+    Math.min(1000, maxX + pad) - Math.max(0, minX - pad),
+    Math.min(500, maxY + pad) - Math.max(0, minY - pad),
+  ].join(' ')
+  const selectedPoint = points.find(point => point.location === selected) ?? points[0]
+
+  return (
+    <div className="insight-section">
+      <h3>Sentiment by location</h3>
+      <div className="location-map-layout">
+        <svg className="location-map" viewBox={viewBox} role="img" aria-label="Geographic sentiment map">
+          {[...Array(7)].map((_, i) => <line key={`lat-${i}`} x1="0" x2="1000" y1={i * 83.3} y2={i * 83.3} />)}
+          {[...Array(9)].map((_, i) => <line key={`lon-${i}`} x1={i * 125} x2={i * 125} y1="0" y2="500" />)}
+          <path d="M80 210 C170 150 260 165 330 210 C390 245 470 230 545 190 C650 130 750 170 850 215 C910 240 950 270 930 310 C880 370 760 345 680 315 C575 278 480 300 385 335 C260 380 130 340 80 290 Z" />
+          {points.map(point => (
+            <g
+              key={point.location}
+              className={`location-point location-point--${point.dominant}`}
+              role="button"
+              tabIndex={0}
+              aria-label={point.location}
+              onClick={() => setSelected(point.location)}
+              onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') setSelected(point.location) }}
+            >
+              <circle cx={point.x} cy={point.y} r={Math.max(7, Math.min(22, 6 + point.total * 2))} />
+              <text x={point.x + 10} y={point.y - 8}>{point.location}</text>
+            </g>
+          ))}
+        </svg>
+        <aside className="location-map-detail">
+          <strong>{selectedPoint.location}</strong>
+          <span className={`sentiment-chip sentiment-chip--${selectedPoint.dominant}`}>{selectedPoint.dominant}</span>
+          <p>{selectedPoint.total} mapped item{selectedPoint.total !== 1 ? 's' : ''} · {selectedPoint.certainty === 'mentioned' ? 'location mentioned in text' : 'inferred from source domain'}</p>
+          <div className="mini-metric"><span>Positive</span><b>{selectedPoint.positive}</b></div>
+          <div className="mini-metric"><span>Neutral</span><b>{selectedPoint.neutral}</b></div>
+          <div className="mini-metric"><span>Negative</span><b>{selectedPoint.negative}</b></div>
+          {selectedPoint.source_domains.length > 0 && (
+            <small>{selectedPoint.source_domains.slice(0, 4).join(', ')}</small>
+          )}
+        </aside>
+      </div>
+    </div>
+  )
+}
+
 // ── Quotes ────────────────────────────────────────────────────────────────
 
 function QuoteList({ title, quotes, onCite, highlightedId, sectionRef }: {
@@ -855,8 +951,6 @@ export function ReportView({ runId, topic, report, onSearchTopic }: Props) {
             </div>
           </div>
 
-          <HistoryChart topic={topic} currentRunId={runId} />
-
           <div className="sentiment-bars">
             <SentimentBar label="Positive" value={overall.positive} color="var(--positive)" />
             <SentimentBar label="Neutral"  value={overall.neutral}  color="var(--neutral)" />
@@ -880,6 +974,14 @@ export function ReportView({ runId, topic, report, onSearchTopic }: Props) {
           <p className="narrative">{narrative}</p>
 
           <AnalysisSection impacts={impacts} reasons={reasons} arguments={args} />
+
+          {chart_data?.sentiment_over_time && (
+            <SourceTimeSentimentChart series={chart_data.sentiment_over_time} />
+          )}
+
+          {chart_data?.location_sentiment && chart_data.location_sentiment.length > 0 && (
+            <LocationSentimentMap locations={chart_data.location_sentiment} />
+          )}
 
           {chart_data && <ChartDataSection chartData={chart_data} />}
         </div>

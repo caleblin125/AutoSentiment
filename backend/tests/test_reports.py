@@ -212,7 +212,7 @@ def test_use_case_insights_and_chart_data_support_entertainment_mode() -> None:
             run_id="r",
             url="https://reddit.com/r/show/1",
             source_type="reddit",
-            snippet="The story and casting are strong, but the trailer marketing was confusing.",
+            snippet="The story and casting are strong in California, but the trailer marketing was confusing.",
             label="negative",
             summary="confusing marketing",
         ),
@@ -236,7 +236,40 @@ def test_use_case_insights_and_chart_data_support_entertainment_mode() -> None:
     assert "audience_pulse" in insights["sections"]
     assert chart_data["source_mix"]
     assert chart_data["aspect_matrix"]
+    assert chart_data["location_sentiment"][0]["location"] == "California"
+    assert chart_data["sentiment_over_time"][0]["date"] == "2026-03-05"
+    assert chart_data["sentiment_over_time"][0]["certainty"] == "explicit"
     assert any(aspect["aspect"] in {"story", "casting", "marketing", "commercial potential"} for aspect in chart_data["aspect_matrix"])
+
+
+def test_chart_data_falls_back_to_source_domain_location_and_retrieved_time() -> None:
+    from datetime import datetime
+
+    from app.reports.builder import compute_chart_data
+
+    chunk = EvidenceChunk(
+        id="loc1",
+        run_id="r",
+        url="https://example.co.uk/story",
+        source_type="news",
+        snippet="Analysts said demand improved without naming a location.",
+        label="positive",
+        summary="demand improved",
+        retrieved_at=datetime(2026, 4, 8, 12, 0, 0),
+    )
+
+    chart_data = compute_chart_data([chunk], [], {"claims": []})
+
+    assert chart_data["sentiment_over_time"] == [{
+        "date": "2026-04-08",
+        "positive": 1,
+        "neutral": 0,
+        "negative": 0,
+        "total": 1,
+        "certainty": "retrieved_at",
+    }]
+    assert chart_data["location_sentiment"][0]["location"] == "United Kingdom"
+    assert chart_data["location_sentiment"][0]["certainty"] == "source_domain"
 
 
 def _make_chunk(

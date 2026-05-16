@@ -15,6 +15,7 @@ import { test, expect, type Page, type Route } from '@playwright/test'
 // ── Fixture data ────────────────────────────────────────────────────────────
 
 const RUN_ID = 'smoke-test-run-id'
+const EXPAND_RUN_ID = 'smoke-test-expand-run-id'
 
 const MOCK_REPORT = {
   overall: { positive: 0.6, neutral: 0.25, negative: 0.15, total: 20 },
@@ -117,7 +118,24 @@ const MOCK_REPORT = {
   },
   chart_data: {
     source_mix: [{ source_type: 'news', count: 10 }, { source_type: 'reddit', count: 10 }],
-    sentiment_over_time: [],
+    sentiment_over_time: [
+      { date: '2024-01-15', positive: 3, neutral: 1, negative: 0, total: 4, certainty: 'explicit' },
+      { date: '2024-02-20', positive: 2, neutral: 2, negative: 1, total: 5, certainty: 'retrieved_at' },
+    ],
+    location_sentiment: [
+      {
+        location: 'United States',
+        lat: 39.8,
+        lon: -98.6,
+        positive: 4,
+        neutral: 2,
+        negative: 1,
+        total: 7,
+        certainty: 'mentioned',
+        evidence_ids: ['ev-1'],
+        source_domains: ['example.com'],
+      },
+    ],
     aspect_matrix: [{ aspect: 'performance', count: 8, positive: 0.7, neutral: 0.2, negative: 0.1 }],
     claim_corroboration: [{ claim: 'Battery life claim', supporting_sources: 2, needs_verification: false }],
   },
@@ -319,6 +337,28 @@ test.describe('Golden path: submit → complete → tabs', () => {
 
     await expect(page.locator('.sentiment-bars')).toBeVisible()
     await expect(page.locator('.narrative')).toBeVisible()
+    await expect(page.locator('.source-time-chart')).toBeVisible()
+    await expect(page.locator('.location-map')).toBeVisible()
+  })
+
+  test('expanded search keeps the previous report visible until the new report finishes', async ({ page }) => {
+    await expect(page.locator('section[aria-label="Report"]')).toBeVisible({ timeout: 10_000 })
+
+    await page.route(`**/api/runs/${RUN_ID}/expand`, (r: Route) =>
+      r.fulfill({ status: 200, json: { run_id: EXPAND_RUN_ID } }),
+    )
+    await page.route(`**/api/runs/${EXPAND_RUN_ID}/events**`, async (r: Route) => {
+      await new Promise(resolve => setTimeout(resolve, 600))
+      return r.fulfill({
+        status: 200,
+        headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' },
+        body: `data: ${JSON.stringify({ type: 'run_started', detail: {}, ts: Date.now() })}\n\n`,
+      })
+    })
+
+    await page.locator('.btn-expand').click()
+    await expect(page.locator('.expanded-run-badge')).toBeVisible()
+    await expect(page.locator('.narrative')).toContainText('Overall sentiment is positive')
   })
 
   test('Evidence tab shows quote cards', async ({ page }) => {

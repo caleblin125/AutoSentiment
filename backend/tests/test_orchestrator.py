@@ -177,12 +177,12 @@ def test_select_diverse_urls_preserves_non_reddit_sources() -> None:
 
     selected = orchestrator._select_diverse_urls(urls, max_urls=8)
 
-    assert len(selected) == 8
     assert "https://reuters.com/article/1" in selected
     assert "https://news.ycombinator.com/item?id=1" in selected
     assert "https://youtube.com/watch?v=1" in selected
     assert "https://example.com/post" in selected
-    assert sum("reddit.com" in url for url in selected) <= 4
+    assert sum("reddit.com" in url for url in selected) <= 2
+    assert sum("reddit.com" not in url for url in selected) >= 4
 
 
 def test_summaries_for_synthesis_limits_and_balances_labels() -> None:

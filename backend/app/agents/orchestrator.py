@@ -795,9 +795,9 @@ def _select_diverse_urls(urls: list[str], max_urls: int) -> list[str]:
         groups.setdefault(source, []).append(url)
 
     caps = {
-        "reddit": max(2, int(max_urls * 0.35 + 0.999)),
-        "social": max(2, int(max_urls * 0.45 + 0.999)),
-        "forum": max(2, int(max_urls * 0.45 + 0.999)),
+        "reddit": max(2, int(max_urls * 0.25 + 0.999)),
+        "social": max(2, int(max_urls * 0.35 + 0.999)),
+        "forum": max(2, int(max_urls * 0.40 + 0.999)),
     }
     selected: list[str] = []
     skipped: list[str] = []
@@ -811,7 +811,7 @@ def _select_diverse_urls(urls: list[str], max_urls: int) -> list[str]:
                 continue
             url = bucket.pop(0)
             cap = caps.get(source, max_urls)
-            if counts.get(source, 0) >= cap and any(groups.values()):
+            if counts.get(source, 0) >= cap:
                 skipped.append(url)
                 progressed = True
                 continue
@@ -823,8 +823,15 @@ def _select_diverse_urls(urls: list[str], max_urls: int) -> list[str]:
         if not progressed:
             break
 
+    # Keep capped sources capped. Returning fewer URLs is better than spending
+    # extraction/sentiment budget on a single dominant platform.
     for url in skipped:
         if len(selected) >= max_urls:
             break
+        source = classify_source_type(url).value
+        cap = caps.get(source, max_urls)
+        if counts.get(source, 0) >= cap:
+            continue
         selected.append(url)
+        counts[source] = counts.get(source, 0) + 1
     return selected

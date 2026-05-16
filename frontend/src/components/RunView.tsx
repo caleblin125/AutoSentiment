@@ -77,6 +77,7 @@ export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMo
   const [nemoclawModel, setNemoclawModel] = useState('')
   const [sentimentModel, setSentimentModel] = useState('')
   const [suggestionModel, setSuggestionModel] = useState('')
+  const [retainedReport, setRetainedReport] = useState<Report | null>(null)
   // Track the pre-expand runId so we can restore it if the expanded run is cancelled.
   const [preExpandRunId, setPreExpandRunId] = useState<string | null>(null)
   // Saved searches
@@ -94,7 +95,8 @@ export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMo
     const completed = events.findLast(e => e.type === 'run_completed')
     return (completed?.detail as { report?: Report } | undefined)?.report ?? null
   }, [events])
-  const activeDepth = report?.metadata?.research_depth ?? researchDepth
+  const visibleReport = report ?? (isExpandedRun ? retainedReport : null)
+  const activeDepth = visibleReport?.metadata?.research_depth ?? researchDepth
   const selectedDepth = DEPTH_OPTIONS.find(o => o.value === researchDepth) ?? DEPTH_OPTIONS[1]
   const activeDepthOption = DEPTH_OPTIONS.find(o => o.value === activeDepth) ?? selectedDepth
   const activeDepthIndex = DEPTH_OPTIONS.findIndex(o => o.value === activeDepthOption.value)
@@ -104,6 +106,7 @@ export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMo
     DEPTH_OPTIONS.length - 1,
   )]
   const expandDepthOption = selectedDepthIndex > activeDepthIndex ? selectedDepth : nextDepthOption
+  const isAtMaxDepth = activeDepthIndex >= DEPTH_OPTIONS.length - 1
 
   useEffect(() => {
     const trimmedTopic = topic.trim()
@@ -202,6 +205,7 @@ export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMo
 
   async function handleExpand() {
     if (!runId) return
+    if (visibleReport) setRetainedReport(visibleReport)
     setExpanding(true)
     setNcRunId(null)
     setPreExpandRunId(runId)  // remember so we can restore on cancel
@@ -541,11 +545,11 @@ export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMo
                 className="btn-expand"
                 onClick={handleExpand}
                 disabled={expanding}
-                title={`Expand to ${expandDepthOption.label}: ${expandDepthOption.queryCount} queries, ${expandDepthOption.urlCount} URLs, ${expandDepthOption.itemCount} items`}
+                title={`${isAtMaxDepth ? 'Search more at' : 'Expand to'} ${expandDepthOption.label}: ${expandDepthOption.queryCount} queries, ${expandDepthOption.urlCount} URLs, ${expandDepthOption.itemCount} items`}
               >
                 {expanding
                   ? <><span className="spinner" style={{ borderTopColor: 'var(--rog-cyan)' }} /> Expanding…</>
-                  : `⊕ Expand to ${expandDepthOption.label}`}
+                  : isAtMaxDepth ? '⊕ Search more' : `⊕ Expand to ${expandDepthOption.label}`}
               </button>
             )}
 
@@ -555,7 +559,7 @@ export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMo
       )}
 
       {/* Loading / stage indicator */}
-      {runId && !report && status !== 'error' && status !== 'cancelled' && (
+      {runId && !visibleReport && status !== 'error' && status !== 'cancelled' && (
         <div className="panel">
           <LoadingStage events={events} status={status} />
         </div>
@@ -566,12 +570,12 @@ export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMo
 
       {runId && events.length > 0 && <EventTimeline events={events} status={status} />}
 
-      {report && runId && activeTopic && (
+      {visibleReport && runId && activeTopic && (
         <ErrorBoundary>
           <ReportView
             runId={runId}
             topic={activeTopic}
-            report={report}
+            report={visibleReport}
             onSearchTopic={(subtopic) => { setTopic(subtopic); setCached(false); }}
           />
         </ErrorBoundary>

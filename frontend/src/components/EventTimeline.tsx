@@ -143,7 +143,7 @@ function FetchBatchRow({ ev }: { ev: FoldedFetch }) {
   const recentUrls = ev._urls.slice(-5)
 
   return (
-    <div className="timeline-message fetch-batch-message">
+    <div className="fetch-batch-message">
       <span className="fetch-batch-header">
         <span className="event-prefix event-prefix--fetch">
           {done ? 'Fetched' : 'Fetching'}
