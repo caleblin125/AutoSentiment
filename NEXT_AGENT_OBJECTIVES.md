@@ -631,9 +631,14 @@ npm run build  # passes
 | 10: Reliability hardening | ✅ Complete (logging, error codes, recovery, auth, graceful shutdown) |
 | 11: Public current events | ✅ Complete |
 | 12: UX polish | ✅ Complete (tabs, loading states, export, saved searches, cache stats in Performance tab) |
+| Mobile layout | ✅ Complete (overflow fixes at ≤720px and ≤480px) |
+| Playwright smoke tests | ✅ Complete (28 tests: app load, golden path, all tabs, modal, mobile) |
 
 ## Current Recommended First Task
 
-**Mobile layout pass** — the report tabs and graph render on mobile but some panels overflow. Audit on a narrow viewport (≤ 480 px) and fix the most prominent overflow issues. Start with the timing grid and the evidence modal, which are most likely to clip on small screens.
+All planned objectives are complete. The codebase is in good shape for commercial use. Potential next areas:
 
-Then consider **Playwright smoke tests** for the golden path: submit topic → wait for completed status → check report tabs render without JS errors. This would give confidence in regressions across the full React component tree.
+- **Playwright graph-tab test** — the Graph tab (ForceGraph SVG rendering) was not covered by smoke tests because it requires canvas/SVG interaction. A dedicated test for graph node clicking and the topic-detail popover would add coverage.
+- **Real backend integration test** — run a short end-to-end test against a live backend with Ollama available, using a real quick-depth search, to catch model-path regressions.
+- **Auth hardening** — the optional `AUTH_API_KEY` env var exists but is not tested in the frontend smoke suite. Add a test for the 403 path.
+- **Export file download tests** — the JSON/CSV/Markdown export buttons trigger browser downloads. Playwright can intercept downloads; adding a test would prevent regressions.
