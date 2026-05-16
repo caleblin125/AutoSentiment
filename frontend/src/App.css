@@ -1146,6 +1146,138 @@ button[type="submit"] {
   margin-top: 4px;
 }
 
+/* ── Fetch URL list in timeline ──────────────────────────────────────────── */
+
+.fetch-batch-message {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+  width: 100%;
+}
+
+.fetch-batch-header {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.url-expand-toggle {
+  font-size: 10px;
+  font-family: var(--mono);
+  color: var(--rog-cyan);
+  background: transparent;
+  border: 1px solid rgba(0, 212, 232, 0.3);
+  border-radius: 3px;
+  padding: 1px 7px;
+  cursor: pointer;
+  min-height: unset;
+  line-height: 1.6;
+  letter-spacing: 0.3px;
+  text-transform: none;
+}
+
+.url-expand-toggle:hover { background: var(--rog-cyan-dim); }
+
+.fetch-url-live,
+.fetch-url-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.fetch-url-link {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--rog-cyan);
+  text-decoration: none;
+  padding: 2px 6px;
+  border-radius: 3px;
+  transition: background 0.1s;
+  min-width: 0;
+}
+
+.fetch-url-link:hover { background: var(--surface-hover); color: var(--rog-cyan); }
+
+.fetch-url-link .clip-text { flex: 1; min-width: 0; }
+
+.url-item-badge {
+  flex-shrink: 0;
+  font-size: 9px;
+  background: var(--surface-muted);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 0 5px;
+}
+
+/* ── Quote card highlight (from graph click) ─────────────────────────────── */
+
+.quote-card--highlighted {
+  border-color: var(--rog-cyan) !important;
+  box-shadow: 0 0 0 2px rgba(0, 212, 232, 0.35), var(--rog-cyan-glow);
+  animation: quote-pulse 0.4s ease-out;
+}
+
+@keyframes quote-pulse {
+  0%   { box-shadow: 0 0 0 6px rgba(0, 212, 232, 0.5); }
+  100% { box-shadow: 0 0 0 2px rgba(0, 212, 232, 0.35), var(--rog-cyan-glow); }
+}
+
+/* ── Timing performance section ──────────────────────────────────────────── */
+
+.timing-section { margin-bottom: 4px; }
+
+.timing-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.timing-header h3 { margin: 0; }
+
+.timing-slow-badge {
+  font-size: 9px;
+  font-family: var(--mono);
+  background: var(--rog-red-dim);
+  color: var(--rog-red);
+  border-radius: 8px;
+  padding: 1px 6px;
+  margin-top: 2px;
+  letter-spacing: 0.3px;
+}
+
+.timing-tips {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 10px 14px;
+  background: var(--surface-muted);
+  border-radius: 4px;
+  border-left: 3px solid var(--rog-cyan);
+}
+
+.timing-tip {
+  font-size: 12px;
+  color: var(--text);
+  line-height: 1.5;
+}
+
+.timing-tip strong { color: var(--text-strong); }
+
+.timing-tip--highlight {
+  color: var(--text-bright);
+}
+
+.timing-tip--highlight strong { color: var(--rog-red); }
+
 /* ── Text clipping utility ──────────────────────────────────────────────── */
 
 .clip-text {

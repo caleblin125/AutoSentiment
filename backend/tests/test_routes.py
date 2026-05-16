@@ -131,6 +131,101 @@ async def test_create_run_returns_cached_when_recent_completed_run_exists(monkey
 
 
 @pytest.mark.asyncio
+async def test_cancel_run_signals_event_bus_and_returns_cancelled(db_session) -> None:
+    """POST /api/runs/{id}/cancel must call request_cancel and return cancelled=True."""
+    from app.api import event_bus as eb
+
+    run = Run(topic="cancel-me", freshness=None, status="running")
+    db_session.add(run)
+    await db_session.commit()
+    await db_session.refresh(run)
+
+    cancelled_calls: list[str] = []
+    real_request_cancel = eb.request_cancel
+
+    def patched_cancel(rid: str) -> None:
+        cancelled_calls.append(rid)
+        real_request_cancel(rid)
+
+    import unittest.mock
+    with unittest.mock.patch.object(eb, "request_cancel", patched_cancel):
+        result = await routes.cancel_run(run.id, db_session)
+
+    assert result["cancelled"] is True
+    assert run.id in cancelled_calls
+    eb.clear_cancel(run.id)
+
+
+@pytest.mark.asyncio
+async def test_cancel_run_no_ops_for_completed_run(db_session) -> None:
+    """Cancelling a completed run must return cancelled=False without side-effects."""
+    from app.api import event_bus as eb
+
+    run = Run(topic="done", freshness=None, status="completed")
+    db_session.add(run)
+    await db_session.commit()
+    await db_session.refresh(run)
+
+    result = await routes.cancel_run(run.id, db_session)
+    assert result["cancelled"] is False
+    assert not eb.is_cancelled(run.id)
+
+
+@pytest.mark.asyncio
+async def test_expand_run_creates_new_run_with_doubled_limits(monkeypatch, db_session) -> None:
+    """POST /api/runs/{id}/expand must create a new run with 2× URL/item limits."""
+    launched: list[tuple] = []
+
+    async def fake_run_research(*args, **_kw) -> None:
+        launched.append(args)
+
+    monkeypatch.setattr(routes, "run_research", fake_run_research)
+
+    original = Run(topic="EVs", freshness="pm", status="completed")
+    db_session.add(original)
+    await db_session.commit()
+    await db_session.refresh(original)
+
+    settings = Settings(max_urls_per_run=10, max_items_per_run=50)
+    response = await routes.expand_run(original.id, db_session, settings)
+
+    assert response.cached is False
+    new_run = await db_session.get(Run, response.run_id)
+    assert new_run is not None
+    assert new_run.topic == "EVs"
+    assert new_run.freshness is None  # expanded runs use "any time"
+    await asyncio.sleep(0)
+    assert len(launched) == 1
+    _run_id, _topic, _freshness, expanded_settings = launched[0]
+    assert expanded_settings.max_urls_per_run == 20
+    assert expanded_settings.max_items_per_run == 100
+
+    event_bus.deregister(response.run_id)
+
+
+@pytest.mark.asyncio
+async def test_stream_events_replays_stored_events_for_cancelled_run(db_session) -> None:
+    """The SSE endpoint must also replay events for cancelled runs."""
+    from app.models import RunEvent
+
+    run = Run(topic="topic", freshness=None, status="cancelled")
+    db_session.add(run)
+    await db_session.flush()
+    ev = RunEvent(run_id=run.id, seq=1, type="run_cancelled", message="Cancelled", detail={})
+    db_session.add(ev)
+    await db_session.commit()
+    await db_session.refresh(run)
+
+    response = await routes.stream_events(run.id, db_session)
+    chunks = [c async for c in response.body_iterator]
+
+    assert len(chunks) == 1
+    import json
+    payload = json.loads(chunks[0].removeprefix("data: ").removesuffix("\n\n"))
+    assert payload["type"] == "run_cancelled"
+
+
+@pytest.mark.asyncio
 async def test_stream_events_replays_stored_events_for_completed_run(db_session) -> None:
     """The SSE endpoint must replay stored RunEvent rows for completed runs
     so cached runs deliver their full event history to the frontend."""

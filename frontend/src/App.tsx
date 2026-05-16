@@ -76,9 +76,10 @@ export default function App() {
       {tabs.map(tab => (
         <div
           key={tab.id}
-          hidden={tab.id !== activeId}
           className="app-body"
           role="tabpanel"
+          aria-labelledby={`tab-${tab.id}`}
+          style={tab.id !== activeId ? { display: 'none' } : undefined}
         >
           <RunView onStatusChange={getTabCb(tab.id)} />
         </div>

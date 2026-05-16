@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   getEvidence,
   type ArgumentItem,
   type EvidenceChunk,
+  type GraphNode,
   type ImpactItem,
   type Quote,
   type Report,
@@ -50,9 +51,18 @@ function SourceLogo({ url }: { url: string }) {
   )
 }
 
-// ── Timing ────────────────────────────────────────────────────────────────
+// ── Timing + performance analysis ────────────────────────────────────────
+
+const TIMING_TIPS: Record<string, string> = {
+  Expansion: 'Query expansion uses the 120B model. Switch to a faster model to reduce latency.',
+  Search:    'Brave search is sequential (1 req/s rate limit). Reduce query count or cache more aggressively.',
+  Fetch:     'URL fetching is parallel. Increase _FETCH_CONCURRENCY or reduce max_urls_per_run.',
+  Sentiment: 'Per-item sentiment uses the 30B model in parallel. Increase light_queue_max_parallel or reduce max_items_per_run.',
+  Synthesis: 'Report synthesis uses the 120B model. Switch to a faster model or reduce sample size.',
+}
 
 function TimingSummary({ timings }: { timings: Record<string, number> }) {
+  const [showTips, setShowTips] = useState(false)
   const rows = [
     ['Expansion', timings.query_expansion_ms],
     ['Search', timings.search_ms],
@@ -62,15 +72,39 @@ function TimingSummary({ timings }: { timings: Record<string, number> }) {
     ['Total', timings.total_ms],
   ].filter(([, v]) => typeof v === 'number') as [string, number][]
   if (!rows.length) return null
-  const slowest = rows.reduce((max, r) => (r[1] > max[1] ? r : max), rows[0])
+
+  const mainRows = rows.filter(([l]) => l !== 'Total')
+  const slowest = mainRows.length
+    ? mainRows.reduce((max, r) => (r[1] > max[1] ? r : max), mainRows[0])
+    : rows[0]
+
   return (
-    <div className="timing-grid">
-      {rows.map(([label, value]) => (
-        <div className={`timing-card${slowest[0] === label ? ' timing-card--slowest' : ''}`} key={label}>
-          <span>{label}</span>
-          <strong>{fmtDuration(value)}</strong>
+    <div className="timing-section">
+      <div className="timing-header">
+        <h3>Performance</h3>
+        <button className="btn-secondary" style={{ fontSize: 11, height: 26, padding: '0 10px' }}
+          onClick={() => setShowTips(t => !t)}>
+          {showTips ? '▲ hide tips' : '▼ optimization tips'}
+        </button>
+      </div>
+      <div className="timing-grid">
+        {rows.map(([label, value]) => (
+          <div className={`timing-card${slowest[0] === label ? ' timing-card--slowest' : ''}`} key={label}>
+            <span>{label}</span>
+            <strong>{fmtDuration(value)}</strong>
+            {slowest[0] === label && <span className="timing-slow-badge">slowest</span>}
+          </div>
+        ))}
+      </div>
+      {showTips && (
+        <div className="timing-tips">
+          {mainRows.map(([label]) => (
+            <div key={label} className={`timing-tip${slowest[0] === label ? ' timing-tip--highlight' : ''}`}>
+              <strong>{label}:</strong> {TIMING_TIPS[label] ?? '—'}
+            </div>
+          ))}
         </div>
-      ))}
+      )}
     </div>
   )
 }
@@ -206,24 +240,41 @@ function SourceFacts({ facts }: { facts: NonNullable<Report['source_facts']> }) 
 
 // ── Quotes ────────────────────────────────────────────────────────────────
 
-function QuoteList({ title, quotes, onCite }: {
+function QuoteList({ title, quotes, onCite, highlightedId, sectionRef }: {
   title: string
   quotes: Quote[]
   onCite: (q: Quote) => void
+  highlightedId?: string | null
+  sectionRef?: React.RefObject<HTMLDivElement | null>
 }) {
   if (!quotes.length) return null
   return (
-    <div className="quote-list">
+    <div className="quote-list" ref={sectionRef}>
       <h3>{title}</h3>
       <div className="quote-grid">
         {quotes.map(q => (
-          <article className="quote-card" key={q.evidence_id}>
+          <article
+            className={`quote-card${highlightedId === q.evidence_id ? ' quote-card--highlighted' : ''}`}
+            key={q.evidence_id}
+          >
             <p title={q.summary}>"{q.summary}"</p>
             <div className="quote-card-footer">
               <a href={q.url} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()}>
                 <SourceLogo url={q.url} />
               </a>
-              <button className="cite-btn" onClick={() => onCite(q)}>inspect</button>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <a
+                  href={q.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="cite-btn"
+                  style={{ textDecoration: 'none' }}
+                  title="Open source in new tab"
+                >
+                  ↗ source
+                </a>
+                <button className="cite-btn" onClick={() => onCite(q)}>inspect</button>
+              </div>
             </div>
           </article>
         ))}
@@ -314,11 +365,53 @@ function EvidenceModal({ chunk, onClose }: { chunk: EvidenceChunk; onClose: () =
 export function ReportView({ runId, topic, report }: Props) {
   const [activeChunk, setActiveChunk] = useState<EvidenceChunk | null>(null)
   const [loadingChunk, setLoadingChunk] = useState(false)
+  const [highlightedId, setHighlightedId] = useState<string | null>(null)
+  const posRef = useRef<HTMLDivElement | null>(null)
+  const negRef = useRef<HTMLDivElement | null>(null)
 
   async function openCitation(quote: Quote) {
     setLoadingChunk(true)
     try { setActiveChunk(await getEvidence(runId, quote.evidence_id)) }
     finally { setLoadingChunk(false) }
+  }
+
+  /**
+   * Handle clicks on graph nodes — scroll to the relevant quote section
+   * and highlight the best-matching quote for 3 seconds.
+   */
+  function handleGraphNodeClick(node: GraphNode) {
+    const label = node.label.toLowerCase()
+    const allQuotes = [...top_positive, ...top_negative]
+
+    // Decide which section to scroll to and which quote to highlight.
+    let targetRef: React.RefObject<HTMLDivElement | null>
+    let matchQuote: Quote | undefined
+
+    if (node.id === 'sentiment:positive' || node.label.toLowerCase() === 'positive') {
+      targetRef = posRef
+      matchQuote = top_positive[0]
+    } else if (node.id === 'sentiment:negative' || node.label.toLowerCase() === 'negative') {
+      targetRef = negRef
+      matchQuote = top_negative[0]
+    } else {
+      // Theme or aspect — find the quote whose summary contains the label
+      matchQuote = allQuotes.find(q => q.summary.toLowerCase().includes(label))
+      // Scroll to the section that contains the match
+      const inPos = top_positive.some(q => q.evidence_id === matchQuote?.evidence_id)
+      targetRef = inPos ? posRef : negRef
+      if (!matchQuote) {
+        // No match — just scroll to positive section
+        targetRef = posRef
+        matchQuote = top_positive[0]
+      }
+    }
+
+    targetRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+
+    if (matchQuote) {
+      setHighlightedId(matchQuote.evidence_id)
+      setTimeout(() => setHighlightedId(null), 3000)
+    }
   }
 
   const {
@@ -363,7 +456,6 @@ export function ReportView({ runId, topic, report }: Props) {
         </tbody>
       </table>
 
-      {/* Themes */}
       {themes.length > 0 && (
         <div className="themes">
           <strong style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--rog-cyan)', textTransform: 'uppercase', letterSpacing: 1 }}>
@@ -375,15 +467,31 @@ export function ReportView({ runId, topic, report }: Props) {
 
       <p className="narrative">{narrative}</p>
 
-      {/* Impact / Reason / Argument analysis */}
       <AnalysisSection impacts={impacts} reasons={reasons} arguments={args} />
 
       {aspects && aspects.length > 0 && <AspectSummary aspects={aspects} />}
       {source_facts && source_facts.length > 0 && <SourceFacts facts={source_facts} />}
-      {graph && graph.nodes.length > 0 && <ForceGraph graph={graph} />}
 
-      <QuoteList title="Top positive" quotes={top_positive} onCite={openCitation} />
-      <QuoteList title="Top negative" quotes={top_negative} onCite={openCitation} />
+      {/* Graph — clicking theme/sentiment/aspect nodes jumps to quotes */}
+      {graph && graph.nodes.length > 0 && (
+        <ForceGraph graph={graph} onNodeClick={handleGraphNodeClick} />
+      )}
+
+      <QuoteList
+        title="Top positive"
+        quotes={top_positive}
+        onCite={openCitation}
+        highlightedId={highlightedId}
+        sectionRef={posRef}
+      />
+      <QuoteList
+        title="Top negative"
+        quotes={top_negative}
+        onCite={openCitation}
+        highlightedId={highlightedId}
+        sectionRef={negRef}
+      />
+
       {loadingChunk && (
         <div style={{ padding: '8px 0' }}>
           <div className="skeleton skeleton-line skeleton-line--medium" />

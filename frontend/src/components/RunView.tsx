@@ -8,7 +8,7 @@
  *  - Expand search button (shown when completed)
  *  - Live event timeline + report
  */
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { cancelRun, createRun, expandRun, type RunRequest } from '../lib/api'
 import { useRunStream } from '../hooks/useRunStream'
 import { EventTimeline } from './EventTimeline'
@@ -38,6 +38,8 @@ export function RunView({ onStatusChange }: Props) {
   const [cancelling, setCancelling] = useState(false)
   const [expanding, setExpanding] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
+  // Bumped whenever a run completes so HistoryPanel knows to refresh.
+  const [historyKey, setHistoryKey] = useState(0)
 
   const { events, status } = useRunStream(runId)
 
@@ -46,10 +48,13 @@ export function RunView({ onStatusChange }: Props) {
     return (completed?.detail as { report?: Report } | undefined)?.report ?? null
   }, [events])
 
-  useMemo(() => {
+  useEffect(() => {
     const label = activeTopic ?? 'New Search'
     const tabStatus = cached && status !== 'running' ? 'cached' : status
     onStatusChange(tabStatus, label)
+    if (status === 'completed') {
+      setHistoryKey(k => k + 1)
+    }
   }, [status, activeTopic, cached, onStatusChange])
 
   async function handleSubmit(e: React.FormEvent) {
@@ -104,7 +109,8 @@ export function RunView({ onStatusChange }: Props) {
     setCached(true)  // historical runs are always "from cache"
   }
 
-  const isRunning   = status === 'running' || status === 'idle'
+  // 'idle' only exists when there's no runId yet — don't treat it as "running"
+  const isRunning   = status === 'running'
   const isCompleted = status === 'completed'
   const isCancelled = status === 'cancelled'
 
@@ -141,8 +147,8 @@ export function RunView({ onStatusChange }: Props) {
           {formError && <p className="error-msg">{formError}</p>}
         </div>
 
-        {/* History picker */}
-        <HistoryPanel onLoadRun={loadHistoricRun} />
+        {/* History picker — refreshKey bumped on each completion */}
+        <HistoryPanel onLoadRun={loadHistoricRun} refreshKey={historyKey} />
       </div>
 
       {/* ── Run status strip ── */}
@@ -191,7 +197,7 @@ export function RunView({ onStatusChange }: Props) {
               </button>
             )}
 
-            {(isRunning) && <span className="status-spinner" />}
+            {isRunning && <span className="status-spinner" />}
           </div>
         </div>
       )}

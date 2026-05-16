@@ -8,6 +8,8 @@ import { listRuns, type RunSummary } from '../lib/api'
 interface Props {
   /** Called when the user picks a historical run to reload. */
   onLoadRun: (runId: string, topic: string) => void
+  /** Bump this to force a history refresh (e.g. when a new run completes). */
+  refreshKey?: number
 }
 
 function sentimentBar(overall: RunSummary['overall']) {
@@ -28,7 +30,7 @@ function formatDate(iso: string) {
   }).format(new Date(iso))
 }
 
-export function HistoryPanel({ onLoadRun }: Props) {
+export function HistoryPanel({ onLoadRun, refreshKey }: Props) {
   const [open, setOpen] = useState(false)
   const [runs, setRuns] = useState<RunSummary[]>([])
   const [loading, setLoading] = useState(false)
@@ -40,7 +42,7 @@ export function HistoryPanel({ onLoadRun }: Props) {
       .then(data => setRuns(data))
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [open])
+  }, [open, refreshKey])
 
   return (
     <div className="history-panel">

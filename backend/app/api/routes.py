@@ -157,7 +157,7 @@ async def stream_events(run_id: str, db: AsyncSession = Depends(get_db)) -> Stre
 
     # Completed/errored runs replay stored events from the DB so cached runs
     # can be fully replayed by the frontend without needing a live queue.
-    if run.status in ("completed", "error"):
+    if run.status in ("completed", "error", "cancelled"):
         ev_result = await db.execute(
             select(RunEvent).where(RunEvent.run_id == run_id).order_by(RunEvent.seq)
         )
@@ -213,13 +213,10 @@ async def expand_run(
     if original is None:
         raise HTTPException(status_code=404, detail="Run not found")
 
-    expanded_settings = Settings(
-        **{
-            **settings.model_dump(),
-            "max_urls_per_run": settings.max_urls_per_run * 2,
-            "max_items_per_run": settings.max_items_per_run * 2,
-        }
-    )
+    expanded_settings = settings.model_copy(update={
+        "max_urls_per_run": settings.max_urls_per_run * 2,
+        "max_items_per_run": settings.max_items_per_run * 2,
+    })
     run = Run(topic=original.topic, freshness=None, status="pending")
     db.add(run)
     await db.commit()

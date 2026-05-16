@@ -209,9 +209,13 @@ function NodePopover({ node, x, y, onClose }: {
 
 // ── Component ─────────────────────────────────────────────────────────────
 
-interface Props { graph: IdeaGraph }
+interface Props {
+  graph: IdeaGraph
+  /** Called when the user left-clicks a non-source node (e.g. sentiment/theme/aspect). */
+  onNodeClick?: (node: GraphNode) => void
+}
 
-export function ForceGraph({ graph }: Props) {
+export function ForceGraph({ graph, onNodeClick }: Props) {
   const { positions, onContextMenu } = useForce(graph.nodes, graph.edges)
   const [popover, setPopover] = useState<PopoverState | null>(null)
 
@@ -219,8 +223,9 @@ export function ForceGraph({ graph }: Props) {
 
   function handleLeftClick(node: GraphNode, e: React.MouseEvent) {
     if (node.kind === 'source' && (node.urls?.length || node.url)) {
-      // Show link list popover
       setPopover({ nodeId: node.id, x: e.clientX + 12, y: e.clientY + 4 })
+    } else if (node.kind === 'sentiment' || node.kind === 'theme' || node.kind === 'aspect') {
+      onNodeClick?.(node)
     } else if (node.url) {
       window.open(node.url, '_blank')
     }
@@ -230,7 +235,7 @@ export function ForceGraph({ graph }: Props) {
     <div className="insight-section">
       <h3>
         Idea graph
-        <span className="graph-hint">left-click = links · right-click drag = reposition</span>
+        <span className="graph-hint">left-click theme/sentiment = jump to quotes · left-click source = links · right-drag = reposition</span>
       </h3>
 
       <svg
@@ -268,11 +273,12 @@ export function ForceGraph({ graph }: Props) {
           const r = nodeRadius(node)
           const color = KIND_COLOR[node.kind] ?? '#4a6080'
           const hasLinks = node.kind === 'source' && (node.urls?.length || node.url)
+          const isClickable = hasLinks || node.kind === 'sentiment' || node.kind === 'theme' || node.kind === 'aspect'
           return (
             <g
               key={node.id}
               className="graph-node"
-              style={{ cursor: hasLinks ? 'pointer' : 'default' }}
+              style={{ cursor: isClickable ? 'pointer' : 'default' }}
               onClick={e => handleLeftClick(node, e)}
               onContextMenu={e => onContextMenu(node.id, e)}
             >

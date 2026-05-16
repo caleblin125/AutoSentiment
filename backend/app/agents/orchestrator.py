@@ -141,6 +141,10 @@ async def run_research(run_id: str, topic: str, freshness: str | None, settings:
             ]
             for future in asyncio.as_completed(fetch_tasks):
                 url, items, fetch_ms = await future
+                if is_cancelled(run_id):
+                    for t in fetch_tasks:
+                        t.cancel()
+                    raise _CancelledByUser()
                 remaining = settings.max_items_per_run - len(fetched_items)
                 selected = items[:remaining] if remaining > 0 else []
                 fetched_items.extend(selected)
@@ -150,12 +154,13 @@ async def run_research(run_id: str, topic: str, freshness: str | None, settings:
                     if selected
                     else classify_source_type(url).value
                 )
+                domain = _domain_from_url(url)
                 await emit(
                     SSEEventType.URL_FETCHED,
-                    "URL fetched",
+                    f"Fetched {len(selected)} items from {domain}",
                     {
                         "url": url,
-                        "domain": _domain_from_url(url),
+                        "domain": domain,
                         "source_type": source_type,
                         "item_count": len(selected),
                         "fetch_ms": round(fetch_ms, 1),
