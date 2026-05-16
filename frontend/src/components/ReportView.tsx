@@ -14,7 +14,8 @@ import { providerName, faviconUrl } from '../lib/providers'
 import { ErrorBoundary } from './ErrorBoundary'
 import { EvidenceModal } from './EvidenceModal'
 import { FactCheckSection } from './ClaimsSection'
-import { SourceFacts, SOURCE_TYPE_LABEL } from './SourceFacts'
+import { SourceFacts } from './SourceFacts'
+import { SOURCE_TYPE_LABEL } from '../lib/providers'
 import { ForceGraph } from './ForceGraph'
 
 interface Props { runId: string; topic: string; report: Report; onSearchTopic?: (topic: string) => void }

@@ -1,15 +1,6 @@
 import { useState } from 'react'
 import type { SourceFact } from '../lib/api'
-import { KNOWN_PROVIDERS, providerName } from '../lib/providers'
-
-export const SOURCE_TYPE_LABEL: Record<string, string> = {
-  reddit: 'Reddit',
-  news:   'News Media',
-  social: 'Social Media',
-  forum:  'Forums',
-  video:  'Video',
-  web:    'Web / Blogs',
-}
+import { KNOWN_PROVIDERS, SOURCE_TYPE_LABEL, providerName } from '../lib/providers'
 
 const SOURCE_TYPE_ICON: Record<string, string> = {
   reddit: '⬤',

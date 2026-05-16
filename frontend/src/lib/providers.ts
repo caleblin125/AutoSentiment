@@ -1,3 +1,12 @@
+export const SOURCE_TYPE_LABEL: Record<string, string> = {
+  reddit: 'Reddit',
+  news:   'News Media',
+  social: 'Social Media',
+  forum:  'Forums',
+  video:  'Video',
+  web:    'Web / Blogs',
+}
+
 export const KNOWN_PROVIDERS: Record<string, string> = {
   'reddit.com': 'Reddit', 'news.ycombinator.com': 'Hacker News', 'youtube.com': 'YouTube',
   'x.com': 'X / Twitter', 'twitter.com': 'X / Twitter', 'threads.net': 'Threads',
