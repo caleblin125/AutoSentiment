@@ -600,6 +600,14 @@ input:focus, select:focus, button:focus-visible {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.sent-val--pos { color: var(--positive); }
+.sent-val--neg { color: var(--rog-red); }
+.sent-label--pos { color: var(--positive); }
+.sent-label--neu { color: var(--neutral); }
+.sent-label--neg { color: var(--rog-red); }
+.map-hint { font-size: 10px; color: var(--text); font-family: var(--mono); }
+.map-certainty { color: var(--text); }
+.loading-chunk-wrap { padding: 8px 0; }
 
 .graph-controls {
   display: flex;
@@ -1095,6 +1103,7 @@ button.btn-secondary:hover:not(:disabled) {
   color: var(--text-strong);
   box-shadow: none;
 }
+button.btn-secondary--compact { font-size: 11px; height: 26px; padding: 0 10px; }
 
 button[type="submit"] {
   display: inline-flex;
@@ -1470,6 +1479,7 @@ button[type="submit"] {
   font-weight: 700;
   color: var(--rog-cyan);
 }
+.count-badge--mono { font-family: var(--mono); font-size: 11px; }
 
 .event-source-badge {
   display: inline-flex;
@@ -2681,6 +2691,7 @@ button[type="submit"] {
 }
 
 .timeline-header h2 { margin: 0; }
+.timeline-header-controls { display: flex; gap: 8px; align-items: center; }
 
 .timeline-count {
   font-family: var(--mono);
