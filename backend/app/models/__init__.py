@@ -61,3 +61,24 @@ class BraveQuotaUsage(Base):
     month: Mapped[str] = mapped_column(String, primary_key=True)
     query_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
+
+
+class BraveResultCache(Base):
+    """Persistent Brave Search result cache keyed by query, freshness, and count."""
+    __tablename__ = "brave_result_cache"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    cache_key: Mapped[str] = mapped_column(String, nullable=False, unique=True, index=True)
+    result_urls: Mapped[list] = mapped_column(JSON, nullable=False)
+    result_raw: Mapped[dict] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
+
+
+class SentimentCache(Base):
+    """Cache sentiment results by normalized snippet hash to avoid duplicate model calls."""
+    __tablename__ = "sentiment_cache"
+
+    snippet_hash: Mapped[str] = mapped_column(String, primary_key=True)
+    label: Mapped[str] = mapped_column(String, nullable=False)
+    summary: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))

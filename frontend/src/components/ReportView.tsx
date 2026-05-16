@@ -299,6 +299,11 @@ function SourceGroupCard({ group }: { group: SourceGroup }) {
                 </div>
                 <span style={{ fontSize: 10, color: 'var(--text)', fontFamily: 'var(--mono)' }}>
                   {fact.count} items
+                  {fact.credibility !== undefined && (
+                    <span style={{ marginLeft: 6, color: fact.credibility >= 0.7 ? 'var(--positive)' : fact.credibility >= 0.4 ? 'var(--neutral)' : 'var(--rog-red)' }}>
+                      {Math.round(fact.credibility * 100)}% cred
+                    </span>
+                  )}
                 </span>
                 <div className="source-fact-bar">
                   <div style={{ flex: (fact.labels?.positive ?? 0) / dtotal, background: 'var(--positive)' }} />

@@ -7,7 +7,7 @@ from app.tools import search
 
 @pytest.fixture(autouse=True)
 def clear_search_cache() -> None:
-    search._search_cache.clear()
+    search._memory_cache.clear()
 
 
 @pytest.mark.asyncio
@@ -103,7 +103,8 @@ def test_extract_result_urls_supports_legacy_top_level_shape() -> None:
 
 
 def test_is_cached_search_reports_valid_cache_entry() -> None:
-    search._search_cache[("topic", "pm", 5)] = (search.monotonic(), ["https://example.com"])
+    cache_key = search._make_cache_key("topic", "pm", 5)
+    search._memory_cache[cache_key] = (search.monotonic(), ["https://example.com"])
 
     assert search.is_cached_search(" Topic ", freshness="pm", count=5)
     assert not search.is_cached_search("Topic", freshness="pw", count=5)

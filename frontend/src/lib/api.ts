@@ -127,6 +127,7 @@ export interface FactClaim {
   evidence_ids: string[]
   source_types: string[]
   needs_verification: boolean
+  best_source_credibility?: number
 }
 
 export interface FactCheck {
@@ -197,6 +198,7 @@ export interface SourceFact {
   source_type: string
   count: number
   labels: Record<string, number>
+  credibility?: number
 }
 
 export interface IdeaGraph {

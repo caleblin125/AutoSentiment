@@ -66,6 +66,7 @@ def _get_logger(run_id: str) -> StructuredLogger:
     return StructuredLogger(logger, {"run_id": run_id})
 
 _FETCH_CONCURRENCY = 8
+_FETCH_CONCURRENCY_PER_DOMAIN = 2
 _FETCH_TIMEOUT_SECONDS = 15.0
 _FETCH_USER_AGENT = (
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
@@ -202,7 +203,7 @@ async def run_research(
                         await record_brave_query(db)
                         await db.commit()
                     search_results = await asyncio.wait_for(
-                        brave_search(query, freshness=freshness, count=remaining, settings=settings),
+                        brave_search(query, freshness=freshness, count=remaining, settings=settings, db=db),
                         timeout=12.0,
                     )
                 except asyncio.TimeoutError:
@@ -228,7 +229,12 @@ async def run_research(
             await emit(SSEEventType.FETCH_STARTED, f"Fetching {len(urls)} URLs", {"url_count": len(urls)})
             await db.commit()
 
-            fetch_sem = asyncio.Semaphore(_FETCH_CONCURRENCY)
+            global_sem = asyncio.Semaphore(_FETCH_CONCURRENCY)
+            domain_sems: dict[str, asyncio.Semaphore] = {}
+            def _domain_sem(domain: str) -> asyncio.Semaphore:
+                if domain not in domain_sems:
+                    domain_sems[domain] = asyncio.Semaphore(_FETCH_CONCURRENCY_PER_DOMAIN)
+                return domain_sems[domain]
             fetched_items: list[FetchedItem] = []  # type: ignore[name-defined]
             stage_started = perf_counter()
 
@@ -238,7 +244,7 @@ async def run_research(
                 follow_redirects=True,
             ) as fetch_client:
                 fetch_tasks = [
-                    asyncio.create_task(_fetch_url_timed(url, fetch_sem, fetch_client))
+                    asyncio.create_task(_fetch_url_timed(url, global_sem, fetch_client, _domain_sem(_domain_from_url(url))))
                     for url in urls
                 ]
                 for future in asyncio.as_completed(fetch_tasks):
@@ -275,10 +281,11 @@ async def run_research(
             sentiment_queue = SentimentQueue(settings, cancel_check=_cancel_check)
             chunks: list[EvidenceChunk] = []
             sentiment_tasks: dict[str, asyncio.Task] = {}
+            pending_cache: dict[str, tuple[str, str]] = {}  # snippet_hash -> (label, summary)
 
             stage_started = perf_counter()
             analyze_tasks = [
-                asyncio.create_task(_analyze_item_cached(sentiment_queue, item, sentiment_tasks))
+                asyncio.create_task(_analyze_item_cached(sentiment_queue, item, sentiment_tasks, db))
                 for item in fetched_items
             ]
             for future in asyncio.as_completed(analyze_tasks):
@@ -286,7 +293,7 @@ async def run_research(
                     for t in analyze_tasks:
                         t.cancel()
                     raise _CancelledByUser()
-                item, result, duration_ms = await future
+                item, result, duration_ms, cache_key = await future
                 chunk = EvidenceChunk(
                     run_id=run_id,
                     url=item.url,
@@ -298,6 +305,12 @@ async def run_research(
                 db.add(chunk)
                 await db.flush()
                 chunks.append(chunk)
+
+                # Collect sentiment cache entry for bulk insert.
+                import hashlib
+                snippet_hash = hashlib.sha256(cache_key.encode()).hexdigest()
+                if snippet_hash not in pending_cache:
+                    pending_cache[snippet_hash] = (result.label.value, result.summary)
 
                 await emit(
                     SSEEventType.ITEM_ANALYZED,
@@ -313,6 +326,19 @@ async def run_research(
                     },
                 )
                 await db.commit()
+
+            # Bulk-insert sentiment cache entries (deduplicated by dict).
+            if pending_cache:
+                from sqlalchemy import select as _sel
+                from app.models import SentimentCache
+                for snippet_hash, (label, summary) in pending_cache.items():
+                    existing = (await db.execute(
+                        _sel(SentimentCache).where(SentimentCache.snippet_hash == snippet_hash)
+                    )).scalar_one_or_none()
+                    if existing is None:
+                        db.add(SentimentCache(snippet_hash=snippet_hash, label=label, summary=summary))
+                await db.flush()
+
             timings["sentiment_ms"] = _elapsed_ms(stage_started)
             timings["sentiment_model_calls"] = float(len(sentiment_tasks))
             timings["sentiment_cache_hits"] = float(max(0, len(fetched_items) - len(sentiment_tasks)))
@@ -463,15 +489,24 @@ async def _fetch_url_timed(
     url: str,
     sem: asyncio.Semaphore,
     client: httpx.AsyncClient | None = None,
+    domain_sem: asyncio.Semaphore | None = None,
 ) -> tuple[str, list, float]:
-    """Fetch items from one URL, gated by sem, returning (url, items, duration_ms)."""
+    """Fetch items from one URL, gated by global + per-domain sems, returning (url, items, duration_ms)."""
     t0 = perf_counter()
     async with sem:
-        try:
-            items = await asyncio.wait_for(fetch_items(url, client=client), timeout=_FETCH_TIMEOUT_SECONDS)
-        except asyncio.TimeoutError:
-            logger.warning("Fetch timed out for URL: %s", url)
-            items = []
+        if domain_sem is not None:
+            async with domain_sem:
+                try:
+                    items = await asyncio.wait_for(fetch_items(url, client=client), timeout=_FETCH_TIMEOUT_SECONDS)
+                except asyncio.TimeoutError:
+                    logger.warning("Fetch timed out for URL: %s", url)
+                    items = []
+        else:
+            try:
+                items = await asyncio.wait_for(fetch_items(url, client=client), timeout=_FETCH_TIMEOUT_SECONDS)
+            except asyncio.TimeoutError:
+                logger.warning("Fetch timed out for URL: %s", url)
+                items = []
     return url, items, _elapsed_ms(t0)
 
 
@@ -486,16 +521,39 @@ async def _analyze_item_cached(
     sentiment_queue: SentimentQueue,
     item,
     sentiment_tasks: dict[str, asyncio.Task],
+    db = None,
 ) -> tuple:
-    """Share one model call across exact duplicate snippets within a run."""
+    """Share one model call across exact duplicate snippets within a run.
+    Also checks the persistent sentiment cache (SQLite) before calling the model."""
     started_at = perf_counter()
     key = _sentiment_cache_key(item.snippet)
     task = sentiment_tasks.get(key)
-    if task is None:
-        task = asyncio.create_task(sentiment_queue.analyze(item.snippet))
-        sentiment_tasks[key] = task
+    if task is not None:
+        result = await task
+        return item, result, _elapsed_ms(started_at), key
+
+    # Check persistent sentiment cache.
+    if db is not None:
+        from sqlalchemy import select as _sel2
+        from app.models import SentimentCache
+        import hashlib
+        snippet_hash = hashlib.sha256(key.encode()).hexdigest()
+        row = (await db.execute(
+            _sel2(SentimentCache).where(SentimentCache.snippet_hash == snippet_hash)
+        )).scalar_one_or_none()
+        if row is not None:
+            from app.agents.types import SentimentResult
+            result = SentimentResult(label=row.label, summary=row.summary)
+            async def _cached_result():
+                return result
+            sentiment_tasks[key] = asyncio.ensure_future(_cached_result())
+            return item, result, _elapsed_ms(started_at), key
+
+    task = asyncio.create_task(sentiment_queue.analyze(item.snippet))
+    sentiment_tasks[key] = task
     result = await task
-    return item, result, _elapsed_ms(started_at)
+
+    return item, result, _elapsed_ms(started_at), key
 
 
 def _sentiment_cache_key(snippet: str) -> str:

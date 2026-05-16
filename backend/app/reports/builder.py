@@ -72,13 +72,46 @@ _CREDIBLE_DOMAINS = frozenset({
     "mit.edu", "stanford.edu", "harvard.edu", "ieee.org", "acm.org",
 })
 
+_HIGH_CREDIBILITY = frozenset({
+    "reuters.com", "apnews.com", "bbc.com", "bbc.co.uk", "nytimes.com",
+    "wsj.com", "bloomberg.com", "ft.com", "economist.com",
+    "nature.com", "science.org", "who.int", "cdc.gov",
+})
 
-def _is_credible(url: str) -> bool:
+_MEDIUM_CREDIBILITY = frozenset({
+    "theguardian.com", "cnn.com", "washingtonpost.com", "politico.com",
+    "npr.org", "aljazeera.com", "dw.com", "techcrunch.com",
+    "theverge.com", "wired.com", "arstechnica.com",
+    "sciencedirect.com", "pubmed.ncbi.nlm.nih.gov", "europa.eu", "un.org",
+    "mit.edu", "stanford.edu", "harvard.edu", "ieee.org", "acm.org",
+    "marketwatch.com", "cnbc.com", "investopedia.com", "barrons.com",
+})
+
+
+def _credibility_score(url: str) -> float:
+    """Return a 0-1 credibility score based on domain reputation and signals."""
     try:
         domain = urlparse(url).netloc.removeprefix("www.")
-        return domain in _CREDIBLE_DOMAINS or any(domain.endswith(f".{d}") for d in _CREDIBLE_DOMAINS)
     except Exception:
-        return False
+        return 0.0
+    if domain in _HIGH_CREDIBILITY or any(domain.endswith(f".{d}") for d in _HIGH_CREDIBILITY):
+        return 0.95
+    if domain in _MEDIUM_CREDIBILITY or any(domain.endswith(f".{d}") for d in _MEDIUM_CREDIBILITY):
+        return 0.75
+    if domain.endswith((".gov", ".edu")):
+        return 0.85
+    if domain.endswith(".org"):
+        return 0.55
+    # Social/forum domains get lower base scores.
+    if any(s in domain for s in ("reddit", "twitter", "x.com", "facebook", "tiktok", "quora")):
+        return 0.25
+    if any(s in domain for s in ("youtube", "twitch", "medium", "substack")):
+        return 0.35
+    return 0.50  # Unknown domain: neutral.
+
+
+def _is_credible(url: str) -> bool:
+    return _credibility_score(url) >= 0.70
 
 
 def pick_top_quotes(chunks: list[EvidenceChunk], label: SentimentLabel, n: int = 5) -> list[dict]:
@@ -224,12 +257,14 @@ def compute_source_facts(chunks: list[EvidenceChunk], limit: int = 10) -> list[d
             (source.value for source in SourceType),
             key=lambda source: counts[source],
         )
+        first_url = next((c.url for c in chunks if urlparse(c.url).netloc == domain), f"https://{domain}")
         facts.append(
             {
                 "domain": domain,
                 "source_type": source_type,
                 "count": counts["count"],
                 "labels": labels,
+                "credibility": round(_credibility_score(first_url), 2),
             }
         )
     return sorted(facts, key=lambda item: item["count"], reverse=True)[:limit]
@@ -341,10 +376,13 @@ def compute_claims(chunks: list[EvidenceChunk], limit: int = 10) -> dict:
     for claim in grouped.values():
         corroboration = len(claim["supporting_domains"])
         directness = 1 if any(st in {"news", "web"} for st in claim["source_types"]) else 0
-        claim["confidence"] = min(0.95, 0.35 + 0.15 * corroboration + 0.1 * directness)
+        # Weight credibility by the best supporting source.
+        best_cred = max((_credibility_score(f"https://{d}") for d in claim["supporting_domains"]), default=0.35)
+        claim["confidence"] = round(min(0.95, 0.2 + 0.15 * corroboration + 0.1 * directness + 0.15 * best_cred), 2)
         claim["needs_verification"] = corroboration < 2 and not any(
             domain.endswith((".gov", ".edu", ".org")) for domain in claim["supporting_domains"]
-        )
+        ) and best_cred < 0.6
+        claim["best_source_credibility"] = round(best_cred, 2)
         claims.append(claim)
 
     claims.sort(key=lambda item: (item["needs_verification"], -len(item["supporting_domains"])))
