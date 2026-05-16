@@ -41,16 +41,16 @@ async def test_run_research_completes_and_persists_report(monkeypatch, session_f
         "fetch_items",
         lambda url, **_kw: _async([FetchedItem(snippet=f"snippet {url}", url=url, source_type=SourceType.REDDIT if "reddit" in url else SourceType.NEWS)]),
     )
-    monkeypatch.setattr(
-        orchestrator.SentimentQueue,
-        "analyze",
-        lambda _self, snippet: _async(
+    async def fake_batch(_self, snippets: list[str]) -> list[SentimentResult]:
+        return [
             SentimentResult(
-                label=SentimentLabel.POSITIVE if "reddit" in snippet else SentimentLabel.NEGATIVE,
+                label=SentimentLabel.POSITIVE if "reddit" in s else SentimentLabel.NEGATIVE,
                 summary="mock summary",
             )
-        ),
-    )
+            for s in snippets
+        ]
+
+    monkeypatch.setattr(orchestrator.SentimentQueue, "analyze_batch", fake_batch)
     monkeypatch.setattr(
         orchestrator,
         "synthesize_report",
@@ -389,12 +389,12 @@ async def test_run_research_deduplicates_identical_sentiment_snippets(monkeypatc
         ]),
     )
 
-    async def fake_analyze(_self, _snippet):
+    async def fake_analyze_batch(_self, snippets: list[str]) -> list[SentimentResult]:
         nonlocal analyze_calls
-        analyze_calls += 1
-        return SentimentResult(label=SentimentLabel.NEUTRAL, summary="ok")
+        analyze_calls += len(snippets)
+        return [SentimentResult(label=SentimentLabel.NEUTRAL, summary="ok") for _ in snippets]
 
-    monkeypatch.setattr(orchestrator.SentimentQueue, "analyze", fake_analyze)
+    monkeypatch.setattr(orchestrator.SentimentQueue, "analyze_batch", fake_analyze_batch)
     monkeypatch.setattr(orchestrator, "synthesize_report", lambda *_a, **_kw: _async({"themes": [], "narrative": ""}))
 
     async with session_factory() as db:
