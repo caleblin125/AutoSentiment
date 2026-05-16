@@ -315,9 +315,9 @@ function TopicDetailPopover({ node, runId, x, y, onClose }: {
         </div>
 
         {loading && (
-          <div style={{ padding: '12px 14px' }}>
+          <div className="topic-detail-loading">
             <div className="skeleton skeleton-line skeleton-line--full" />
-            <div className="skeleton skeleton-line skeleton-line--medium" style={{ marginTop: 8 }} />
+            <div className="skeleton skeleton-line skeleton-line--medium skeleton-line--mb" />
           </div>
         )}
 
@@ -333,7 +333,7 @@ function TopicDetailPopover({ node, runId, x, y, onClose }: {
           <div key={chunk.id} className="topic-detail-evidence">
             <p className="topic-detail-summary">"{summary}"</p>
             <div className="topic-detail-meta">
-              <span className={`sentiment-chip sentiment-chip--${chunk.label}`} style={{ fontSize: 9 }}>
+              <span className={`sentiment-chip sentiment-chip--${chunk.label} sentiment-chip--xs`}>
                 {chunk.label}
               </span>
               <a
@@ -770,8 +770,7 @@ export function ForceGraph({ graph, runId, onNodeClick }: Props) {
             {(selectedNode.kind === 'theme' || selectedNode.kind === 'aspect') && selectedNode.evidence_ids?.length ? (
               <button
                 type="button"
-                className="btn-secondary"
-                style={{ marginTop: 10, fontSize: 11 }}
+                className="btn-secondary btn-secondary--compact graph-evidence-btn"
                 onClick={() => setTopicDetail({ node: selectedNode, x: 200, y: 200 })}
               >
                 View evidence ↗

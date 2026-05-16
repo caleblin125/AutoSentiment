@@ -1461,6 +1461,7 @@ button[type="submit"] {
 .sentiment-chip--negative, .sentiment-chip--sm.sentiment-chip--negative { background: var(--negative-dim); color: var(--rog-red); }
 
 .sentiment-chip--sm { min-height: 16px; font-size: 9px; padding: 1px 5px; }
+.sentiment-chip--xs { font-size: 9px; }
 
 .duration-badge {
   flex: 0 0 auto;
@@ -2114,6 +2115,9 @@ button[type="submit"] {
   color: var(--rog-cyan);
   text-decoration: none;
 }
+
+.topic-detail-loading { padding: 12px 14px; }
+.graph-evidence-btn { margin-top: 10px; }
 
 .topic-detail-empty {
   padding: 14px;
