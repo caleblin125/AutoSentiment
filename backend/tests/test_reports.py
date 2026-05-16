@@ -221,3 +221,114 @@ def test_use_case_insights_and_chart_data_support_entertainment_mode() -> None:
     assert chart_data["source_mix"]
     assert chart_data["aspect_matrix"]
     assert any(aspect["aspect"] in {"story", "casting", "marketing", "commercial potential"} for aspect in chart_data["aspect_matrix"])
+
+
+def _make_chunk(
+    cid: str,
+    url: str,
+    snippet: str,
+    label: str = "neutral",
+    summary: str | None = None,
+    source_type: str = "news",
+) -> EvidenceChunk:
+    return EvidenceChunk(
+        id=cid,
+        run_id="r",
+        url=url,
+        source_type=source_type,
+        snippet=snippet,
+        label=label,
+        summary=summary or snippet[:80],
+    )
+
+
+def test_compute_threads_returns_empty_when_no_recurring_phrases() -> None:
+    """Single-mention phrases must not become threads."""
+    from app.reports.builder import compute_threads
+
+    chunks = [
+        _make_chunk("a", "https://news.example/a", "The release date was leaked early."),
+        _make_chunk("b", "https://reddit.com/r/show/b", "Totally different content about pricing strategy."),
+    ]
+
+    threads = compute_threads(chunks, "Show")
+
+    assert threads == [] or all(t["total_mentions"] >= 2 for t in threads)
+
+
+def test_compute_threads_clusters_recurring_phrases_with_provenance() -> None:
+    """Recurring phrases across sources form a thread with sentiment, domains, dates."""
+    from app.reports.builder import compute_threads
+
+    chunks = [
+        _make_chunk("a", "https://news.example/r1", "Fans complained about microtransactions and unfair pricing.", label="negative", summary="microtransactions unfair pricing"),
+        _make_chunk("b", "https://reddit.com/r/games/2", "The microtransactions feel predatory and pricing is unfair.", label="negative", summary="microtransactions unfair pricing"),
+        _make_chunk("c", "https://trade.example/3", "Critics also flagged microtransactions as predatory monetization.", label="negative", summary="microtransactions predatory"),
+    ]
+
+    threads = compute_threads(chunks, "Game")
+
+    assert threads, "Expected at least one thread"
+    top = threads[0]
+    assert top["total_mentions"] >= 2
+    assert top["evidence_count"] >= 2
+    assert top["source_count"] >= 2
+    assert top["dominant_sentiment"] == "negative"
+    assert 0.0 <= top["positive"] <= 1.0
+    assert 0.0 <= top["negative"] <= 1.0
+    assert abs((top["positive"] + top["neutral"] + top["negative"]) - 1.0) < 1e-6
+    assert top["search_query"]
+    assert top["domains"]
+    assert any("microtransactions" in p or "pricing" in p for p in top["cluster"])
+
+
+def test_compute_threads_excludes_topic_tokens_from_phrases() -> None:
+    """Topic tokens themselves must not seed threads (otherwise every chunk would match)."""
+    from app.reports.builder import compute_threads
+
+    chunks = [
+        _make_chunk("a", "https://news.example/a", "Cyberpunk story missions feel rushed and incomplete."),
+        _make_chunk("b", "https://news.example/b", "Cyberpunk story missions also drag at times."),
+    ]
+
+    threads = compute_threads(chunks, "Cyberpunk")
+
+    for t in threads:
+        assert "cyberpunk" not in t["phrase"].lower(), f"Topic token leaked into thread: {t['phrase']}"
+
+
+def test_compute_threads_respects_limit() -> None:
+    """The limit kwarg caps thread output."""
+    from app.reports.builder import compute_threads
+
+    chunks = []
+    for i in range(8):
+        phrase = f"alpha{i} beta{i}"
+        chunks.append(_make_chunk(f"x{i}a", f"https://news.example/{i}a", f"This article notes {phrase} discussed across players."))
+        chunks.append(_make_chunk(f"x{i}b", f"https://reddit.com/r/x/{i}b", f"Players also mention {phrase} in another way."))
+
+    threads = compute_threads(chunks, "Game", limit=3)
+
+    assert len(threads) <= 3
+
+
+def test_compute_threads_date_range_uses_retrieved_at_dates() -> None:
+    """Threads expose a date_range derived from chunk retrieval dates."""
+    from datetime import datetime, UTC
+    from app.reports.builder import compute_threads
+
+    early = _make_chunk("e1", "https://news.example/e1", "Patch notes reveal balance changes and improved netcode.")
+    early.retrieved_at = datetime(2026, 1, 5, tzinfo=UTC)
+    late = _make_chunk("e2", "https://reddit.com/r/g/e2", "Players still talk about balance changes after the patch.")
+    late.retrieved_at = datetime(2026, 3, 12, tzinfo=UTC)
+
+    threads = compute_threads([early, late], "Game")
+
+    assert threads, "Expected at least one thread"
+    matching = [t for t in threads if t["date_range"]]
+    assert matching, "Expected at least one thread with a date_range"
+    top = matching[0]
+    start, end = top["date_range"]
+    assert start <= end
+    assert start in {"2026-01-05", "2026-03-12"}
+    assert end in {"2026-01-05", "2026-03-12"}
