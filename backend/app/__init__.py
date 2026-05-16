@@ -1,0 +1,1 @@
+"""AutoSentiment FastAPI application package."""

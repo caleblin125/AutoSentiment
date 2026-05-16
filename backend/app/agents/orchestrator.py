@@ -1,0 +1,3 @@
+"""Agent entrypoint — implement multi-step loop in agents/IMPLEMENTATION.md."""
+
+# Placeholder: async def run_research(run_id: str) -> None: ...
