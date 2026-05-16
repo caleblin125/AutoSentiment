@@ -26,6 +26,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _FETCH_CONCURRENCY = 8
+_FETCH_TIMEOUT_SECONDS = 15.0
 
 
 class _CancelledByUser(Exception):
@@ -38,6 +39,8 @@ async def run_research(
     freshness: str | None,
     settings: Settings,
     skip_urls: frozenset[str] = frozenset(),
+    research_depth: str = "standard",
+    depth_budget: dict | None = None,
 ) -> None:
     """End-to-end pipeline for one run. Runs as a background asyncio task.
 
@@ -117,6 +120,7 @@ async def run_research(
                 ),
                 topic,
             )
+            queries = queries[: settings.max_queries_per_run]
             timings["query_expansion_ms"] = _elapsed_ms(stage_started)
 
             if is_cancelled(run_id):
@@ -208,10 +212,11 @@ async def run_research(
             # ── Stage 4: sentiment analysis (parallel, capped by SentimentQueue) ──
             sentiment_queue = SentimentQueue(settings, cancel_check=_cancel_check)
             chunks: list[EvidenceChunk] = []
+            sentiment_tasks: dict[str, asyncio.Task] = {}
 
             stage_started = perf_counter()
             analyze_tasks = [
-                asyncio.create_task(_analyze_item(sentiment_queue, item))
+                asyncio.create_task(_analyze_item_cached(sentiment_queue, item, sentiment_tasks))
                 for item in fetched_items
             ]
             for future in asyncio.as_completed(analyze_tasks):
@@ -247,6 +252,8 @@ async def run_research(
                 )
                 await db.commit()
             timings["sentiment_ms"] = _elapsed_ms(stage_started)
+            timings["sentiment_model_calls"] = float(len(sentiment_tasks))
+            timings["sentiment_cache_hits"] = float(max(0, len(fetched_items) - len(sentiment_tasks)))
 
             # ── Stage 5: synthesis ──────────────────────────────────────────
             counts = compute_counts(chunks)
@@ -254,7 +261,8 @@ async def run_research(
             top_negative = pick_top_quotes(chunks, SentimentLabel.NEGATIVE)
             aspects = compute_aspects(chunks, topic)
             source_facts = compute_source_facts(chunks)
-            chunks_summary = _summaries_for_synthesis(chunks)
+            synthesis_limit = _synthesis_limit(depth_budget)
+            chunks_summary = _summaries_for_synthesis(chunks, limit=synthesis_limit)
 
             await emit(SSEEventType.SYNTHESIS_STARTED, "Synthesis started")
             await db.commit()
@@ -268,6 +276,12 @@ async def run_research(
             timings["total_ms"] = _elapsed_ms(run_started_at)
 
             report = {
+                "metadata": {
+                    "topic": topic,
+                    "freshness": freshness,
+                    "research_depth": research_depth,
+                    "depth_budget": depth_budget or {},
+                },
                 **counts,
                 "top_positive": top_positive,
                 "top_negative": top_negative,
@@ -319,11 +333,24 @@ def _domain_from_url(url: str) -> str:
     return urlparse(url).netloc.removeprefix("www.")
 
 
+def _synthesis_limit(depth_budget: dict | None) -> int:
+    if not depth_budget:
+        return 60
+    value = depth_budget.get("synthesis_sample_size")
+    if not isinstance(value, int):
+        return 60
+    return max(12, min(value, 240))
+
+
 async def _fetch_url_timed(url: str, sem: asyncio.Semaphore) -> tuple[str, list, float]:
     """Fetch items from one URL, gated by sem, returning (url, items, duration_ms)."""
     t0 = perf_counter()
     async with sem:
-        items = await fetch_items(url)
+        try:
+            items = await asyncio.wait_for(fetch_items(url), timeout=_FETCH_TIMEOUT_SECONDS)
+        except asyncio.TimeoutError:
+            logger.warning("Fetch timed out for URL: %s", url)
+            items = []
     return url, items, _elapsed_ms(t0)
 
 
@@ -332,6 +359,26 @@ async def _analyze_item(sentiment_queue: SentimentQueue, item) -> tuple:
     started_at = perf_counter()
     result = await sentiment_queue.analyze(item.snippet)
     return item, result, _elapsed_ms(started_at)
+
+
+async def _analyze_item_cached(
+    sentiment_queue: SentimentQueue,
+    item,
+    sentiment_tasks: dict[str, asyncio.Task],
+) -> tuple:
+    """Share one model call across exact duplicate snippets within a run."""
+    started_at = perf_counter()
+    key = _sentiment_cache_key(item.snippet)
+    task = sentiment_tasks.get(key)
+    if task is None:
+        task = asyncio.create_task(sentiment_queue.analyze(item.snippet))
+        sentiment_tasks[key] = task
+    result = await task
+    return item, result, _elapsed_ms(started_at)
+
+
+def _sentiment_cache_key(snippet: str) -> str:
+    return " ".join(snippet.casefold().split())
 
 
 _CREDIBLE_DOMAINS_SET = frozenset({

@@ -7,7 +7,7 @@
  * Close tab = kill task: when a tab with a running task is closed, the
  * backend cancel endpoint is called before removing it from state.
  */
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { TabBar } from './components/TabBar'
 import { RunView } from './components/RunView'
 import { DevOverlay } from './components/DevOverlay'
@@ -50,6 +50,41 @@ function saveSession(tabs: Tab[], activeId: string) {
   } catch {
     // storage quota — ignore
   }
+}
+
+function TabPanel({
+  tab,
+  activeId,
+  handleStatusChange,
+  openRunInNewTab,
+  devMode,
+}: {
+  tab: Tab
+  activeId: string
+  handleStatusChange: (tabId: string, status: string, label: string, runId?: string) => void
+  openRunInNewTab: (runId: string, topic: string) => void
+  devMode: boolean
+}) {
+  const onStatusChange = useCallback(
+    (status: string, label: string, runId?: string) => handleStatusChange(tab.id, status, label, runId),
+    [handleStatusChange, tab.id],
+  )
+
+  return (
+    <div
+      className="app-body"
+      role="tabpanel"
+      aria-labelledby={`tab-${tab.id}`}
+      style={tab.id !== activeId ? { display: 'none' } : undefined}
+    >
+      <RunView
+        onStatusChange={onStatusChange}
+        onOpenRunInNewTab={openRunInNewTab}
+        initialRunId={tab.runId}
+        devMode={devMode}
+      />
+    </div>
+  )
 }
 
 export default function App() {
@@ -109,14 +144,6 @@ export default function App() {
     ))
   }, [])
 
-  const cbCache = useRef(new Map<string, (s: string, l: string, r?: string) => void>())
-  function getTabCb(tabId: string) {
-    if (!cbCache.current.has(tabId)) {
-      cbCache.current.set(tabId, (s, l, r) => handleStatusChange(tabId, s, l, r))
-    }
-    return cbCache.current.get(tabId)!
-  }
-
   // ── Open a historic run in a new tab ─────────────────────────────────────
   const openRunInNewTab = useCallback((runId: string, topic: string) => {
     const tab = newTab()
@@ -136,7 +163,6 @@ export default function App() {
   }
 
   async function closeTab(id: string) {
-    cbCache.current.delete(id)
     // Cancel any running task on this tab before removing it.
     const tab = tabs.find(t => t.id === id)
     if (tab?.runId && tab.status === 'running') {
@@ -184,20 +210,14 @@ export default function App() {
       />
 
       {tabs.map(tab => (
-        <div
+        <TabPanel
           key={tab.id}
-          className="app-body"
-          role="tabpanel"
-          aria-labelledby={`tab-${tab.id}`}
-          style={tab.id !== activeId ? { display: 'none' } : undefined}
-        >
-          <RunView
-            onStatusChange={getTabCb(tab.id)}
-            onOpenRunInNewTab={openRunInNewTab}
-            initialRunId={tab.runId}
-            devMode={devMode}
-          />
-        </div>
+          tab={tab}
+          activeId={activeId}
+          handleStatusChange={handleStatusChange}
+          openRunInNewTab={openRunInNewTab}
+          devMode={devMode}
+        />
       ))}
 
       {devMode && <DevOverlay onClose={() => setDevMode(false)} />}

@@ -7,7 +7,7 @@
  *   Left-click sentiment node → calls onNodeClick to scroll to quotes
  *   Right-click + drag → reposition node
  */
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'  // eslint-disable-line
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { EvidenceChunk, GraphEdge, GraphNode, IdeaGraph } from '../lib/api'
 import { getEvidence } from '../lib/api'
 
@@ -130,8 +130,6 @@ function useForce(nodes: GraphNode[], edges: GraphEdge[]) {
     rightDragRef.current = { id: nodeId }
     const svg = (e.currentTarget as SVGElement).ownerSVGElement
     if (!svg) return
-    ;(e.currentTarget as SVGElement).setPointerCapture && void 0
-
     function onMove(me: MouseEvent) {
       if (!rightDragRef.current || rightDragRef.current.id !== nodeId) return
       const st = simRef.current.find(s => s.id === nodeId)
@@ -221,7 +219,10 @@ function TopicDetailPopover({ node, runId, x, y, onClose }: {
 
   useEffect(() => {
     const ids = node.evidence_ids ?? []
-    if (!ids.length) { setLoading(false); return }
+    if (!ids.length) {
+      queueMicrotask(() => setLoading(false))
+      return
+    }
     Promise.all(ids.map(id => getEvidence(runId, id)))
       .then(results => setChunks(results.filter(Boolean)))
       .catch(() => {})

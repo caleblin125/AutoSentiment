@@ -405,6 +405,54 @@ An objective is not done until:
 - The change is committed.
 - This document or `/home/asus/HANDOFF.md` is updated if the work changes project direction, commands, known issues, or next steps.
 
+## Progress Log
+
+### 2026-05-16
+
+Implemented the first pass of Objective 1 and several performance optimizations:
+
+- Added backend research-depth presets: `quick`, `standard`, `deep`, `exhaustive`.
+- Added initial run depth selection to the API and frontend.
+- Added completed-run expansion to a requested deeper preset, defaulting to the next preset.
+- Expansion now inherits the original run freshness unless the caller explicitly changes it.
+- Report metadata now records topic, freshness, research depth, and depth budgets.
+- Cache lookup now includes research depth and handles newer runs at different depths.
+- Orchestrator now limits query count by the selected depth.
+- Synthesis sample size is bounded by the selected depth.
+- Brave search now has a 30-minute in-process cache keyed by query, freshness, and count.
+- URL fetches are bounded by a 15-second orchestrator timeout.
+- Duplicate sentiment snippets within a run share one model call.
+- Added `backend/scripts/benchmark_pipeline.py` for local hot-path benchmarking.
+- Fixed frontend lint issues encountered while validating.
+
+Validation completed:
+
+```bash
+cd /home/asus/AutoSentiment/backend
+source .venv/bin/activate
+python3 -m pytest tests/ -v
+python3 scripts/benchmark_pipeline.py
+```
+
+Benchmark result from the synthetic duplicate-sentiment case:
+
+- baseline: 80 model calls
+- optimized: 20 model calls
+- model call reduction: 75%
+
+```bash
+cd /home/asus/AutoSentiment/frontend
+npm run lint
+npm run build
+```
+
+Manual smoke:
+
+- Started uvicorn on `127.0.0.1:8010`.
+- `GET /api/health` returned `{"status":"ok"}`.
+- `GET /api/runs?limit=1` returned recent run metadata.
+- Stopped the temporary uvicorn process.
+
 ## Current Recommended First Task
 
-Start with Objective 1. It is the highest-leverage product control because it gives users a way to trade speed, cost, and depth explicitly. It also creates the foundation for quota-aware search planning, better expand behavior, and commercial workflows.
+Continue with Objective 2. Build a quota-aware search planner on top of the depth presets so each run can show planned query cost, platform mix, and Brave monthly budget impact before it starts.

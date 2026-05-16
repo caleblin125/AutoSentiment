@@ -18,7 +18,7 @@ export function DevOverlay({ onClose }: Props) {
   }
 
   useEffect(() => {
-    fetchStats()
+    void Promise.resolve().then(fetchStats)
     const interval = setInterval(fetchStats, 3000)
     return () => clearInterval(interval)
   }, [])

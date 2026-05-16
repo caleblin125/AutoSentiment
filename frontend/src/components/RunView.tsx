@@ -4,10 +4,10 @@
  * Accepts `initialRunId` for session restoration on reload.
  * Propagates current `runId` up so the parent can cancel it on tab close.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react'  // eslint-disable-line
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   cancelRun, createRun, expandRun, startNemoClaw, suggestAngles,
-  type Report, type RunRequest,
+  type Report, type ResearchDepth, type RunRequest,
 } from '../lib/api'
 import { useRunStream } from '../hooks/useRunStream'
 import { EventTimeline } from './EventTimeline'
@@ -23,6 +23,20 @@ const FRESHNESS_OPTIONS = [
   { value: '',   label: 'Any time' },
 ] as const
 
+const DEPTH_OPTIONS: Array<{
+  value: ResearchDepth
+  label: string
+  queryCount: number
+  urlCount: number
+  itemCount: number
+  synthesisSampleSize: number
+}> = [
+  { value: 'quick', label: 'Quick', queryCount: 3, urlCount: 12, itemCount: 40, synthesisSampleSize: 24 },
+  { value: 'standard', label: 'Standard', queryCount: 6, urlCount: 30, itemCount: 100, synthesisSampleSize: 60 },
+  { value: 'deep', label: 'Deep', queryCount: 10, urlCount: 60, itemCount: 180, synthesisSampleSize: 100 },
+  { value: 'exhaustive', label: 'Exhaustive', queryCount: 16, urlCount: 100, itemCount: 300, synthesisSampleSize: 160 },
+]
+
 interface Props {
   onStatusChange: (status: string, label: string, runId?: string) => void
   onOpenRunInNewTab: (runId: string, topic: string) => void
@@ -33,6 +47,7 @@ interface Props {
 export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMode }: Props) {
   const [topic, setTopic] = useState('')
   const [freshness, setFreshness] = useState<string>('pm')
+  const [researchDepth, setResearchDepth] = useState<ResearchDepth>('standard')
   const [runId, setRunId] = useState<string | null>(initialRunId ?? null)
   const [activeTopic, setActiveTopic] = useState<string | null>(null)
   const [cached, setCached] = useState(false)
@@ -54,12 +69,24 @@ export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMo
     const completed = events.findLast(e => e.type === 'run_completed')
     return (completed?.detail as { report?: Report } | undefined)?.report ?? null
   }, [events])
+  const activeDepth = report?.metadata?.research_depth ?? researchDepth
+  const selectedDepth = DEPTH_OPTIONS.find(o => o.value === researchDepth) ?? DEPTH_OPTIONS[1]
+  const activeDepthOption = DEPTH_OPTIONS.find(o => o.value === activeDepth) ?? selectedDepth
+  const activeDepthIndex = DEPTH_OPTIONS.findIndex(o => o.value === activeDepthOption.value)
+  const selectedDepthIndex = DEPTH_OPTIONS.findIndex(o => o.value === selectedDepth.value)
+  const nextDepthOption = DEPTH_OPTIONS[Math.min(
+    activeDepthIndex + 1,
+    DEPTH_OPTIONS.length - 1,
+  )]
+  const expandDepthOption = selectedDepthIndex > activeDepthIndex ? selectedDepth : nextDepthOption
 
   // Restore the pre-expand run when an expanded run is cancelled.
   useEffect(() => {
     if (status === 'cancelled' && preExpandRunId) {
-      setRunId(preExpandRunId)
-      setPreExpandRunId(null)
+      queueMicrotask(() => {
+        setRunId(preExpandRunId)
+        setPreExpandRunId(null)
+      })
     }
   }, [status, preExpandRunId])
 
@@ -69,7 +96,7 @@ export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMo
     const tabStatus = cached && status !== 'running' ? 'cached' : status
     onStatusChange(tabStatus, label, runId ?? undefined)
     if (status === 'completed') {
-      setHistoryKey(k => k + 1)
+      queueMicrotask(() => setHistoryKey(k => k + 1))
     }
   }, [status, activeTopic, cached, runId, onStatusChange])
 
@@ -84,6 +111,7 @@ export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMo
       const req: RunRequest = {
         topic: topic.trim(),
         ...(freshness ? { freshness: freshness as RunRequest['freshness'] } : {}),
+        research_depth: researchDepth,
       }
       const { run_id, cached: isCached } = await createRun(req)
       setRunId(run_id)
@@ -111,8 +139,9 @@ export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMo
     setNcRunId(null)
     setPreExpandRunId(runId)  // remember so we can restore on cancel
     try {
-      const { run_id } = await expandRun(runId)
+      const { run_id } = await expandRun(runId, { research_depth: expandDepthOption.value })
       setRunId(run_id)
+      setResearchDepth(expandDepthOption.value)
       setCached(false)
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Expand failed')
@@ -218,11 +247,28 @@ export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMo
                 <option key={o.value} value={o.value}>{o.label}</option>
               ))}
             </select>
+            <select
+              className="depth-select"
+              value={researchDepth}
+              onChange={e => setResearchDepth(e.target.value as ResearchDepth)}
+              disabled={loading}
+              title="Research depth controls query, URL, item, and synthesis budgets"
+            >
+              {DEPTH_OPTIONS.map(o => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
             <button type="submit" disabled={loading || !topic.trim()}>
               {loading && <span className="spinner" aria-hidden="true" />}
               <span>{loading ? 'Starting…' : 'Analyze'}</span>
             </button>
           </form>
+          <div className="budget-preview">
+            <span>{selectedDepth.queryCount} Brave queries</span>
+            <span>{selectedDepth.urlCount} URLs</span>
+            <span>{selectedDepth.itemCount} items</span>
+            <span>{selectedDepth.synthesisSampleSize} synthesis samples</span>
+          </div>
           {formError && <p className="error-msg">{formError}</p>}
         </div>
 
@@ -235,6 +281,9 @@ export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMo
           <div style={{ minWidth: 0 }}>
             <strong>{statusLabel(status, events.length)}</strong>
             {activeTopic && <p className="run-topic clip-text" title={activeTopic}>{activeTopic}</p>}
+            <p className="run-topic-meta">
+              {activeDepthOption.label} depth · {activeDepthOption.queryCount} queries · {activeDepthOption.urlCount} URLs · {activeDepthOption.itemCount} items
+            </p>
             {devMode && (
               <p className="muted" style={{ fontFamily: 'var(--mono)', fontSize: 10 }}>
                 run: {runId}
@@ -264,10 +313,15 @@ export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMo
             )}
 
             {isCompleted && (
-              <button className="btn-expand" onClick={handleExpand} disabled={expanding}>
+              <button
+                className="btn-expand"
+                onClick={handleExpand}
+                disabled={expanding}
+                title={`Expand to ${expandDepthOption.label}: ${expandDepthOption.queryCount} queries, ${expandDepthOption.urlCount} URLs, ${expandDepthOption.itemCount} items`}
+              >
                 {expanding
                   ? <><span className="spinner" style={{ borderTopColor: 'var(--rog-cyan)' }} /> Expanding…</>
-                  : '⊕ Expand'}
+                  : `⊕ Expand to ${expandDepthOption.label}`}
               </button>
             )}
 

@@ -82,11 +82,13 @@ async def test_run_research_completes_and_persists_report(monkeypatch, session_f
 
     assert run is not None
     assert run.status == "completed"
+    assert run.report["metadata"]["research_depth"] == "standard"
     assert run.report["overall"]["total"] == 2
     assert run.report["top_positive"][0]["summary"] == "mock summary"
     assert run.report["timings"]["total_ms"] >= 0
     assert "graph" in run.report
     assert "source_facts" in run.report
+    assert run.report["timings"]["sentiment_model_calls"] == 2.0
     event_types = [event["type"] for event in streamed]
     assert event_types[0] == "run_started"
     assert event_types[-1] == "run_completed"
@@ -315,6 +317,101 @@ async def test_cancel_during_search_stops_run_and_emits_cancelled(monkeypatch, s
     assert event_types[-1] == "run_cancelled"
     # Pipeline should have stopped — not all queries ran.
     assert call_count < 3
+
+
+@pytest.mark.asyncio
+async def test_run_research_respects_query_budget(monkeypatch, session_factory) -> None:
+    settings = Settings(max_queries_per_run=2, max_urls_per_run=20, max_items_per_run=10)
+    searched: list[str] = []
+
+    monkeypatch.setattr(orchestrator, "AsyncSessionLocal", session_factory)
+    monkeypatch.setattr(orchestrator, "expand_queries", lambda *_a, **_kw: _async(["q1", "q2", "q3", "q4"]))
+
+    async def fake_search(query, **_kw):
+        searched.append(query)
+        return []
+
+    monkeypatch.setattr(orchestrator, "brave_search", fake_search)
+    monkeypatch.setattr(orchestrator, "synthesize_report", lambda *_a, **_kw: _async({"themes": [], "narrative": ""}))
+
+    async with session_factory() as db:
+        run = Run(topic="budgeted", freshness=None, status="pending")
+        db.add(run)
+        await db.commit()
+        await db.refresh(run)
+        run_id = run.id
+
+    queue = event_bus.register(run_id)
+    await orchestrator.run_research(run_id, "budgeted", None, settings)
+    while await queue.get() is not None:
+        pass
+    event_bus.deregister(run_id)
+
+    assert len(searched) == 2
+
+
+@pytest.mark.asyncio
+async def test_run_research_deduplicates_identical_sentiment_snippets(monkeypatch, session_factory) -> None:
+    settings = Settings(max_queries_per_run=1, max_urls_per_run=2, max_items_per_run=4)
+    analyze_calls = 0
+
+    monkeypatch.setattr(orchestrator, "AsyncSessionLocal", session_factory)
+    monkeypatch.setattr(orchestrator, "expand_queries", lambda *_a, **_kw: _async(["q"]))
+    monkeypatch.setattr(orchestrator, "brave_search", lambda *_a, **_kw: _async(["https://news.example/1"]))
+    monkeypatch.setattr(
+        orchestrator,
+        "fetch_items",
+        lambda _url: _async([
+            FetchedItem(snippet="Same snippet", url="https://news.example/1", source_type=SourceType.NEWS),
+            FetchedItem(snippet=" same   snippet ", url="https://news.example/1", source_type=SourceType.NEWS),
+            FetchedItem(snippet="Different snippet", url="https://news.example/1", source_type=SourceType.NEWS),
+        ]),
+    )
+
+    async def fake_analyze(_self, _snippet):
+        nonlocal analyze_calls
+        analyze_calls += 1
+        return SentimentResult(label=SentimentLabel.NEUTRAL, summary="ok")
+
+    monkeypatch.setattr(orchestrator.SentimentQueue, "analyze", fake_analyze)
+    monkeypatch.setattr(orchestrator, "synthesize_report", lambda *_a, **_kw: _async({"themes": [], "narrative": ""}))
+
+    async with session_factory() as db:
+        run = Run(topic="dupes", freshness=None, status="pending")
+        db.add(run)
+        await db.commit()
+        await db.refresh(run)
+        run_id = run.id
+
+    queue = event_bus.register(run_id)
+    await orchestrator.run_research(run_id, "dupes", None, settings)
+    while await queue.get() is not None:
+        pass
+    event_bus.deregister(run_id)
+
+    async with session_factory() as db:
+        run = await db.get(Run, run_id)
+
+    assert analyze_calls == 2
+    assert run is not None
+    assert run.report["overall"]["total"] == 3
+    assert run.report["timings"]["sentiment_cache_hits"] == 1.0
+
+
+@pytest.mark.asyncio
+async def test_fetch_url_timed_returns_empty_items_on_timeout(monkeypatch) -> None:
+    async def slow_fetch(_url: str):
+        await asyncio.sleep(0.02)
+        return [FetchedItem(snippet="late", url="https://example.com", source_type=SourceType.NEWS)]
+
+    monkeypatch.setattr(orchestrator, "fetch_items", slow_fetch)
+    monkeypatch.setattr(orchestrator, "_FETCH_TIMEOUT_SECONDS", 0.001)
+
+    url, items, elapsed = await orchestrator._fetch_url_timed("https://example.com", asyncio.Semaphore(1))
+
+    assert url == "https://example.com"
+    assert items == []
+    assert elapsed >= 0
 
 
 def test_domain_from_url_strips_www() -> None:

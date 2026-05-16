@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     light_queue_max_parallel: int = Field(default=4, validation_alias="LIGHT_QUEUE_MAX_PARALLEL")
 
     brave_api_key: str = Field(default="", validation_alias="BRAVE_API_KEY")
+    max_queries_per_run: int = Field(default=16, validation_alias="MAX_QUERIES_PER_RUN")
     max_urls_per_run: int = Field(default=30, validation_alias="MAX_URLS_PER_RUN")
     max_items_per_run: int = Field(default=100, validation_alias="MAX_ITEMS_PER_RUN")
 

@@ -66,7 +66,7 @@ export function HistoryPanel({ onOpenRun, refreshKey }: Props) {
       if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
       return
     }
-    fetchRuns()
+    void Promise.resolve().then(fetchRuns)
     // Poll every 5s while open — catches status changes for running searches.
     pollRef.current = setInterval(fetchRuns, 5000)
     return () => { if (pollRef.current) clearInterval(pollRef.current) }
@@ -74,7 +74,7 @@ export function HistoryPanel({ onOpenRun, refreshKey }: Props) {
 
   // Immediate refresh when refreshKey changes (e.g. a search just completed).
   useEffect(() => {
-    if (open && refreshKey !== undefined) fetchRuns()
+    if (open && refreshKey !== undefined) void Promise.resolve().then(fetchRuns)
   }, [refreshKey, open])
 
   const hasRunning = runs.some(r => r.status === 'running' || r.status === 'pending')

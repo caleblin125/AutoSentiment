@@ -14,6 +14,13 @@ from app.agents.orchestrator import run_research
 from app.core.config import Settings, get_settings
 from app.db.session import get_db
 from app.models import EvidenceChunk, Run, RunEvent
+from app.research_depth import (
+    DEFAULT_DEPTH,
+    depth_from_report,
+    get_depth_budget,
+    next_depth_name,
+    normalize_depth_name,
+)
 
 router = APIRouter()
 
@@ -23,6 +30,7 @@ VALID_FRESHNESS = {"pd", "pw", "pm", "py"}
 class RunRequest(BaseModel):
     topic: str
     freshness: Optional[str] = "pm"  # pd | pw | pm | py | None
+    research_depth: str = DEFAULT_DEPTH
 
     @field_validator("topic")
     @classmethod
@@ -31,6 +39,28 @@ class RunRequest(BaseModel):
         if not value:
             raise ValueError("topic is required")
         return value
+
+    @field_validator("freshness")
+    @classmethod
+    def validate_freshness(cls, value: Optional[str]) -> Optional[str]:
+        if value is not None and value not in VALID_FRESHNESS:
+            raise ValueError("freshness must be one of: pd, pw, pm, py")
+        return value
+
+    @field_validator("research_depth")
+    @classmethod
+    def validate_research_depth(cls, value: str) -> str:
+        return normalize_depth_name(value)
+
+
+class ExpandRunRequest(BaseModel):
+    research_depth: Optional[str] = None
+    freshness: Optional[str] = None
+
+    @field_validator("research_depth")
+    @classmethod
+    def validate_research_depth(cls, value: Optional[str]) -> Optional[str]:
+        return normalize_depth_name(value) if value is not None else None
 
     @field_validator("freshness")
     @classmethod
@@ -48,10 +78,12 @@ class RunResponse(BaseModel):
 
 
 def _run_to_dict(run: Run) -> dict:
+    research_depth = depth_from_report(run.report)
     return {
         "id": run.id,
         "topic": run.topic,
         "freshness": run.freshness,
+        "research_depth": research_depth,
         "status": run.status,
         "created_at": run.created_at.isoformat(),
         "report": run.report,
@@ -146,7 +178,10 @@ async def create_run(
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> RunResponse:
-    # Case-insensitive cache check for the same topic + freshness (TTL = CACHE_TTL_HOURS).
+    depth_budget = get_depth_budget(body.research_depth, settings)
+
+    # Case-insensitive cache check for the same topic + freshness + depth (TTL = CACHE_TTL_HOURS).
+    # Depth is stored in report metadata to avoid a schema migration on existing local DBs.
     cutoff = datetime.now(UTC) - timedelta(hours=CACHE_TTL_HOURS)
     cached_stmt = (
         select(Run)
@@ -155,10 +190,17 @@ async def create_run(
         .where(Run.status == "completed")
         .where(Run.created_at >= cutoff)
         .order_by(desc(Run.created_at))
-        .limit(1)
+        .limit(10)
     )
     cached_result = await db.execute(cached_stmt)
-    cached_run = cached_result.scalar_one_or_none()
+    cached_run = next(
+        (
+            run
+            for run in cached_result.scalars().all()
+            if depth_from_report(run.report) == body.research_depth
+        ),
+        None,
+    )
     if cached_run is not None:
         return RunResponse(run_id=cached_run.id, cached=True)
 
@@ -168,7 +210,16 @@ async def create_run(
     await db.refresh(run)
 
     event_bus.register(run.id)
-    asyncio.create_task(run_research(run.id, run.topic, run.freshness, settings))
+    asyncio.create_task(
+        run_research(
+            run.id,
+            run.topic,
+            run.freshness,
+            depth_budget.apply_to_settings(settings),
+            research_depth=depth_budget.name,
+            depth_budget=depth_budget.to_metadata(),
+        )
+    )
 
     return RunResponse(run_id=run.id)
 
@@ -247,6 +298,7 @@ async def cancel_run(run_id: str, db: AsyncSession = Depends(get_db)) -> dict:
 @router.post("/runs/{run_id}/expand")
 async def expand_run(
     run_id: str,
+    body: ExpandRunRequest | None = None,
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> RunResponse:
@@ -255,18 +307,22 @@ async def expand_run(
     - Copies all EvidenceChunks from the original run so synthesis begins with
       everything already found rather than starting from scratch.
     - Passes the original URLs as skip_urls so the pipeline fetches only NEW sources.
-    - Doubles URL/item budgets and drops freshness to cast a wider net.
+    - Uses the requested deeper budget, or the next preset above the original.
+    - Inherits freshness by default so expansion is broader without silently
+      changing the time window.
     """
+    body = body or ExpandRunRequest()
     original = await db.get(Run, run_id)
     if original is None:
         raise HTTPException(status_code=404, detail="Run not found")
 
-    expanded_settings = settings.model_copy(update={
-        "max_urls_per_run": settings.max_urls_per_run * 2,
-        "max_items_per_run": settings.max_items_per_run * 2,
-    })
+    original_depth = depth_from_report(original.report)
+    requested_depth = body.research_depth or next_depth_name(original_depth)
+    depth_budget = get_depth_budget(requested_depth, settings)
+    expanded_settings = depth_budget.apply_to_settings(settings)
+    expanded_freshness = body.freshness if body.freshness is not None else original.freshness
 
-    run = Run(topic=original.topic, freshness=None, status="pending")
+    run = Run(topic=original.topic, freshness=expanded_freshness, status="pending")
     db.add(run)
     await db.commit()
     await db.refresh(run)
@@ -305,7 +361,15 @@ async def expand_run(
 
     event_bus.register(run.id)
     asyncio.create_task(
-        run_research(run.id, run.topic, None, expanded_settings, frozenset(skip_urls))
+        run_research(
+            run.id,
+            run.topic,
+            expanded_freshness,
+            expanded_settings,
+            frozenset(skip_urls),
+            research_depth=depth_budget.name,
+            depth_budget=depth_budget.to_metadata(),
+        )
     )
 
     return RunResponse(run_id=run.id)

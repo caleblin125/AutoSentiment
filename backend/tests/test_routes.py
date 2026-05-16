@@ -25,7 +25,7 @@ async def test_create_run_persists_pending_run_registers_queue_and_schedules_tas
     scheduled = []
 
     async def fake_run_research(*_args, **_kwargs) -> None:
-        scheduled.append(_args)
+        scheduled.append((_args, _kwargs))
         return None
 
     monkeypatch.setattr(routes, "run_research", fake_run_research)
@@ -44,6 +44,10 @@ async def test_create_run_persists_pending_run_registers_queue_and_schedules_tas
     assert event_bus.get(response.run_id) is not None
     await asyncio.sleep(0)
     assert len(scheduled) == 1
+    args, kwargs = scheduled[0]
+    assert args[3].max_queries_per_run == 6
+    assert args[3].max_urls_per_run == 30
+    assert kwargs["research_depth"] == "standard"
 
     event_bus.deregister(response.run_id)
 
@@ -99,6 +103,8 @@ def test_run_request_validates_topic_and_freshness() -> None:
         routes.RunRequest(topic="   ", freshness="pm")
     with pytest.raises(ValueError):
         routes.RunRequest(topic="topic", freshness="bad")
+    with pytest.raises(ValueError):
+        routes.RunRequest(topic="topic", research_depth="too-much")
 
 
 @pytest.mark.asyncio
@@ -114,7 +120,7 @@ async def test_create_run_returns_cached_when_recent_completed_run_exists(monkey
         freshness="pm",
         status="completed",
         created_at=datetime.now(UTC),
-        report={"overall": {"total": 10}},
+        report={"metadata": {"research_depth": "standard"}, "overall": {"total": 10}},
     )
     db_session.add(existing)
     await db_session.commit()
@@ -128,6 +134,71 @@ async def test_create_run_returns_cached_when_recent_completed_run_exists(monkey
 
     assert response.cached is True
     assert response.run_id == existing.id
+
+
+@pytest.mark.asyncio
+async def test_create_run_cache_is_depth_sensitive(monkeypatch, db_session) -> None:
+    async def fake_run_research(*_a, **_kw) -> None:
+        return None
+
+    monkeypatch.setattr(routes, "run_research", fake_run_research)
+
+    from datetime import UTC, datetime
+    existing = Run(
+        topic="EV trucks",
+        freshness="pm",
+        status="completed",
+        created_at=datetime.now(UTC),
+        report={"metadata": {"research_depth": "quick"}, "overall": {"total": 10}},
+    )
+    db_session.add(existing)
+    await db_session.commit()
+
+    response = await routes.create_run(
+        routes.RunRequest(topic="EV trucks", freshness="pm", research_depth="deep"),
+        db=db_session,
+        settings=Settings(),
+    )
+
+    assert response.cached is False
+    assert response.run_id != existing.id
+    event_bus.deregister(response.run_id)
+
+
+@pytest.mark.asyncio
+async def test_create_run_finds_matching_depth_cache_behind_newer_depth(monkeypatch, db_session) -> None:
+    async def fake_run_research(*_a, **_kw) -> None:
+        return None
+
+    monkeypatch.setattr(routes, "run_research", fake_run_research)
+
+    from datetime import UTC, datetime, timedelta
+    matching = Run(
+        topic="EV trucks",
+        freshness="pm",
+        status="completed",
+        created_at=datetime.now(UTC) - timedelta(minutes=5),
+        report={"metadata": {"research_depth": "deep"}, "overall": {"total": 10}},
+    )
+    newer_other_depth = Run(
+        topic="EV trucks",
+        freshness="pm",
+        status="completed",
+        created_at=datetime.now(UTC),
+        report={"metadata": {"research_depth": "quick"}, "overall": {"total": 10}},
+    )
+    db_session.add_all([matching, newer_other_depth])
+    await db_session.commit()
+    await db_session.refresh(matching)
+
+    response = await routes.create_run(
+        routes.RunRequest(topic="EV trucks", freshness="pm", research_depth="deep"),
+        db=db_session,
+        settings=Settings(),
+    )
+
+    assert response.cached is True
+    assert response.run_id == matching.id
 
 
 @pytest.mark.asyncio
@@ -172,34 +243,77 @@ async def test_cancel_run_no_ops_for_completed_run(db_session) -> None:
 
 
 @pytest.mark.asyncio
-async def test_expand_run_creates_new_run_with_doubled_limits(monkeypatch, db_session) -> None:
-    """POST /api/runs/{id}/expand must create a new run with 2× URL/item limits."""
+async def test_expand_run_creates_new_run_with_requested_depth(monkeypatch, db_session) -> None:
+    """POST /api/runs/{id}/expand must use the requested depth and inherit freshness."""
     launched: list[tuple] = []
 
     async def fake_run_research(*args, **_kw) -> None:
-        launched.append(args)
+        launched.append((args, _kw))
 
     monkeypatch.setattr(routes, "run_research", fake_run_research)
 
-    original = Run(topic="EVs", freshness="pm", status="completed")
+    original = Run(
+        topic="EVs",
+        freshness="pm",
+        status="completed",
+        report={"metadata": {"research_depth": "standard"}},
+    )
     db_session.add(original)
     await db_session.commit()
     await db_session.refresh(original)
 
     settings = Settings(max_urls_per_run=10, max_items_per_run=50)
-    response = await routes.expand_run(original.id, db_session, settings)
+    response = await routes.expand_run(
+        original.id,
+        routes.ExpandRunRequest(research_depth="deep"),
+        db_session,
+        settings,
+    )
 
     assert response.cached is False
     new_run = await db_session.get(Run, response.run_id)
     assert new_run is not None
     assert new_run.topic == "EVs"
-    assert new_run.freshness is None  # expanded runs use "any time"
+    assert new_run.freshness == "pm"
     await asyncio.sleep(0)
     assert len(launched) == 1
-    _run_id, _topic, _freshness, expanded_settings, _skip = launched[0]
-    assert expanded_settings.max_urls_per_run == 20
-    assert expanded_settings.max_items_per_run == 100
+    args, kwargs = launched[0]
+    _run_id, _topic, _freshness, expanded_settings, _skip = args
+    assert _freshness == "pm"
+    assert expanded_settings.max_queries_per_run == 10
+    assert expanded_settings.max_urls_per_run == 60
+    assert expanded_settings.max_items_per_run == 180
+    assert kwargs["research_depth"] == "deep"
+    assert kwargs["depth_budget"]["query_count"] == 10
 
+    event_bus.deregister(response.run_id)
+
+
+@pytest.mark.asyncio
+async def test_expand_run_defaults_to_next_depth(monkeypatch, db_session) -> None:
+    launched: list[tuple] = []
+
+    async def fake_run_research(*args, **_kw) -> None:
+        launched.append((args, _kw))
+
+    monkeypatch.setattr(routes, "run_research", fake_run_research)
+
+    original = Run(
+        topic="EVs",
+        freshness="pw",
+        status="completed",
+        report={"metadata": {"research_depth": "quick"}},
+    )
+    db_session.add(original)
+    await db_session.commit()
+    await db_session.refresh(original)
+
+    response = await routes.expand_run(original.id, None, db_session, Settings())
+
+    await asyncio.sleep(0)
+    args, kwargs = launched[0]
+    assert kwargs["research_depth"] == "standard"
+    assert args[2] == "pw"
     event_bus.deregister(response.run_id)
 
 

@@ -5,6 +5,11 @@ from app.core.config import Settings
 from app.tools import search
 
 
+@pytest.fixture(autouse=True)
+def clear_search_cache() -> None:
+    search._search_cache.clear()
+
+
 @pytest.mark.asyncio
 async def test_brave_search_sends_expected_request_and_parses_web_results(monkeypatch) -> None:
     captured = {}
@@ -95,3 +100,34 @@ def test_extract_result_urls_supports_legacy_top_level_shape() -> None:
     assert search._extract_result_urls({"results": [{"url": "https://example.com"}]}) == [
         "https://example.com"
     ]
+
+
+@pytest.mark.asyncio
+async def test_brave_search_uses_cache_without_second_http_call(monkeypatch) -> None:
+    calls = 0
+
+    async def no_sleep(_seconds: int) -> None:
+        return None
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(200, json={"web": {"results": [{"url": "https://cached.example"}]}})
+
+    async_client = httpx.AsyncClient
+    monkeypatch.setattr(search.asyncio, "sleep", no_sleep)
+    monkeypatch.setattr(
+        search.httpx,
+        "AsyncClient",
+        lambda **kwargs: async_client(
+            **{**kwargs, "transport": httpx.MockTransport(handler)}
+        ),
+    )
+
+    settings = Settings(**{"brave_api_key": "dummy-test-token"})
+    first = await search.brave_search("Cache Me", freshness="pm", count=5, settings=settings)
+    second = await search.brave_search(" cache me ", freshness="pm", count=5, settings=settings)
+
+    assert first == ["https://cached.example"]
+    assert second == first
+    assert calls == 1

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { createRun, type RunRequest } from '../lib/api'
+import { createRun, type ResearchDepth, type RunRequest } from '../lib/api'
 
 interface Props {
   onRunCreated: (runId: string, topic: string) => void
@@ -13,9 +13,17 @@ const FRESHNESS_OPTIONS = [
   { value: '', label: 'Any time' },
 ] as const
 
+const DEPTH_OPTIONS: Array<{ value: ResearchDepth; label: string }> = [
+  { value: 'quick', label: 'Quick' },
+  { value: 'standard', label: 'Standard' },
+  { value: 'deep', label: 'Deep' },
+  { value: 'exhaustive', label: 'Exhaustive' },
+]
+
 export function RunForm({ onRunCreated }: Props) {
   const [topic, setTopic] = useState('')
   const [freshness, setFreshness] = useState<string>('pm')
+  const [researchDepth, setResearchDepth] = useState<ResearchDepth>('standard')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -28,6 +36,7 @@ export function RunForm({ onRunCreated }: Props) {
       const req: RunRequest = {
         topic: topic.trim(),
         ...(freshness ? { freshness: freshness as RunRequest['freshness'] } : {}),
+        research_depth: researchDepth,
       }
       const { run_id } = await createRun(req)
       onRunCreated(run_id, req.topic)
@@ -53,6 +62,11 @@ export function RunForm({ onRunCreated }: Props) {
         />
         <select value={freshness} onChange={e => setFreshness(e.target.value)} disabled={loading}>
           {FRESHNESS_OPTIONS.map(o => (
+            <option key={o.value} value={o.value}>{o.label}</option>
+          ))}
+        </select>
+        <select value={researchDepth} onChange={e => setResearchDepth(e.target.value as ResearchDepth)} disabled={loading}>
+          {DEPTH_OPTIONS.map(o => (
             <option key={o.value} value={o.value}>{o.label}</option>
           ))}
         </select>

@@ -5,6 +5,17 @@ import { API_BASE_URL } from './config'
 export interface RunRequest {
   topic: string
   freshness?: 'pd' | 'pw' | 'pm' | 'py'
+  research_depth?: ResearchDepth
+}
+
+export type ResearchDepth = 'quick' | 'standard' | 'deep' | 'exhaustive'
+
+export interface DepthBudget {
+  query_count: number
+  url_count: number
+  item_count: number
+  source_diversity_target: number
+  synthesis_sample_size: number
 }
 
 export interface RunCreated {
@@ -16,6 +27,7 @@ export interface Run {
   id: string
   topic: string
   freshness: string | null
+  research_depth: ResearchDepth
   status: 'pending' | 'running' | 'completed' | 'error'
   created_at: string
   report: Report | null
@@ -25,6 +37,12 @@ export interface ImpactItem { direction: 'positive' | 'negative'; description: s
 export interface ArgumentItem { claim: string; side: 'for' | 'against' }
 
 export interface Report {
+  metadata?: {
+    topic?: string
+    freshness?: string | null
+    research_depth?: ResearchDepth
+    depth_budget?: Partial<DepthBudget>
+  }
   overall: { positive: number; neutral: number; negative: number; total: number }
   by_source: Record<string, SourceStats | undefined>
   top_positive: Quote[]
@@ -180,8 +198,12 @@ export async function cancelRun(runId: string): Promise<void> {
   await fetch(`${API_BASE_URL}/api/runs/${encodeURIComponent(runId)}/cancel`, { method: 'POST' })
 }
 
-export async function expandRun(runId: string): Promise<RunCreated> {
-  const res = await fetch(`${API_BASE_URL}/api/runs/${encodeURIComponent(runId)}/expand`, { method: 'POST' })
+export async function expandRun(runId: string, req?: { research_depth?: ResearchDepth; freshness?: RunRequest['freshness'] }): Promise<RunCreated> {
+  const res = await fetch(`${API_BASE_URL}/api/runs/${encodeURIComponent(runId)}/expand`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: req ? JSON.stringify(req) : undefined,
+  })
   if (!res.ok) throw new Error(`POST /expand failed: ${res.status}`)
   return res.json()
 }
