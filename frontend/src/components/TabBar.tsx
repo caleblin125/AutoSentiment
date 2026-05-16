@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import React, { useRef, useState } from 'react'
 
 export interface Tab {
   id: string
@@ -21,31 +21,30 @@ interface Props {
 export function TabBar({ tabs, activeId, runningCount, onSelect, onAdd, onClose, onReorder }: Props) {
   const [dragId, setDragId] = useState<string | null>(null)
   const [dragOverId, setDragOverId] = useState<string | null>(null)
-  const dragNodeRef = useRef<HTMLButtonElement | null>(null)
+  const dragNodeRef = useRef<HTMLElement | null>(null)
 
-  function handleDragStart(e: React.DragEvent<HTMLButtonElement>, id: string) {
+  function handleDragStart(e: React.DragEvent<HTMLElement>, id: string) {
     setDragId(id)
     dragNodeRef.current = e.currentTarget
     e.dataTransfer.effectAllowed = 'move'
     e.dataTransfer.setData('text/plain', id)
-    // Ghost image: use the tab itself
-    setTimeout(() => { if (dragNodeRef.current) dragNodeRef.current.style.opacity = '0.4' }, 0)
+    setTimeout(() => { if (dragNodeRef.current) (dragNodeRef.current as HTMLElement).style.opacity = '0.4' }, 0)
   }
 
   function handleDragEnd() {
-    if (dragNodeRef.current) dragNodeRef.current.style.opacity = ''
+    if (dragNodeRef.current) (dragNodeRef.current as HTMLElement).style.opacity = ''
     setDragId(null)
     setDragOverId(null)
     dragNodeRef.current = null
   }
 
-  function handleDragOver(e: React.DragEvent<HTMLButtonElement>, id: string) {
+  function handleDragOver(e: React.DragEvent<HTMLElement>, id: string) {
     e.preventDefault()
     e.dataTransfer.dropEffect = 'move'
     if (id !== dragId) setDragOverId(id)
   }
 
-  function handleDrop(e: React.DragEvent<HTMLButtonElement>, dropId: string) {
+  function handleDrop(e: React.DragEvent<HTMLElement>, dropId: string) {
     e.preventDefault()
     const fromId = e.dataTransfer.getData('text/plain')
     if (fromId && fromId !== dropId) onReorder(fromId, dropId)
@@ -56,11 +55,12 @@ export function TabBar({ tabs, activeId, runningCount, onSelect, onAdd, onClose,
   return (
     <div className="tab-bar" role="tablist">
       {tabs.map(tab => (
-        <button
+        <div
           key={tab.id}
           id={`tab-${tab.id}`}
           role="tab"
           aria-selected={tab.id === activeId}
+          tabIndex={0}
           draggable
           className={[
             'tab',
@@ -69,6 +69,7 @@ export function TabBar({ tabs, activeId, runningCount, onSelect, onAdd, onClose,
             tab.id === dragId ? 'tab--dragging' : '',
           ].filter(Boolean).join(' ')}
           onClick={() => onSelect(tab.id)}
+          onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(tab.id) } }}
           onDragStart={e => handleDragStart(e, tab.id)}
           onDragEnd={handleDragEnd}
           onDragOver={e => handleDragOver(e, tab.id)}
@@ -85,7 +86,7 @@ export function TabBar({ tabs, activeId, runningCount, onSelect, onAdd, onClose,
               ✕
             </button>
           )}
-        </button>
+        </div>
       ))}
       <button className="tab-add" aria-label="New search tab" onClick={onAdd} title="New search">＋</button>
 

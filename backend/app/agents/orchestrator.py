@@ -392,31 +392,65 @@ async def run_research(
             timings["fetch_cache_hits"] = float(cache_hits)
             timings["fetch_cache_misses"] = float(len(uncached_urls))
 
-            # ── Stage 4: sentiment analysis (parallel, capped by SentimentQueue) ──
+            # ── Stage 4: sentiment analysis (parallel, batched) ───────────────
             sentiment_queue = SentimentQueue(settings, cancel_check=_cancel_check)
             chunks: list[EvidenceChunk] = []
-            sentiment_tasks: dict[str, asyncio.Task] = {}
-            pending_cache: dict[str, tuple[str, str]] = {}  # snippet_hash -> (label, summary)
-            # Maps chunk.id → model confidence (0–1); used for report ranking.
+            pending_cache: dict[str, tuple[str, str]] = {}
             confidence_map: dict[str, float] = {}
 
             stage_started = perf_counter()
-            analyze_tasks = [
-                asyncio.create_task(_analyze_item_cached(sentiment_queue, item, sentiment_tasks, db))
-                for item in fetched_items
-            ]
-            for future in asyncio.as_completed(analyze_tasks):
+
+            # Deduplicate snippets by cache key, preserving item order.
+            seen_keys: dict[str, int] = {}  # cache_key -> first index
+            unique_items: list = []
+            for item in fetched_items:
+                key = _sentiment_cache_key(item.snippet)
+                if key not in seen_keys:
+                    seen_keys[key] = len(unique_items)
+                    unique_items.append(item)
+
+            # Check DB sentiment cache for each unique snippet.
+            unique_snippets = [item.snippet for item in unique_items]
+            cached_results: dict[int, SentimentResult] = {}
+            uncached_indices: list[int] = []
+            if db is not None:
+                import hashlib
+                from app.models import SentimentCache
+                from sqlalchemy import select as _sel3
+                snippet_hashes = [hashlib.sha256(_sentiment_cache_key(s).encode()).hexdigest() for s in unique_snippets]
+                rows = (await db.execute(
+                    _sel3(SentimentCache).where(SentimentCache.snippet_hash.in_(snippet_hashes))
+                )).scalars().all()
+                row_map = {r.snippet_hash: r for r in rows}
+                for i, sh in enumerate(snippet_hashes):
+                    row = row_map.get(sh)
+                    if row is not None:
+                        cached_results[i] = SentimentResult(label=SentimentLabel(row.label), summary=row.summary)
+                    else:
+                        uncached_indices.append(i)
+            else:
+                uncached_indices = list(range(len(unique_items)))
+
+            # Batch-analyze uncached snippets.
+            if uncached_indices:
+                uncached_snippets = [unique_snippets[i] for i in uncached_indices]
+                batch_results = await sentiment_queue.analyze_batch(uncached_snippets)
+                for j, idx in enumerate(uncached_indices):
+                    if j < len(batch_results):
+                        cached_results[idx] = batch_results[j]
+                    else:
+                        cached_results[idx] = SentimentResult(label=SentimentLabel.NEUTRAL, summary="batch miss")
+
+            # Map results back to all fetched items (including duplicates).
+            for item in fetched_items:
                 if is_cancelled(run_id):
-                    for t in analyze_tasks:
-                        t.cancel()
                     raise _CancelledByUser()
-                try:
-                    item, result, duration_ms, cache_key = await future
-                except Exception as item_exc:
-                    # A single failed sentiment call must not crash the entire run.
-                    # Fall back to neutral so the item still contributes to the report.
-                    _get_logger(run_id).warning("Sentiment analysis failed for one item: %s", item_exc)
-                    continue
+                key = _sentiment_cache_key(item.snippet)
+                unique_idx = seen_keys[key]
+                result = cached_results.get(unique_idx)
+                if result is None:
+                    result = SentimentResult(label=SentimentLabel.NEUTRAL, summary="analysis miss")
+
                 chunk = EvidenceChunk(
                     run_id=run_id,
                     url=item.url,
@@ -430,9 +464,8 @@ async def run_research(
                 chunks.append(chunk)
                 confidence_map[chunk.id] = round(result.confidence, 2)
 
-                # Collect sentiment cache entry for bulk insert.
                 import hashlib
-                snippet_hash = hashlib.sha256(cache_key.encode()).hexdigest()
+                snippet_hash = hashlib.sha256(key.encode()).hexdigest()
                 if snippet_hash not in pending_cache:
                     pending_cache[snippet_hash] = (result.label.value, result.summary)
 
@@ -635,23 +668,41 @@ async def _fetch_url_timed(
     client: httpx.AsyncClient | None = None,
     domain_sem: asyncio.Semaphore | None = None,
 ) -> tuple[str, list, float]:
-    """Fetch items from one URL, gated by global + per-domain sems, returning (url, items, duration_ms)."""
+    """Fetch items from one URL with retry, returning (url, items, duration_ms)."""
     t0 = perf_counter()
+    items: list = []
     async with sem:
-        if domain_sem is not None:
-            async with domain_sem:
-                try:
-                    items = await asyncio.wait_for(fetch_items(url, client=client), timeout=_FETCH_TIMEOUT_SECONDS)
-                except asyncio.TimeoutError:
-                    logger.warning("Fetch timed out for URL: %s", url)
-                    items = []
-        else:
+        ds = domain_sem
+        for attempt in range(3):
             try:
-                items = await asyncio.wait_for(fetch_items(url, client=client), timeout=_FETCH_TIMEOUT_SECONDS)
+                async with (ds() if ds and attempt > 0 else (ds if ds else _null_context())):
+                    inner = asyncio.wait_for(
+                        fetch_items(url, client=client), timeout=_FETCH_TIMEOUT_SECONDS
+                    )
+                    if ds and attempt == 0:
+                        items = await inner
+                    else:
+                        items = await inner
+                    break
             except asyncio.TimeoutError:
-                logger.warning("Fetch timed out for URL: %s", url)
-                items = []
+                if attempt < 2:
+                    await asyncio.sleep(0.5 * (attempt + 1))
+                    continue
+                logger.warning("Fetch timed out after 3 attempts: %s", url)
+            except Exception:
+                if attempt < 2:
+                    await asyncio.sleep(0.5 * (attempt + 1))
+                    continue
+                logger.warning("Fetch failed after 3 attempts: %s", url)
     return url, items, _elapsed_ms(t0)
+
+
+def _null_context():
+    """Async no-op context manager for when domain_sem is None."""
+    class _NullCtx:
+        async def __aenter__(self): return None
+        async def __aexit__(self, *a): pass
+    return _NullCtx()
 
 
 async def _analyze_item(sentiment_queue: SentimentQueue, item) -> tuple:

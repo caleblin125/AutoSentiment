@@ -21,13 +21,6 @@ const STATUS_ICON: Record<string, string> = {
   error:     '⚠',
 }
 
-const STATUS_COLOR: Record<string, string> = {
-  completed: 'var(--positive)',
-  running:   'var(--rog-cyan)',
-  pending:   'var(--neutral)',
-  cancelled: 'var(--text)',
-  error:     'var(--rog-red)',
-}
 
 function formatDate(iso: string) {
   return new Intl.DateTimeFormat(undefined, {
@@ -162,12 +155,11 @@ export function HistoryPanel({ onOpenRun, refreshKey, openRunIds }: Props) {
                     setTimeout(() => { openingRef.current = null }, 300)
                   }}
                   disabled={isActive}
-                  title={isActive ? 'Currently running' : isOpen ? `${run.topic} (already open — click to switch)` : run.topic}
+                  title={isActive ? 'Currently running' : isOpen ? `${run.topic} (already open in a tab)` : run.topic}
                 >
                   <div className="history-item-top">
                     <span
-                      className="history-status-icon"
-                      style={{ color: STATUS_COLOR[run.status] ?? 'var(--text)' }}
+                      className={`history-status-icon history-status-icon--${run.status}`}
                     >
                       {run.status === 'running'
                         ? <span className="inline-spinner inline-spinner--xs" />

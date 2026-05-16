@@ -183,7 +183,21 @@ export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMo
   // Keyboard shortcuts — use a ref to this RunView's own form so Ctrl+Enter
   // only submits the active tab (not the first .search-form in the DOM when
   // multiple RunViews are mounted simultaneously).
+  const searchInputWrapRef = useRef<HTMLDivElement | null>(null)
   const searchFormRef = useRef<HTMLFormElement | null>(null)
+
+  // Close suggestions when clicking outside the input wrapper.
+  useEffect(() => {
+    if (!showSuggestions) return
+    function handleOutside(e: MouseEvent) {
+      if (searchInputWrapRef.current && !searchInputWrapRef.current.contains(e.target as Node)) {
+        setShowSuggestions(false)
+      }
+    }
+    document.addEventListener('mousedown', handleOutside)
+    return () => document.removeEventListener('mousedown', handleOutside)
+  }, [showSuggestions])
+
   useKeyboardShortcuts({
     'Ctrl+Enter': () => {
       if (topic.trim() && !loading) searchFormRef.current?.requestSubmit()
@@ -382,7 +396,7 @@ export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMo
       <div className="panel search-panel">
         <div className="search-panel-inner">
           <form className="search-form" ref={searchFormRef} onSubmit={handleSubmit} autoComplete="off">
-            <div className="search-input-wrap">
+            <div className="search-input-wrap" ref={searchInputWrapRef}>
               <input
                 className="search-input"
                 type="text"
@@ -476,6 +490,19 @@ export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMo
             <span>{selectedDepth.synthesisSampleSize} synthesis samples</span>
             {searchPlan && <span>{searchPlan.monthly_quota_remaining} monthly left</span>}
           </div>
+          {searchPlan && (
+            <div className="quota-bar-wrap">
+              <div className="quota-bar">
+                <div
+                  className="quota-bar-fill"
+                  style={{ width: `${Math.min(100, (searchPlan.monthly_quota_used / (searchPlan.monthly_quota_used + searchPlan.monthly_quota_remaining)) * 100)}%` }}
+                />
+              </div>
+              <span className="quota-label">
+                {searchPlan.monthly_quota_remaining} of {searchPlan.monthly_quota_used + searchPlan.monthly_quota_remaining} Brave queries left this month
+              </span>
+            </div>
+          )}
           {searchPlan?.quota_warning && <p className="quota-warning">{searchPlan.quota_warning}</p>}
           {searchPlan && (
             <div className="search-plan-preview" aria-label="Search plan preview">
@@ -496,9 +523,9 @@ export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMo
             </button>
             {showModelSettings && (
               <div className="model-settings-grid">
-                <input value={nemoclawModel} onChange={e => setNemoclawModel(e.target.value)} placeholder="NemoClaw model" />
-                <input value={sentimentModel} onChange={e => setSentimentModel(e.target.value)} placeholder="Sentiment model" />
-                <input value={suggestionModel} onChange={e => setSuggestionModel(e.target.value)} placeholder="Suggestions model" />
+                <input value={nemoclawModel} onChange={e => setNemoclawModel(e.target.value)} placeholder="NemoClaw model" aria-label="NemoClaw model override" />
+                <input value={sentimentModel} onChange={e => setSentimentModel(e.target.value)} placeholder="Sentiment model" aria-label="Sentiment model override" />
+                <input value={suggestionModel} onChange={e => setSuggestionModel(e.target.value)} placeholder="Suggestions model" aria-label="Suggestions model override" />
               </div>
             )}
           </div>
@@ -567,7 +594,7 @@ export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMo
             </div>
           </div>
 
-          {formError && <p className="error-msg">{formError}</p>}
+          {formError && <p className="error-msg" role="alert" aria-live="polite">{formError}</p>}
         </div>
 
         <ErrorBoundary>

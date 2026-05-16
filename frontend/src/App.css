@@ -341,6 +341,33 @@ input:focus, select:focus, button:focus-visible {
 .depth-dot--deep        { background: #f59e0b; }
 .depth-dot--exhaustive  { background: #ef4444; }
 
+.quota-bar-wrap {
+  margin-top: 4px;
+  width: 100%;
+}
+
+.quota-bar {
+  height: 4px;
+  background: var(--surface-muted);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-bottom: 4px;
+}
+
+.quota-bar-fill {
+  height: 100%;
+  background: var(--rog-cyan);
+  border-radius: 2px;
+  transition: width 0.4s ease;
+}
+
+.quota-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text);
+  opacity: 0.65;
+}
+
 .quota-warning {
   margin: -2px 0 0;
   color: var(--rog-red);
@@ -1170,6 +1197,7 @@ button[type="submit"] {
   color: var(--text);
   font-size: 13px;
   font-weight: 500;
+  font-family: inherit;
   letter-spacing: 0.3px;
   cursor: pointer;
   white-space: nowrap;
@@ -1177,6 +1205,12 @@ button[type="submit"] {
   border-radius: 0;
   min-height: unset;
   text-transform: none;
+  user-select: none;
+  outline: none;
+}
+.tab:focus-visible {
+  outline: 2px solid var(--rog-cyan);
+  outline-offset: -2px;
 }
 
 .tab:hover:not(:disabled) {
@@ -1208,6 +1242,8 @@ button[type="submit"] {
 .tab-status-dot--completed { background: var(--positive); }
 .tab-status-dot--error { background: var(--rog-red); }
 .tab-status-dot--cached { background: var(--rog-cyan); }
+.tab-status-dot--cancelled { background: var(--text); opacity: 0.35; }
+.tab-status-dot--idle { background: var(--border); }
 
 @keyframes pulse-dot {
   0%, 100% { opacity: 1; transform: scale(1); }
