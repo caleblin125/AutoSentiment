@@ -93,3 +93,16 @@ class FetchedURLCache(Base):
     extracted_text: Mapped[str] = mapped_column(Text, nullable=False)
     source_type: Mapped[str] = mapped_column(String, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
+
+
+class SavedSearch(Base):
+    """User-saved search configuration for quick re-runs."""
+    __tablename__ = "saved_searches"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    topic: Mapped[str] = mapped_column(String, nullable=False)
+    freshness: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    research_depth: Mapped[str] = mapped_column(String, nullable=False, default="standard")
+    use_case: Mapped[str] = mapped_column(String, nullable=False, default="generic")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))

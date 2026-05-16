@@ -232,6 +232,26 @@ export interface GraphEdge {
   weight: number
 }
 
+// ── Saved searches ──────────────────────────────────────────────────────────
+
+export interface SavedSearch {
+  id: string
+  name: string
+  topic: string
+  freshness: 'pd' | 'pw' | 'pm' | 'py' | null
+  research_depth: ResearchDepth
+  use_case: UseCase
+  created_at: string
+}
+
+export interface SavedSearchRequest {
+  name: string
+  topic: string
+  freshness?: 'pd' | 'pw' | 'pm' | 'py'
+  research_depth: ResearchDepth
+  use_case: UseCase
+}
+
 // ── Run history ─────────────────────────────────────────────────────────────
 
 export interface RunSummary {
@@ -355,4 +375,27 @@ export async function getDevStats(): Promise<Record<string, unknown>> {
   const res = await fetch(`${API_BASE_URL}/api/dev/stats`)
   if (!res.ok) return {}
   return res.json()
+}
+
+export async function listSavedSearches(): Promise<SavedSearch[]> {
+  const res = await fetch(`${API_BASE_URL}/api/saved-searches`)
+  if (!res.ok) return []
+  return res.json()
+}
+
+export async function createSavedSearch(req: SavedSearchRequest): Promise<SavedSearch> {
+  const res = await fetch(`${API_BASE_URL}/api/saved-searches`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify(req),
+  })
+  if (!res.ok) throw new Error(`POST /api/saved-searches failed: ${res.status}`)
+  return res.json()
+}
+
+export async function deleteSavedSearch(id: string): Promise<void> {
+  await fetch(`${API_BASE_URL}/api/saved-searches/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  })
 }

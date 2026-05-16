@@ -13,7 +13,7 @@ from app.api import event_bus
 from app.agents.orchestrator import run_research
 from app.core.config import Settings, get_settings
 from app.db.session import get_db
-from app.models import EvidenceChunk, Run, RunEvent
+from app.models import EvidenceChunk, Run, RunEvent, SavedSearch
 from app.research_depth import (
     DEFAULT_DEPTH,
     depth_from_report,
@@ -559,3 +559,99 @@ async def get_evidence(
         raise HTTPException(status_code=404, detail="Evidence chunk not found")
     run = await db.get(Run, run_id)
     return _evidence_to_dict(chunk, run.report if run else None)
+
+
+# ── Saved searches ────────────────────────────────────────────────────────────
+
+class SavedSearchRequest(BaseModel):
+    name: str
+    topic: str
+    freshness: Optional[str] = None
+    research_depth: str = "standard"
+    use_case: str = "generic"
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("name must not be blank")
+        return v[:80]
+
+    @field_validator("topic")
+    @classmethod
+    def validate_topic(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("topic must not be blank")
+        return v
+
+    @field_validator("freshness")
+    @classmethod
+    def validate_freshness(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        if v not in VALID_FRESHNESS:
+            raise ValueError(f"freshness must be one of {VALID_FRESHNESS}")
+        return v
+
+    @field_validator("research_depth")
+    @classmethod
+    def validate_research_depth(cls, v: str) -> str:
+        return normalize_depth_name(v)
+
+    @field_validator("use_case")
+    @classmethod
+    def validate_use_case(cls, v: str) -> str:
+        return normalize_use_case(v)
+
+
+def _saved_search_to_dict(ss: SavedSearch) -> dict:
+    return {
+        "id": ss.id,
+        "name": ss.name,
+        "topic": ss.topic,
+        "freshness": ss.freshness,
+        "research_depth": ss.research_depth,
+        "use_case": ss.use_case,
+        "created_at": ss.created_at.isoformat(),
+    }
+
+
+@router.get("/saved-searches")
+async def list_saved_searches(db: AsyncSession = Depends(get_db)) -> list[dict]:
+    rows = (await db.execute(select(SavedSearch).order_by(desc(SavedSearch.created_at)))).scalars().all()
+    return [_saved_search_to_dict(r) for r in rows]
+
+
+@router.post("/saved-searches")
+async def create_saved_search(
+    body: SavedSearchRequest,
+    db: AsyncSession = Depends(get_db),
+    _auth=Depends(require_auth),
+) -> dict:
+    ss = SavedSearch(
+        name=body.name,
+        topic=body.topic,
+        freshness=body.freshness,
+        research_depth=body.research_depth,
+        use_case=body.use_case,
+    )
+    db.add(ss)
+    await db.commit()
+    await db.refresh(ss)
+    return _saved_search_to_dict(ss)
+
+
+@router.delete("/saved-searches/{search_id}")
+async def delete_saved_search(
+    search_id: str,
+    db: AsyncSession = Depends(get_db),
+    _auth=Depends(require_auth),
+) -> dict:
+    ss = await db.get(SavedSearch, search_id)
+    if ss is None:
+        raise HTTPException(status_code=404, detail="Saved search not found")
+    await db.delete(ss)
+    await db.commit()
+    return {"deleted": search_id}

@@ -2650,6 +2650,101 @@ button[type="submit"] {
 .timing-cache-pill--hit { background: rgba(0, 180, 60, 0.15); color: var(--positive); border: 1px solid rgba(0,180,60,0.3); }
 .timing-cache-pill--miss { background: rgba(100,100,100,0.12); color: var(--text); border: 1px solid var(--border); }
 
+/* ── Saved searches ─────────────────────────────────────────────────────── */
+
+.saved-search-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.save-search-form {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+}
+
+.save-search-input {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-bright);
+  font-size: 12px;
+  padding: 4px 10px;
+  height: 28px;
+  flex: 1;
+  min-width: 0;
+}
+.save-search-input:focus { outline: none; border-color: var(--rog-red); }
+
+.btn-save-search { font-size: 12px; height: 28px; padding: 0 10px; }
+
+.saved-dropdown-wrapper { position: relative; }
+
+.saved-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 260px;
+  max-width: 380px;
+  background: var(--panel-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  z-index: 200;
+  overflow: hidden;
+}
+
+.saved-dropdown-item {
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+}
+.saved-dropdown-item:last-child { border-bottom: none; }
+
+.saved-item-load {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  padding: 8px 10px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+}
+.saved-item-load:hover { background: rgba(255,255,255,0.04); }
+
+.saved-item-name {
+  color: var(--text-bright);
+  font-size: 13px;
+  font-weight: 600;
+}
+.saved-item-meta {
+  color: var(--text);
+  font-size: 11px;
+  font-family: var(--mono);
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.saved-item-delete {
+  background: none;
+  border: none;
+  color: var(--text);
+  cursor: pointer;
+  padding: 8px 10px;
+  font-size: 13px;
+  opacity: 0.5;
+  transition: opacity 0.15s;
+}
+.saved-item-delete:hover { opacity: 1; color: var(--rog-red); }
+
 /* ── Text clipping utility ──────────────────────────────────────────────── */
 
 .clip-text {

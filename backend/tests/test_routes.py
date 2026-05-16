@@ -478,3 +478,67 @@ async def test_stream_events_replays_stored_events_for_completed_run(db_session)
     payload = json.loads(chunks[0].removeprefix("data: ").removesuffix("\n\n"))
     assert payload["type"] == "run_completed"
     assert payload["detail"] == {"ok": True}
+
+
+# ── Saved searches ────────────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_saved_searches_crud_create_list_delete(db_session) -> None:
+    """Full CRUD cycle: create → list → delete → confirm gone."""
+    body = routes.SavedSearchRequest(
+        name="Weekly check",
+        topic="Electric vehicles",
+        freshness="pw",
+        research_depth="quick",
+        use_case="generic",
+    )
+    created = await routes.create_saved_search(body, db_session, _auth=None)
+
+    assert created["name"] == "Weekly check"
+    assert created["topic"] == "Electric vehicles"
+    assert created["freshness"] == "pw"
+    assert created["research_depth"] == "quick"
+    assert created["use_case"] == "generic"
+    assert "id" in created and created["id"]
+
+    listed = await routes.list_saved_searches(db_session)
+    assert len(listed) == 1
+    assert listed[0]["id"] == created["id"]
+
+    result = await routes.delete_saved_search(created["id"], db_session, _auth=None)
+    assert result["deleted"] == created["id"]
+
+    listed_after = await routes.list_saved_searches(db_session)
+    assert listed_after == []
+
+
+@pytest.mark.asyncio
+async def test_saved_search_delete_404_for_unknown_id(db_session) -> None:
+    from fastapi import HTTPException
+    with pytest.raises(HTTPException) as exc_info:
+        await routes.delete_saved_search("no-such-id", db_session, _auth=None)
+    assert exc_info.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_saved_search_validation_rejects_blank_name(db_session) -> None:
+    from pydantic import ValidationError
+    with pytest.raises(ValidationError):
+        routes.SavedSearchRequest(name="  ", topic="topic")
+
+
+@pytest.mark.asyncio
+async def test_saved_search_validation_rejects_invalid_freshness(db_session) -> None:
+    from pydantic import ValidationError
+    with pytest.raises(ValidationError):
+        routes.SavedSearchRequest(name="test", topic="topic", freshness="bad")
+
+
+@pytest.mark.asyncio
+async def test_saved_searches_list_returns_newest_first(db_session) -> None:
+    for name in ["first", "second", "third"]:
+        body = routes.SavedSearchRequest(name=name, topic=name)
+        await routes.create_saved_search(body, db_session, _auth=None)
+
+    listed = await routes.list_saved_searches(db_session)
+    assert [s["name"] for s in listed] == ["third", "second", "first"]

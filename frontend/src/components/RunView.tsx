@@ -4,10 +4,11 @@
  * Accepts `initialRunId` for session restoration on reload.
  * Propagates current `runId` up so the parent can cancel it on tab close.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  cancelRun, createRun, expandRun, previewSearchPlan, startNemoClaw, suggestAngles,
-  type Report, type ResearchDepth, type RunRequest, type SearchPlan, type UseCase,
+  cancelRun, createRun, createSavedSearch, deleteSavedSearch, expandRun,
+  listSavedSearches, previewSearchPlan, startNemoClaw, suggestAngles,
+  type Report, type ResearchDepth, type RunRequest, type SavedSearch, type SearchPlan, type UseCase,
 } from '../lib/api'
 import { useRunStream } from '../hooks/useRunStream'
 import { ErrorBoundary } from './ErrorBoundary'
@@ -74,6 +75,13 @@ export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMo
   const [searchPlan, setSearchPlan] = useState<SearchPlan | null>(null)
   // Track the pre-expand runId so we can restore it if the expanded run is cancelled.
   const [preExpandRunId, setPreExpandRunId] = useState<string | null>(null)
+  // Saved searches
+  const [savedSearches, setSavedSearches] = useState<SavedSearch[]>([])
+  const [showSaveInput, setShowSaveInput] = useState(false)
+  const [saveNameInput, setSaveNameInput] = useState('')
+  const [savingSearch, setSavingSearch] = useState(false)
+  const [showSavedDropdown, setShowSavedDropdown] = useState(false)
+  const savedDropdownRef = useRef<HTMLDivElement>(null)
 
   const { events, status } = useRunStream(runId)
 
@@ -217,6 +225,58 @@ export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMo
     if (showSuggestions) setShowSuggestions(false)
   }
 
+  // Load saved searches once on mount.
+  useEffect(() => {
+    listSavedSearches().then(setSavedSearches).catch(() => {})
+  }, [])
+
+  // Close saved-searches dropdown on outside click.
+  useEffect(() => {
+    if (!showSavedDropdown) return
+    function handleClick(e: MouseEvent) {
+      if (savedDropdownRef.current && !savedDropdownRef.current.contains(e.target as Node)) {
+        setShowSavedDropdown(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [showSavedDropdown])
+
+  async function handleSaveSearch(e: React.FormEvent) {
+    e.preventDefault()
+    const name = saveNameInput.trim()
+    if (!name || !topic.trim()) return
+    setSavingSearch(true)
+    try {
+      const created = await createSavedSearch({
+        name,
+        topic: topic.trim(),
+        ...(freshness ? { freshness: freshness as RunRequest['freshness'] } : {}),
+        research_depth: researchDepth,
+        use_case: useCase,
+      })
+      setSavedSearches(prev => [created, ...prev])
+      setSaveNameInput('')
+      setShowSaveInput(false)
+    } catch { /* best-effort */ }
+    finally { setSavingSearch(false) }
+  }
+
+  async function handleDeleteSaved(id: string) {
+    try {
+      await deleteSavedSearch(id)
+      setSavedSearches(prev => prev.filter(s => s.id !== id))
+    } catch { /* best-effort */ }
+  }
+
+  function handleLoadSaved(ss: SavedSearch) {
+    setTopic(ss.topic)
+    setFreshness(ss.freshness ?? '')
+    setResearchDepth(ss.research_depth)
+    setUseCase(ss.use_case)
+    setShowSavedDropdown(false)
+  }
+
   const isRunning   = status === 'running'
   const isCompleted = status === 'completed'
   const isCancelled = status === 'cancelled'
@@ -327,6 +387,71 @@ export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMo
               ))}
             </div>
           )}
+          {/* ── Saved searches row ── */}
+          <div className="saved-search-row">
+            {showSaveInput ? (
+              <form className="save-search-form" onSubmit={handleSaveSearch}>
+                <input
+                  className="save-search-input"
+                  type="text"
+                  placeholder="Name this search…"
+                  value={saveNameInput}
+                  onChange={e => setSaveNameInput(e.target.value)}
+                  autoFocus
+                  disabled={savingSearch}
+                />
+                <button type="submit" disabled={savingSearch || !saveNameInput.trim()} className="btn-secondary">
+                  {savingSearch ? '…' : 'Save'}
+                </button>
+                <button type="button" className="btn-secondary" onClick={() => setShowSaveInput(false)}>✕</button>
+              </form>
+            ) : (
+              <button
+                type="button"
+                className="btn-secondary btn-save-search"
+                onClick={() => { setSaveNameInput(topic.trim()); setShowSaveInput(true) }}
+                disabled={!topic.trim()}
+                title="Save this search configuration"
+              >
+                ★ Save
+              </button>
+            )}
+            <div className="saved-dropdown-wrapper" ref={savedDropdownRef}>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => setShowSavedDropdown(v => !v)}
+                disabled={savedSearches.length === 0}
+                title="Load a saved search"
+              >
+                Saved {savedSearches.length > 0 && `(${savedSearches.length})`} ▾
+              </button>
+              {showSavedDropdown && savedSearches.length > 0 && (
+                <div className="saved-dropdown">
+                  {savedSearches.map(ss => (
+                    <div key={ss.id} className="saved-dropdown-item">
+                      <button
+                        type="button"
+                        className="saved-item-load"
+                        onClick={() => handleLoadSaved(ss)}
+                        title={`${ss.topic} · ${ss.research_depth} · ${ss.use_case}`}
+                      >
+                        <span className="saved-item-name">{ss.name}</span>
+                        <span className="saved-item-meta">{ss.topic}</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="saved-item-delete"
+                        onClick={() => handleDeleteSaved(ss.id)}
+                        title="Delete this saved search"
+                      >✕</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
           {formError && <p className="error-msg">{formError}</p>}
         </div>
 
