@@ -410,7 +410,13 @@ async def run_research(
                     for t in analyze_tasks:
                         t.cancel()
                     raise _CancelledByUser()
-                item, result, duration_ms, cache_key = await future
+                try:
+                    item, result, duration_ms, cache_key = await future
+                except Exception as item_exc:
+                    # A single failed sentiment call must not crash the entire run.
+                    # Fall back to neutral so the item still contributes to the report.
+                    _get_logger(run_id).warning("Sentiment analysis failed for one item: %s", item_exc)
+                    continue
                 chunk = EvidenceChunk(
                     run_id=run_id,
                     url=item.url,

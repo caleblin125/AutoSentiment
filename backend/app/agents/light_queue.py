@@ -25,6 +25,8 @@ _SUMMARY_BY_LABEL = {
 _MAX_SNIPPET_CHARS = 900
 # Retries on transient failures (connection errors, empty responses).
 _MAX_RETRIES = 2
+# Batch size for multi-snippet sentiment calls.
+_BATCH_SIZE = 5
 
 
 class SentimentQueue:
@@ -43,6 +45,81 @@ class SentimentQueue:
     async def analyze(self, snippet: str) -> SentimentResult:
         async with self._sem:
             return await self._call_model(snippet)
+
+    async def analyze_batch(self, snippets: list[str]) -> list[SentimentResult]:
+        """Classify multiple snippets in a single model call.
+
+        Sends up to _BATCH_SIZE snippets per prompt, asking the model to return
+        a JSON array of results. Dramatically reduces GPU round-trips for runs
+        with many evidence items.
+        """
+        if not snippets:
+            return []
+        results: list[SentimentResult] = []
+        for i in range(0, len(snippets), _BATCH_SIZE):
+            batch = snippets[i:i + _BATCH_SIZE]
+            async with self._sem:
+                batch_results = await self._call_model_batch(batch)
+            results.extend(batch_results)
+        return results
+
+    async def _call_model_batch(self, snippets: list[str]) -> list[SentimentResult]:
+        truncated = [s[:_MAX_SNIPPET_CHARS] for s in snippets]
+        system = (
+            "You are a JSON-only sentiment classifier. "
+            "Output must be a JSON array. No explanations, no markdown."
+        )
+        items = "\n".join(
+            f"[{idx}] {text}" for idx, text in enumerate(truncated)
+        )
+        prompt = (
+            "Classify the sentiment of each of the following texts.\n"
+            "Return a JSON array of objects, one per text, in order:\n"
+            '[{"label": "positive"|"neutral"|"negative", '
+            '"summary": "<3-5 words>", '
+            '"confidence": <0.0-1.0>}]\n\n'
+            f"{items}"
+        )
+
+        last_exc: Exception | None = None
+        for attempt in range(_MAX_RETRIES + 1):
+            try:
+                payload = await ollama_generate(
+                    prompt,
+                    system=system,
+                    model=self._settings.lightweight_model,
+                    base_url=self._settings.ollama_base_url,
+                    cancel_check=self._cancel_check,
+                )
+                # Response may be a JSON array or a dict with a key containing the array.
+                items_raw = payload if isinstance(payload, list) else payload.get("results", payload.get("items", []))
+                if not isinstance(items_raw, list):
+                    raise ValueError(f"Expected JSON array, got {type(items_raw)}")
+                return [
+                    self._parse_batch_item(item, idx)
+                    for idx, item in enumerate(items_raw)
+                ][:len(snippets)]
+            except GenerationCancelled:
+                raise
+            except Exception as exc:
+                last_exc = exc
+                if attempt < _MAX_RETRIES:
+                    await asyncio.sleep(0.5 * (attempt + 1))
+                    continue
+
+        logger.exception("Batch sentiment call failed after %d attempts", _MAX_RETRIES + 1, exc_info=last_exc)
+        return [SentimentResult(label=SentimentLabel.NEUTRAL, summary="batch parse error") for _ in snippets]
+
+    def _parse_batch_item(self, item, idx: int) -> SentimentResult:
+        if not isinstance(item, dict):
+            return SentimentResult(label=SentimentLabel.NEUTRAL, summary=f"batch[{idx}] non-dict")
+        label = _coerce_label(item.get("label"))
+        summary = str(item.get("summary") or _SUMMARY_BY_LABEL[label]).strip()
+        try:
+            confidence = max(0.0, min(1.0, float(item.get("confidence", 0.8))))
+        except (TypeError, ValueError):
+            confidence = 0.8
+        return SentimentResult(label=label, summary=summary[:160], confidence=confidence)
 
     async def _call_model(self, snippet: str) -> SentimentResult:
         """POST to Ollama /api/generate with the 30B model. Return label + 3-5 word summary.

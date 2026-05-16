@@ -433,6 +433,7 @@ export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMo
               value={freshness}
               onChange={e => setFreshness(e.target.value)}
               disabled={loading}
+              aria-label="Time range"
             >
               {FRESHNESS_OPTIONS.map(o => (
                 <option key={o.value} value={o.value}>{o.label}</option>
@@ -443,6 +444,7 @@ export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMo
               value={researchDepth}
               onChange={e => setResearchDepth(e.target.value as ResearchDepth)}
               disabled={loading}
+              aria-label="Research depth"
               title="Research depth controls query, URL, item, and synthesis budgets"
             >
               {DEPTH_OPTIONS.map(o => (
@@ -454,6 +456,7 @@ export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMo
               value={useCase}
               onChange={e => setUseCase(e.target.value as UseCase)}
               disabled={loading}
+              aria-label="Use case"
               title="Use case adjusts source mix and query planning"
             >
               {USE_CASE_OPTIONS.map(o => (
@@ -685,17 +688,20 @@ function statusLabel(status: string, eventCount: number): string {
 interface LoadEvent { type: string }
 
 const STAGE_INFO: Record<string, { label: string; pct: number; detail: string }> = {
-  run_started: { label: 'Planning search', pct: 5, detail: 'Expanding queries and planning search strategy' },
-  search_queried: { label: 'Searching', pct: 15, detail: 'Querying Brave Search (rate-limited to 1/s)' },
-  fetch_started: { label: 'Fetching sources', pct: 35, detail: 'Downloading and extracting article text' },
-  url_fetched: { label: 'Fetching sources', pct: 55, detail: 'Processing retrieved articles' },
-  item_analyzed: { label: 'Analyzing sentiment', pct: 70, detail: 'Running per-item sentiment analysis via LLM' },
+  run_started:       { label: 'Planning search',     pct: 5,  detail: 'Expanding queries and planning search strategy' },
+  search_queried:    { label: 'Searching',           pct: 15, detail: 'Querying Brave Search (rate-limited to 1/s)' },
+  fetch_started:     { label: 'Fetching sources',    pct: 35, detail: 'Downloading and extracting article text' },
+  url_fetched:       { label: 'Fetching sources',    pct: 55, detail: 'Processing retrieved articles' },
+  item_analyzed:     { label: 'Analyzing sentiment', pct: 70, detail: 'Running per-item sentiment analysis via LLM' },
   synthesis_started: { label: 'Synthesizing report', pct: 90, detail: 'Generating themes, narrative, and graph' },
+  synthesis_token:   { label: 'Synthesizing report', pct: 95, detail: 'Writing executive summary and recommendations' },
 }
 
 function LoadingStage({ events, status }: { events: LoadEvent[]; status: string }) {
-  const lastEvent = events.length > 0 ? events[events.length - 1].type : null
-  const stage = lastEvent ? STAGE_INFO[lastEvent] : null
+  // Walk backwards to find the last event that has a known stage mapping,
+  // so stray synthesis_token events don't fall back to "Initializing…".
+  const lastKnown = [...events].reverse().find(e => e.type in STAGE_INFO)
+  const stage = lastKnown ? STAGE_INFO[lastKnown.type] : null
   const pct = stage?.pct ?? 0
   const label = stage?.label ?? (status === 'running' ? 'Starting…' : 'Initializing…')
   const detail = stage?.detail ?? 'Preparing analysis pipeline'

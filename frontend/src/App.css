@@ -1275,7 +1275,8 @@ button[type="submit"] {
   100% { transform: translateX(100%); }
 }
 
-.run-status--completed::after { background: linear-gradient(90deg, transparent, var(--positive), transparent); }
+.run-status--completed::after { background: linear-gradient(90deg, transparent, var(--positive), transparent); animation: none; }
+.run-status--cancelled::after { display: none; }
 .run-status--error::after { background: linear-gradient(90deg, transparent, var(--rog-red), transparent); animation: none; }
 
 .run-status-info { min-width: 0; }
@@ -3972,10 +3973,14 @@ button[type="submit"] {
   .app-logo-mark { width: 22px; height: 22px; }
   .app-logo h1 { font-size: 16px; }
   .app-lede { display: none; }
-  .search-form { flex-wrap: wrap; gap: 6px; }
-  .search-input { font-size: 14px; min-width: 0; }
-  .freshness-select, .depth-select, .use-case-select { font-size: 11px; padding: 0 6px; min-width: 0; }
-  .budget-preview { font-size: 10px; gap: 6px; }
+  /* Use column layout for the search form; override any flex-wrap from narrower breakpoints */
+  .search-form { flex-direction: column; flex-wrap: nowrap; gap: 6px; }
+  .search-input-wrap { width: 100%; }
+  .search-input { font-size: 14px; min-width: 0; width: 100%; }
+  .freshness-select, .depth-select, .use-case-select { font-size: 11px; padding: 0 6px; min-width: 0; width: 100%; }
+  /* Row of suggest + selects on mobile */
+  .btn-suggest { align-self: flex-start; }
+  .budget-preview { font-size: 10px; gap: 6px; flex-wrap: wrap; }
   .report-tabs { overflow-x: auto; -webkit-overflow-scrolling: touch; }
   .report-tab { font-size: 11px; padding: 0 10px; min-height: 32px; height: 32px; }
   .exec-summary { flex-direction: column; }
@@ -3993,6 +3998,10 @@ button[type="submit"] {
   .export-actions { flex-wrap: wrap; }
   .export-actions button { font-size: 10px; padding: 0 8px; min-height: 28px; }
   .force-graph-container { height: 300px; }
+  /* Run status actions wrap on narrow screens */
+  .run-status-actions { justify-content: flex-start; }
+  /* NemoClaw panel stacks below main content */
+  .nemoclaw-panel { width: 100%; max-width: 100%; margin-top: 12px; }
 }
 
 /* ── Print styles ──────────────────────────────────────────────────────── */
