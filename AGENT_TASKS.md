@@ -23,7 +23,7 @@ Last audit: 2026-05-16 22:00 UTC (verified against git log + code)
 ### Tests (orchestrator hangs)
 - [ ] Fix 8 orchestrator tests that hang when run together (SQLite session contention) — all pass individually
 - [ ] LLM failure injection tests (mock Ollama returning 500s, timeouts, malformed JSON)
-- [ ] Property-based tests for report builder functions
+- [x] Property-based tests for report builder functions
 
 ### Architecture cleanup
 - [ ] Extract synthesis interface from builder.py (decouple LLM prompts from analytics)
