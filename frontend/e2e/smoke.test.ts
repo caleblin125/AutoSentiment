@@ -500,6 +500,75 @@ test.describe('Keyboard shortcuts', () => {
   })
 })
 
+test.describe('Saved searches', () => {
+  const SAVED_SEARCH = {
+    id: 'ss-1',
+    name: 'My saved topic',
+    topic: 'electric vehicles',
+    freshness: 'pw' as const,
+    research_depth: 'standard' as const,
+    use_case: 'generic' as const,
+    created_at: new Date().toISOString(),
+  }
+
+  test('loads a saved search into the form when clicked', async ({ page }) => {
+    await mockBackend(page)
+
+    // Override the empty saved-searches stub with one that has a real entry.
+    await page.route('**/api/saved-searches', (r: Route) => {
+      if (r.request().method() === 'GET')
+        return r.fulfill({ status: 200, json: [SAVED_SEARCH] })
+      return r.continue()
+    })
+
+    await page.goto('/')
+
+    // The Saved (1) button should be enabled.
+    const savedBtn = page.locator('button:has-text("Saved")')
+    await expect(savedBtn).toBeVisible()
+    await expect(savedBtn).toBeEnabled()
+    await savedBtn.click()
+
+    // Dropdown is open — click the saved item.
+    await expect(page.locator('.saved-dropdown')).toBeVisible()
+    await page.locator('.saved-item-load').first().click()
+
+    // Topic input should now contain the saved topic.
+    await expect(page.locator('.search-input')).toHaveValue('electric vehicles')
+  })
+
+  test('saves a search and it appears in the dropdown', async ({ page }) => {
+    await mockBackend(page)
+
+    let postCalled = false
+    await page.route('**/api/saved-searches', async (r: Route) => {
+      if (r.request().method() === 'POST') {
+        postCalled = true
+        return r.fulfill({ status: 200, json: SAVED_SEARCH })
+      }
+      // After save, return the new entry in the list.
+      return r.fulfill({ status: 200, json: postCalled ? [SAVED_SEARCH] : [] })
+    })
+
+    await page.goto('/')
+
+    // Type a topic so the Save button enables.
+    await page.locator('.search-input').fill('electric vehicles')
+
+    // Click ★ Save to open the save name input.
+    await page.locator('.btn-save-search').click()
+    await expect(page.locator('.save-search-input')).toBeVisible()
+
+    // Enter a name and submit.
+    await page.locator('.save-search-input').fill('My saved topic')
+    await page.locator('.save-search-form button[type="submit"]').click()
+
+    // Save input should close, and the Saved (1) button should be enabled.
+    await expect(page.locator('.save-search-input')).not.toBeVisible()
+    await expect(page.locator('button:has-text("Saved (1)")')).toBeEnabled()
+  })
+})
+
 test.describe('Mobile layout', () => {
   test.use({ viewport: { width: 390, height: 844 } })
 

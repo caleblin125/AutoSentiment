@@ -41,7 +41,7 @@ Last updated: 2026-05-16 20:40 UTC
 
 ## Next Tasks (high value, unclaimed)
 - [x] [claude] Contradiction detection in claims (_find_contradictions bigram grouping, amber card UI in Claims tab)
-- [ ] [FREE]  More Playwright E2E tests (saved search, thread click, shareable URL)
+- [x] [claude] More Playwright E2E tests (saved search, thread click, shareable URL, compare mode, keyboard shortcuts)
 
 ## ✅ Cursor Agent — current session
 - [x] [cursor] Fix timeline condensed-mode URL overlap (live preview hoisted to sibling li)
