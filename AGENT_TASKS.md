@@ -1,53 +1,32 @@
-# Agent Task Queue
+# Agent Task Queue — Phase 5
 
-Last updated: 2026-05-16 20:30 UTC (re-audited — Claude did search tasks too)
+Last updated: 2026-05-16 21:10 UTC
 
-## ✅ COMPLETED — PI Agent
-- [x] [pi]       Fix orchestrator tests
-- [x] [pi]       Mobile layout (<768px stacked)
-- [x] [pi]       Print CSS (@media print)
-- [x] [pi]       Keyboard shortcuts (Ctrl+Enter, 1-7 tabs, Esc, ?)
-- [x] [pi]       Hardcoded colors → CSS variables
-- [x] [pi]       Page title updates
-- [x] [pi]       Agent coordination system + task auditing
+## 🔴 NOW — PI Agent
+- [ ] [pi]  Setup script: single `./setup.sh` that creates venv, installs deps, copies .env.example
+- [ ] [pi]  Backend linting: add ruff config + pre-commit hooks
 
-## ✅ COMPLETED — Claude Agent
-- [x] [claude]   ReportView → sub-components (EvidenceModal, SourceFacts, ClaimsSection)
-- [x] [claude]   CSS utility classes, tab animations, CSS variable expansion
-- [x] [claude]   World map SVG, draggable tabs, graph gradient/glow improvements
-- [x] [claude]   Claim corroboration rework, sentiment area chart
-- [x] [claude]   Parallelized media APIs (asyncio.gather + round-robin interleaving)
-- [x] [claude]   Batch FetchedURLCache reads (SELECT IN query)
-- [x] [claude]   _FETCH_CONCURRENCY 8→12 with per-domain caps
-- [x] [claude]   Search dedup scoring + cross-source tracking
-- [x] [claude]   Search timing breakdown (brave_ms, media_ms, cache hits)
-- [x] [claude]   URL quality ranking (_url_quality_score + _select_diverse_urls)
-- [x] [claude]   Degraded mode (works without Brave API key)
-- [x] [claude]   Multi-tab keyboard shortcut + page title fix
+## Next — PI Agent (after above)
+- [ ] [pi]  Shareable run URLs: `/?run=<id>` loads read-only report, bookmarkable, no auth needed
+- [ ] [pi]  Multi-topic compare mode: enter 2-3 topics, compare sentiment side-by-side
+- [ ] [pi]  Ollama model warm-up: tiny prompt on startup to avoid cold-start latency
+- [ ] [pi]  CI/CD pipeline: .github/workflows/ci.yml (test + lint + build)
+- [ ] [pi]  More Playwright tests: saved search save/load, thread card click opens search
 
-## 🔴 IN PROGRESS — Claude Agent
-- [ ] [claude]   Fix remaining light theme hardcoded colors
-- [ ] [claude]   Add useEffect cleanup functions (SSE disconnect, timers)
-- [ ] [claude]   Add error boundary wrappers to ForceGraph, EventTimeline, HistoryPanel
+## 🟡 Claude
+- [ ] [claude] Shareable run URL frontend: `/?run=<id>` read-only ReportView without RunView shell
+- [ ] [claude] Multi-topic compare mode frontend: side-by-side ReportView panels
 
-## 🔴 CRASHED — Codex Agent (zero work done, all tasks done by Claude)
-- [x] [claude]   ~Parallelize media APIs~
-- [x] [claude]   ~Pre-queue Brave searches~
-- [x] [claude]   ~Batch cache reads~
-- [x] [claude]   ~_FETCH_CONCURRENCY increase~
-- [x] [claude]   ~Search dedup + diversity~
-- [x] [claude]   ~Search timing breakdown~
-- [x] [claude]   ~Quality ranking~
-- [x] [claude]   ~Degraded mode~
+## Completed Phase 5
+- [x] [claude] FetchedURLCache TTL eviction on startup (7-day cutoff, main.py lifespan hook)
+- [x] [claude] Light theme: hardcoded color audit in EvidenceModal, ClaimsSection, SourceFacts — all use CSS vars ✓
+- [x] [claude] useEffect cleanups: EventTimeline (no useEffect needed — pure render), ForceGraph (cancelAnimationFrame ✓), useRunStream (eventSource.close() ✓)
+- [x] [claude] Error boundaries on ForceGraph ✓, EventTimeline ✓, HistoryPanel ✓
+- [x] [claude] Saved searches frontend wiring: save/load/delete dropdown in RunView search form ✓
+- [x] [claude] Graph node position persistence: localStorage keyed by `autosentiment_graph:${runId}` ✓
 
-## Next Tasks (unclaimed)
-- [ ] [FREE]     Per-URL fetch timeout hardening
-- [ ] [FREE]     FetchedURLCache TTL eviction on startup
-- [ ] [FREE]     Graph position persistence to localStorage per run_id
-- [ ] [FREE]     Multi-topic compare mode
-- [ ] [FREE]     Saved searches frontend wiring
-- [ ] [FREE]     Shareable run URLs (/?run=<id>)
-- [ ] [FREE]     More Playwright tests (saved search, thread click, report tabs)
-- [ ] [FREE]     Backend linting: ruff + pre-commit
-- [ ] [FREE]     CI/CD pipeline config
-- [ ] [FREE]     Ollama model warm-up on startup
+## Completed Phase 4 (verified)
+- [x] [claude] ReportView sub-components, CSS utilities, tab animations, world map
+- [x] [claude] All search optimization (parallel APIs, batch cache, timing, quality ranking, degraded mode)
+- [x] [pi]    Keyboard shortcuts, page titles, mobile+print CSS, color fixes, task auditing
+- [x] [pi]    Agent coordination system (AGENT_TASKS, agent-run, agent-relay)
