@@ -72,6 +72,8 @@ async def lifespan(_app: FastAPI):
     if evicted:
         logger.info("Evicted %d stale URL cache entries (>%d days old)", evicted, _CACHE_TTL_DAYS)
 
+    import asyncio
+
     # Kick off model warm-up in the background — doesn't block server startup.
     asyncio.create_task(_warmup_all_models())
 
