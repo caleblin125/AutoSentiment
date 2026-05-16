@@ -1035,6 +1035,15 @@ export function ReportView({ runId, topic, report, onSearchTopic }: Props) {
   const posRef = useRef<HTMLDivElement | null>(null)
   const negRef = useRef<HTMLDivElement | null>(null)
 
+  // Report tab keyboard shortcuts (keys 1-7)
+  useKeyboardShortcuts({
+    Tab1: () => setActiveTab('summary'), Tab2: () => setActiveTab('topics'),
+    Tab3: () => setActiveTab('timeline'), Tab4: () => setActiveTab('evidence'),
+    Tab5: () => setActiveTab('claims'), Tab6: () => setActiveTab('graph'),
+    Tab7: () => setActiveTab('performance'),
+    Escape: () => { setActiveChunk(null); setSelectedThread(null) },
+  })
+
   async function openCitation(quote: Quote) {
     setLoadingChunk(true)
     try { setActiveChunk(await getEvidence(runId, quote.evidence_id)) }

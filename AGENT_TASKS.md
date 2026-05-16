@@ -1,51 +1,49 @@
-# Agent Task Queue
+# Agent Task Queue — Multi-Agent Sprint
 
-Last updated: auto-generated. Agents: claim tasks by replacing [FREE] with your name and moving to Claimed.
+Last updated: 2026-05-16 05:00 UTC
 
-## Priority 1 — Performance & Reliability
-- [ ] [FREE]    Per-domain fetch caps (orchestrator already has _FETCH_CONCURRENCY_PER_DOMAIN=2, needs testing)
-- [ ] [FREE]    Integration tests for compute_threads in test_reports.py
-- [ ] [FREE]    Fetched URL cache: wire FetchedURLCache model into fetch.py
-- [ ] [FREE]    Brave result cache TTL cleanup (stale entries > 24h)
-- [ ] [FREE]    Fix slow test in test_orchestrator (45s suite, should be <5s)
+## 🔴 CLAIMED — PI Agent (me)
+- [x] [pi]       Fix orchestrator tests (supplemental_media_search monkeypatch)
+- [ ] [pi]       Add test coverage for new modules (media_apis.py, fetch cache, saved search)
+- [ ] [pi]       Fix mobile layout: ensure report tabs stack vertically on <768px
+- [ ] [pi]       Add @media print CSS for PDF export
+- [ ] [pi]       Add keyboard shortcuts: Ctrl+Enter submit, 1-7 tab switch, Esc close modal, ? help
+- [ ] [pi]       Fix remaining hardcoded colors → CSS variables (6x #a78bfa, #fff, #ffffff)
+- [ ] [pi]       Add page title updates: "AutoSentiment — {topic} ({status})"
+- [ ] [pi]       Monitor other agents, commit relay, handle merge conflicts
 
-## Priority 2 — UX & Features
-- [ ] [FREE]    Saved searches: model + API + frontend panel
-- [ ] [FREE]    Mobile-responsive report tabs (stack vertically, touch-friendly)
-- [ ] [FREE]    Contradiction detection: identify opposing claims in evidence
-- [ ] [FREE]    Run diff/comparison view (two completed runs side-by-side)
-- [ ] [FREE]    Multi-topic compare mode (enter 2-3 topics, compare sentiment)
-- [ ] [FREE]    Custom aspect keywords config (user-definable keyword lists)
-- [ ] [FREE]    Keyboard shortcuts: Ctrl+Enter to submit, 1-7 for tabs, Esc for modals, ? for help
-- [ ] [FREE]    Page title updates with active topic and status
+## 🟡 CLAIMED — Claude Agent (UI overhaul)
+- [ ] [claude]   Split ReportView.tsx (1382 lines) into sub-components:
+                EvidenceModal.tsx, SentimentBars.tsx, SourceFacts.tsx,
+                TimelineSection.tsx, ClaimsSection.tsx, ThreadSection.tsx
+- [ ] [claude]   Extract inline styles (36 in ReportView, 11 in ForceGraph) into CSS classes
+- [ ] [claude]   Create shared utility CSS classes: .mono, .flex-row, .flex-col, .text-muted
+                to eliminate 83x font-family: var(--mono), 98x display: flex repetitions
+- [ ] [claude]   Fix light theme: ensure all hardcoded colors have light-theme equivalents
+- [ ] [claude]   Add animated transitions between report tabs (CSS fade/slide)
+- [ ] [claude]   Fix EventTimeline: align-items on URL rows, collapsible animation smoothness
+- [ ] [claude]   Add useEffect cleanup functions where missing (SSE disconnect, timers)
+- [ ] [claude]   Add error boundary wrappers to ForceGraph, EventTimeline, HistoryPanel
 
-## Priority 3 — Polish & Ecosystem
-- [ ] [FREE]    Shareable run URLs (/?run=<id> loads read-only report)
-- [ ] [FREE]    Graphical history chart improvements (multi-run overlay)
-- [ ] [FREE]    Animated transitions between report tabs
-- [ ] [FREE]    Browser notification + sound on run completion
-- [ ] [FREE]    Sentiment word cloud in Summary tab
-- [ ] [FREE]    Keyboard-navigable force graph (Tab/Arrow keys)
-- [ ] [FREE]    PDF export (browser print with @media print CSS)
-- [ ] [FREE]    Setup.sh bootstrap script for new developers
-- [ ] [FREE]    CI/CD pipeline config (.github/workflows/ci.yml)
-- [ ] [FREE]    Backend linting (ruff + pre-commit hooks)
-- [ ] [FREE]    Advanced: entity extraction + linking from evidence
-- [ ] [FREE]    Advanced: emotion/tone sub-classification beyond pos/neg/neutral
-- [ ] [FREE]    Advanced: alert thresholds + webhook notifications
+## 🟢 CLAIMED — Cursor Agent (search optimization)
+- [ ] [cursor]   Parallelize supplemental_media_search: use asyncio.gather for 5 APIs
+                instead of sequential for-loop (currently blocks on each API)
+- [ ] [cursor]   Pre-queue Brave searches: check all cache hits first, then dispatch
+                remaining queries with 1s spacing — reduces total wait time
+- [ ] [cursor]   Batch FetchedURLCache reads: currently reads URLs one-by-one in
+                for loop; use a single SELECT ... WHERE url_hash IN (...) query
+- [ ] [cursor]   Increase _FETCH_CONCURRENCY from 8 → 12 with adaptive backoff
+- [ ] [cursor]   Add search dedup score: when Brave + media APIs return same URL,
+                mark it and show source diversity metric in report
+- [ ] [cursor]   Add search-stage timing breakdown: Brave time vs media API time
+                vs cache lookup time — expose in timings dict
+- [ ] [cursor]   Implement search result quality ranking: prefer longer snippets,
+                newer dates, and higher-credibility domains in URL selection
+- [ ] [cursor]   Test: ensure all search sources work without API keys (degraded mode)
+- [ ] [cursor]   Test: verify cache hit rate with repeated searches on same topic
 
-## Claimed
-<!-- Move claimed tasks here -->
-
-## Completed (last 48h)
-<!-- Agents: when you finish a task, move it here with timestamp -->
-- [x] [pi]      2026-05-16 04:35  Graceful shutdown + frontend auth headers
-- [x] [pi]      2026-05-16 04:30  Streaming synthesis via SSE
-- [x] [pi]      2026-05-16 04:25  Docker Compose + Dockerfiles
-- [x] [pi]      2026-05-16 04:20  Executive summary card + theme toggle
-- [x] [pi]      2026-05-16 04:15  Error boundaries on ReportView
-- [x] [pi]      2026-05-16 04:10  Persistent Brave/sentiment caches + credibility scoring
-- [x] [pi]      2026-05-16 04:05  E2E smoke test script
-- [x] [pi]      2026-05-16 04:00  Report tabs + SSE reconnect + loading stages
-- [x] [pi]      2026-05-16 03:55  Financial market use case + thread extraction
-- [x] [pi]      2026-05-16 03:50  Structured logging + error codes + durable recovery
+## Completed (last 6h)
+- [x] [claude]   2026-05-16 04:55  Massive UI overhaul (timeline, world map, draggable tabs, graph, claims, area chart)
+- [x] [pi]       2026-05-16 04:50  Multi-agent coordination system (AGENT_TASKS, agent-run, agent-relay)
+- [x] [pi]       2026-05-16 04:40  Graceful shutdown, auth, streaming synthesis, Docker, theme toggle
+- [x] [pi]       2026-05-16 04:30  Persistent caches, credibility scoring, E2E tests, thread extraction

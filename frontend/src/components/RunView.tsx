@@ -10,6 +10,7 @@ import {
   getRun, listSavedSearches, previewSearchPlan, startNemoClaw, suggestAngles,
   type Report, type ResearchDepth, type RunRequest, type SavedSearch, type SearchPlan, type UseCase,
 } from '../lib/api'
+import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts'
 import { useRunStream } from '../hooks/useRunStream'
 import { ErrorBoundary } from './ErrorBoundary'
 import { EventTimeline } from './EventTimeline'
@@ -174,6 +175,25 @@ export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMo
       queueMicrotask(() => setHistoryKey(k => k + 1))
     }
   }, [status, activeTopic, cached, runId, expanding, isExpandedRun, onStatusChange])
+
+  // Keyboard shortcuts
+  useKeyboardShortcuts({
+    'Ctrl+Enter': () => {
+      if (topic.trim() && !loading) {
+        const form = document.querySelector('.search-form') as HTMLFormElement | null
+        form?.requestSubmit()
+      }
+    },
+    'Escape': () => { setActiveChunk?.(null); setShowSuggestions(false) },
+  })
+
+  // Page title updates
+  useEffect(() => {
+    const label = activeTopic ?? 'AutoSentiment'
+    const s = status === 'running' ? '⟳' : status === 'completed' ? '✓' : status === 'cancelled' ? '⊘' : ''
+    document.title = `${s ? s + ' ' : ''}${label} — AutoSentiment`
+    return () => { document.title = 'AutoSentiment' }
+  }, [activeTopic, status])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
