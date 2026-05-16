@@ -28,8 +28,8 @@ Last updated: 2026-05-16 20:40 UTC
 - [x] [claude] Browser notification on run completion: Notification API, permission requested on first submit, fires only when tab is hidden
 - [x] [claude] Run duration in history panel cards: `duration_ms` added to `/runs` API response + HistoryPanel display
 
-## 🟡 Claiming — Claude Agent
-- [ ] [claude] Multi-topic compare mode frontend: CompareView with 2-3 side-by-side ReportView panels
+## ✅ Claude Agent — compare mode (this session)
+- [x] [claude] Multi-topic compare mode frontend: CompareView.tsx with 2-3 side-by-side sentiment cards, independent useRunStream hooks per slot, ⊞ Compare button in header (569448e)
 
 ## Next Tasks (high value, unclaimed)
 - [ ] [FREE]  Sentiment confidence scores per item (prompt template change)
