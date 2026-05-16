@@ -121,6 +121,48 @@ async def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@router.get("/diagnostics")
+async def diagnostics(
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> dict:
+    """Return local readiness diagnostics without exposing secrets."""
+    from sqlalchemy import text
+
+    db_writable = True
+    db_error = None
+    try:
+        await db.execute(text("SELECT 1"))
+    except Exception as exc:  # pragma: no cover - defensive
+        db_writable = False
+        db_error = str(exc)
+
+    run_counts = {}
+    from sqlalchemy import func as sqlfunc
+    for st in ("pending", "running", "completed", "cancelled", "error"):
+        result = await db.execute(select(sqlfunc.count()).where(Run.status == st))
+        run_counts[st] = result.scalar_one()
+
+    return {
+        "status": "ok" if db_writable else "degraded",
+        "database": {"writable": db_writable, "error": db_error},
+        "brave": {"api_key_present": bool(settings.brave_api_key)},
+        "models": {
+            "nemoclaw_model": settings.nemoclaw_model,
+            "lightweight_model": settings.lightweight_model,
+            "ollama_base_url": settings.ollama_base_url,
+        },
+        "limits": {
+            "max_queries_per_run": settings.max_queries_per_run,
+            "max_urls_per_run": settings.max_urls_per_run,
+            "max_items_per_run": settings.max_items_per_run,
+            "light_queue_max_parallel": settings.light_queue_max_parallel,
+        },
+        "run_counts": run_counts,
+        "active_sse_queues": len(event_bus._queues),
+    }
+
+
 @router.get("/runs")
 async def list_runs(
     topic: Optional[str] = Query(default=None),

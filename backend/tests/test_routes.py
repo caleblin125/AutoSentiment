@@ -128,6 +128,21 @@ async def test_preview_search_plan_returns_quota_and_queries(db_session) -> None
 
 
 @pytest.mark.asyncio
+async def test_diagnostics_reports_configuration_without_secrets(db_session) -> None:
+    payload = await routes.diagnostics(
+        db=db_session,
+        settings=Settings(**{"brave_api_key": "secret-value"}),
+    )
+
+    assert payload["status"] == "ok"
+    assert payload["database"]["writable"] is True
+    assert payload["brave"] == {"api_key_present": True}
+    assert "secret-value" not in str(payload)
+    assert payload["models"]["nemoclaw_model"]
+    assert "run_counts" in payload
+
+
+@pytest.mark.asyncio
 async def test_create_run_returns_cached_when_recent_completed_run_exists(monkeypatch, db_session) -> None:
     """POST /api/runs must return cached=True and the existing run_id when a
     completed run for the same topic+freshness exists within the TTL window."""

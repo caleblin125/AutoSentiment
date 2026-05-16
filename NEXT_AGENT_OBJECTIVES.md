@@ -489,6 +489,12 @@ Implemented the first pass of Objective 7:
 - Added graph controls for showing/hiding source nodes and topic/theme/aspect nodes.
 - Graph node positions persist per run in localStorage after right-drag/repositioning.
 
+Implemented a reliability slice from Objective 10:
+
+- Added `GET /api/diagnostics`.
+- Diagnostics report DB readiness, Brave key presence without exposing the key, configured models, run limits, run counts, and active SSE queues.
+- Added a route test proving diagnostics do not leak the Brave key value.
+
 ```bash
 cd /home/asus/AutoSentiment/frontend
 npm run lint
