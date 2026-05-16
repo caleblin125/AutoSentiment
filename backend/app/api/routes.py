@@ -63,7 +63,7 @@ class RunRequest(BaseModel):
             "<|system|>", "<|user|>", "<|assistant|>", "<|im_start|>", "<|im_end|>",
             "ignore previous", "ignore all previous", "disregard prior",
             "you are now", "act as", "pretend you are", "new instructions:",
-            "[/INST]", "[INST]", "<SYS>", "</SYS>",
+            "[/inst]", "[inst]", "<sys>", "</sys>",
         )
         lower = value.lower()
         for pattern in blocked:
