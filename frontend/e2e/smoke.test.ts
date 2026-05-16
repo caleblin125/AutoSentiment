@@ -480,9 +480,10 @@ test.describe('Compare mode', () => {
     // Click the Compare button in the header
     await page.locator('button:has-text("Compare")').click()
 
-    // Should show the compare view with topic inputs
+    // Should show the compare view with at least two topic inputs.
     await expect(page.locator('.compare-view')).toBeVisible()
-    await expect(page.locator('.compare-topic-input, .compare-form-input')).toHaveCount({ min: 2 })
+    const inputCount = await page.locator('.compare-form-input').count()
+    expect(inputCount).toBeGreaterThanOrEqual(2)
   })
 })
 

@@ -361,7 +361,20 @@ export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMo
   const isRunning   = status === 'running'
   const isCompleted = status === 'completed'
   const isCancelled = status === 'cancelled'
-  const canCancelCurrentRun = isRunning || (isExpandedRun && !isCompleted && !isCancelled && status !== 'error')
+  const isError     = status === 'error'
+  const canCancelCurrentRun = isRunning || (isExpandedRun && !isCompleted && !isCancelled && !isError)
+  const runErrorMessage = isError
+    ? (events.findLast(e => e.type === 'run_error')?.detail as { message?: string } | undefined)?.message ?? null
+    : null
+
+  function handleRetry() {
+    if (!activeTopic) return
+    setTopic(activeTopic)
+    setRunId(null)
+    setRetainedReport(null)
+    setPreExpandRunId(null)
+    setNcRunId(null)
+  }
 
   return (
     <div className="run-view">
@@ -565,6 +578,7 @@ export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMo
           <div className="run-status-info">
             <strong>{statusLabel(status, events.length)}</strong>
             {activeTopic && <p className="run-topic clip-text" title={activeTopic}>{activeTopic}</p>}
+            {runErrorMessage && <p className="run-error-msg">{runErrorMessage}</p>}
             <p className="run-topic-meta">
               <span className={`depth-dot depth-dot--${activeDepth}`} /> {activeDepthOption.label} · {activeDepthOption.queryCount} queries · {activeDepthOption.urlCount} URLs · {activeDepthOption.itemCount} items
             </p>
@@ -617,6 +631,12 @@ export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMo
             )}
 
             {isRunning && <span className="status-spinner" />}
+
+            {isError && (
+              <button className="btn-secondary" onClick={handleRetry} title="Retry this search">
+                ↺ Retry
+              </button>
+            )}
           </div>
         </div>
       )}

@@ -1279,6 +1279,7 @@ button[type="submit"] {
 .run-status--error::after { background: linear-gradient(90deg, transparent, var(--rog-red), transparent); animation: none; }
 
 .run-status-info { min-width: 0; }
+.run-error-msg { font-size: 11px; color: var(--rog-red); margin-top: 3px; opacity: 0.85; }
 .run-status-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; }
 .run-debug-id { font-family: var(--mono); font-size: 10px; }
 
@@ -2750,6 +2751,21 @@ button[type="submit"] {
 }
 
 /* ── History clear button ────────────────────────────────────────────────── */
+
+.history-filter-input {
+  display: block;
+  width: 100%;
+  padding: 6px 12px;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--border-dim);
+  color: var(--text-strong);
+  font-size: 12px;
+  outline: none;
+  box-sizing: border-box;
+}
+.history-filter-input::placeholder { color: var(--text); }
+.history-filter-input:focus { border-bottom-color: var(--rog-cyan); }
 
 .history-actions {
   padding: 6px 12px;

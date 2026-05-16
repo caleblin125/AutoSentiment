@@ -54,11 +54,12 @@ function MiniBar({ overall }: { overall: RunSummary['overall'] }) {
   )
 }
 
-export function HistoryPanel({ onOpenRun, refreshKey }: Props) {
+export function HistoryPanel({ onOpenRun, refreshKey, openRunIds }: Props) {
   const [open, setOpen] = useState(false)
   const [runs, setRuns] = useState<RunSummary[]>([])
   const [loading, setLoading] = useState(false)
   const [openedIds, setOpenedIds] = useState<Set<string>>(new Set())
+  const [filter, setFilter] = useState('')
   const openingRef = useRef<string | null>(null)  // prevent double-clicks
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -88,6 +89,9 @@ export function HistoryPanel({ onOpenRun, refreshKey }: Props) {
   }, [refreshKey, open])
 
   const hasRunning = runs.some(r => r.status === 'running' || r.status === 'pending')
+  const filteredRuns = filter.trim()
+    ? runs.filter(r => r.topic.toLowerCase().includes(filter.toLowerCase()))
+    : runs
 
   async function handleClear() {
     if (!confirm('Clear all completed / cancelled history?')) return
@@ -110,6 +114,16 @@ export function HistoryPanel({ onOpenRun, refreshKey }: Props) {
 
       {open && (
         <div className="history-dropdown">
+          {runs.length > 4 && (
+            <input
+              className="history-filter-input"
+              type="search"
+              placeholder="Filter history…"
+              value={filter}
+              onChange={e => setFilter(e.target.value)}
+              aria-label="Filter history"
+            />
+          )}
           {runs.length > 0 && (
             <div className="history-actions">
               <button className="history-clear-btn" onClick={handleClear}>
@@ -128,12 +142,17 @@ export function HistoryPanel({ onOpenRun, refreshKey }: Props) {
             <p className="history-empty">No searches yet.</p>
           )}
 
-          {runs.map(run => {
+          {!loading && runs.length > 0 && filteredRuns.length === 0 && (
+            <p className="history-empty">No matches for "{filter}".</p>
+          )}
+
+          {filteredRuns.map(run => {
             const isActive = run.status === 'running' || run.status === 'pending'
+            const isOpen = openedIds.has(run.id) || openRunIds?.has(run.id)
             return (
               <div key={run.id} className="history-item-wrap">
                 <button
-                  className={`history-item${openedIds.has(run.id) ? ' history-item--open' : ''}`}
+                  className={`history-item${isOpen ? ' history-item--open' : ''}`}
                   onClick={() => {
                     if (isActive || openingRef.current === run.id) return
                     openingRef.current = run.id
@@ -143,7 +162,7 @@ export function HistoryPanel({ onOpenRun, refreshKey }: Props) {
                     setTimeout(() => { openingRef.current = null }, 300)
                   }}
                   disabled={isActive}
-                  title={isActive ? 'Currently running' : openedIds.has(run.id) ? `${run.topic} (already open — click to switch)` : run.topic}
+                  title={isActive ? 'Currently running' : isOpen ? `${run.topic} (already open — click to switch)` : run.topic}
                 >
                   <div className="history-item-top">
                     <span
