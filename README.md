@@ -359,6 +359,8 @@ pytest tests/ -v
 
 142 tests covering the pipeline, report builder, LLM client, search, fetch, and API routes. Two tests are skipped (require a live Ollama connection).
 
+See [`backend/tests/README.md`](backend/tests/README.md) for a full description of every test file and what each test covers.
+
 Run a single test file:
 
 ```bash
