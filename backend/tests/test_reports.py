@@ -433,6 +433,52 @@ def test_compute_threads_respects_limit() -> None:
     assert len(threads) <= 3
 
 
+def test_compute_location_sentiment_extracts_mentioned_country() -> None:
+    """Locations named ≥2 times in chunks should appear in the location data."""
+    from app.reports.builder import compute_location_sentiment
+
+    chunks = [
+        _make_chunk("a", "https://example.com/1", "The United States market saw strong growth.", label="positive"),
+        _make_chunk("b", "https://example.com/2", "Sales in the United States were record-breaking.", label="positive"),
+        _make_chunk("c", "https://example.com/3", "Germany reported mixed consumer sentiment.", label="neutral"),
+    ]
+    results = compute_location_sentiment(chunks)
+    locations = {r["location"].lower() for r in results}
+
+    # US appears twice — should pass the ≥2 threshold.
+    assert any("united states" in loc for loc in locations), f"Expected United States in {locations}"
+    # Germany appears once — should be filtered out.
+    assert not any("germany" in loc for loc in locations), "Germany should be filtered (single mention)"
+
+
+def test_compute_location_sentiment_requires_two_items_minimum() -> None:
+    """A single mention should not create a map point."""
+    from app.reports.builder import compute_location_sentiment
+
+    chunks = [
+        _make_chunk("x", "https://reuters.co.uk/story", "Canada had a record quarter.", label="positive"),
+    ]
+    results = compute_location_sentiment(chunks)
+    assert results == [], "One chunk should not produce a location"
+
+
+def test_compute_location_sentiment_returns_lat_lon() -> None:
+    """Each returned location must have numeric lat and lon fields."""
+    from app.reports.builder import compute_location_sentiment
+
+    chunks = [
+        _make_chunk("a", "https://example.com/1", "Japan's market rebounded strongly.", label="positive"),
+        _make_chunk("b", "https://example.com/2", "Japan continues recovery trajectory.", label="positive"),
+    ]
+    results = compute_location_sentiment(chunks)
+    if results:
+        loc = results[0]
+        assert isinstance(loc["lat"], (int, float)), "lat must be numeric"
+        assert isinstance(loc["lon"], (int, float)), "lon must be numeric"
+        assert -90 <= loc["lat"] <= 90
+        assert -180 <= loc["lon"] <= 180
+
+
 def test_compute_threads_date_range_uses_retrieved_at_dates() -> None:
     """Threads expose a date_range derived from chunk retrieval dates."""
     from datetime import datetime, UTC
