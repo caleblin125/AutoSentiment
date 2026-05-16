@@ -870,6 +870,125 @@ button[type="submit"] {
 
 .node-popover-link:hover { background: var(--surface-hover); color: var(--rog-cyan); text-decoration: none; }
 
+/* ── Topic detail popover (theme / aspect click) ────────────────────────── */
+
+.topic-detail-popover {
+  position: fixed;
+  z-index: 200;
+  background: var(--surface-elevated);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  min-width: 320px;
+  max-width: 400px;
+  max-height: 480px;
+  overflow-y: auto;
+  box-shadow: 0 12px 48px rgba(0,0,0,0.7);
+}
+
+.topic-detail-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  background: var(--surface-elevated);
+  z-index: 1;
+}
+
+.topic-detail-kind {
+  font-family: var(--mono);
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.topic-detail-kind--theme   { background: rgba(139, 92, 246, 0.2); color: #8b5cf6; }
+.topic-detail-kind--aspect  { background: rgba(255, 102,  0, 0.2); color: #ff6600; }
+
+.topic-detail-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  color: var(--text-bright);
+}
+
+.topic-detail-close {
+  background: transparent;
+  border: none;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  min-height: unset;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.topic-detail-close:hover { background: var(--surface-hover); color: var(--text-bright); }
+
+.topic-detail-evidence {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-dim);
+}
+
+.topic-detail-evidence:last-child { border-bottom: none; }
+
+.topic-detail-summary {
+  font-size: 12px;
+  color: var(--text-strong);
+  line-height: 1.5;
+  margin: 0 0 6px;
+  font-style: italic;
+}
+
+.topic-detail-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.topic-detail-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--rog-cyan);
+  text-decoration: none;
+  padding: 2px 6px;
+  border-radius: 3px;
+  border: 1px solid rgba(0, 212, 232, 0.3);
+  transition: background 0.1s;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.topic-detail-link:hover {
+  background: var(--rog-cyan-dim);
+  color: var(--rog-cyan);
+  text-decoration: none;
+}
+
+.topic-detail-empty {
+  padding: 14px;
+  color: var(--text);
+  font-size: 12px;
+  text-align: center;
+  font-style: italic;
+  margin: 0;
+}
+
 /* ── History chart ──────────────────────────────────────────────────────── */
 
 .history-chart-section {

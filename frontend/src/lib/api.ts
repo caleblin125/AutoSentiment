@@ -71,6 +71,7 @@ export interface AspectInsight {
   positive: number
   neutral: number
   negative: number
+  evidence_ids?: string[]
 }
 
 export interface SourceFact {
@@ -92,6 +93,7 @@ export interface GraphNode {
   weight: number
   url?: string
   urls?: string[]
+  evidence_ids?: string[]
 }
 
 export interface GraphEdge {

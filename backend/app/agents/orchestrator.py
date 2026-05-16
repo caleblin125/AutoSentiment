@@ -315,37 +315,64 @@ def _summaries_for_synthesis(chunks: list[EvidenceChunk], limit: int = 40) -> li
 
 
 def _expand_platform_queries(queries: list[str], topic: str) -> list[str]:
-    """Expand queries across opinion-heavy social platforms and international sources.
+    """Expand queries across diverse opinion sources with reduced Reddit dominance.
 
-    English social/forum/video platforms come first (highest signal). International
-    queries in Spanish, French, German, and Japanese are appended so Brave can
-    surface non-English discussions that may offer a different perspective.
-    Translation of retrieved snippets is handled by the sentiment queue if enabled.
+    Source mix:
+    - Independent forums and discussion boards (Quora, HN, Stack Exchange)
+    - Social platforms (X/Twitter, YouTube, Threads, LinkedIn)
+    - News & editorial (avoid aggregated SEO spam)
+    - One Reddit query (not prioritised — Brave already surfaces Reddit organically)
+    - Review sites (Trustpilot, G2, product-specific)
+    - International coverage in 5 languages so non-English opinion is included
+
+    The LLM-generated ``queries`` from expand_queries come first; platform queries
+    follow, deduped by normalised lower-case content.
     """
-    social_queries = [
-        # Core social / opinion platforms
-        f"{topic} site:reddit.com",
-        f"{topic} site:x.com",
-        f"{topic} site:twitter.com",
-        f"{topic} site:threads.net",
-        f"{topic} site:quora.com",
-        f"{topic} site:youtube.com",
-        f"{topic} site:facebook.com",
-        f"{topic} site:news.ycombinator.com",
-        f"{topic} site:linkedin.com",
-        f"{topic} site:tiktok.com",
-        # Discussion / review aggregators
-        f"{topic} forum discussion",
-        f"{topic} user review experience",
-        f"{topic} user complaints problems",
-        f"{topic} opinions pros cons",
-        # International queries (Brave will return results in those languages)
-        f"{topic} opinión foro",           # Spanish
-        f"{topic} avis forum discussion",  # French
-        f"{topic} Meinung Erfahrung",      # German
-        f"{topic} 評価 意見 ユーザー",      # Japanese
+    # ── Broad semantic queries (diverse signals) ────────────────────────────
+    semantic = [
+        f"{topic} review opinion",
+        f"{topic} user experience feedback",
+        f"{topic} pros cons analysis",
+        f"{topic} criticism problems issues",
+        f"{topic} expert opinion assessment",
+        f"{topic} news update recent",
     ]
-    expanded = [*queries, *social_queries]
+
+    # ── Platform-specific (spread across sources, not Reddit-heavy) ─────────
+    platform = [
+        f"{topic} site:quora.com",                # question/answer — high signal
+        f"{topic} site:news.ycombinator.com",      # tech/science discussion
+        f"{topic} site:youtube.com",               # video comment sentiment
+        f"{topic} site:x.com",                     # real-time public opinion
+        f"{topic} site:threads.net",               # Meta's text platform
+        f"{topic} site:linkedin.com",              # professional perspective
+        f"{topic} site:trustpilot.com",            # consumer reviews
+        f"{topic} site:reddit.com",                # one balanced Reddit query
+        f"{topic} site:stackexchange.com",         # factual community Q&A
+        f"{topic} site:g2.com",                    # B2B software reviews
+        f"{topic} site:producthunt.com",           # product launch reactions
+    ]
+
+    # ── International queries — included when topic has broad global relevance ──
+    # Detect likely proper nouns / brand names (starts with capital in original).
+    is_likely_global = any(w[0].isupper() for w in topic.split() if w)
+    intl = [
+        f"{topic} opinión análisis foro",                # Spanish (ES/LA)
+        f"{topic} avis retour expérience",               # French
+        f"{topic} Bewertung Erfahrung Meinung",          # German
+        f"{topic} opinião avaliação discussão",           # Portuguese (BR/PT)
+        f"{topic} recensione opinione forum",             # Italian
+        f"{topic} 评价 评论 用户 体验",                   # Simplified Chinese
+        f"{topic} 評価 口コミ ユーザー",                  # Japanese
+        f"{topic} 리뷰 의견 평가",                        # Korean
+    ] if is_likely_global else [
+        f"{topic} opinión foro análisis",
+        f"{topic} avis forum discussion",
+        f"{topic} Meinung Bewertung Erfahrung",
+        f"{topic} 評価 意見 ユーザー",
+    ]
+
+    expanded = [*queries, *semantic, *platform, *intl]
     seen: set[str] = set()
     unique: list[str] = []
     for query in expanded:

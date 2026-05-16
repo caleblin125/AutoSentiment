@@ -472,9 +472,9 @@ export function ReportView({ runId, topic, report }: Props) {
       {aspects && aspects.length > 0 && <AspectSummary aspects={aspects} />}
       {source_facts && source_facts.length > 0 && <SourceFacts facts={source_facts} />}
 
-      {/* Graph — clicking theme/sentiment/aspect nodes jumps to quotes */}
+      {/* Graph — theme/aspect click → topic detail popover; sentiment click → scroll to quotes */}
       {graph && graph.nodes.length > 0 && (
-        <ForceGraph graph={graph} onNodeClick={handleGraphNodeClick} />
+        <ForceGraph graph={graph} runId={runId} onNodeClick={handleGraphNodeClick} />
       )}
 
       <QuoteList

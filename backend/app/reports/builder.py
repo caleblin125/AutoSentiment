@@ -73,36 +73,90 @@ def pick_top_quotes(chunks: list[EvidenceChunk], label: SentimentLabel, n: int =
 
 
 ASPECT_KEYWORDS = {
-    "cost": {"cost", "price", "pricing", "expensive", "cheap", "value", "afford", "fee", "fees"},
-    "efficiency": {"efficient", "efficiency", "fast", "slow", "speed", "latency", "battery", "range"},
-    "feasibility": {"feasible", "viable", "practical", "realistic", "possible", "deploy", "adoption"},
-    "reliability": {"reliable", "reliability", "bug", "bugs", "failure", "broken", "quality", "issue"},
-    "support": {"support", "service", "repair", "warranty", "help", "customer"},
-    "safety": {"safe", "safety", "risk", "danger", "recall", "crash"},
-    "trust": {"trust", "truth", "honest", "misleading", "accurate", "accuracy", "data", "source"},
-    "policy": {"policy", "regulation", "legal", "law", "government", "approval", "ratings"},
+    "cost": {"cost", "price", "pricing", "expensive", "cheap", "value", "afford", "fee", "fees", "budget", "pay", "paid"},
+    "efficiency": {"efficient", "efficiency", "fast", "slow", "speed", "latency", "battery", "range", "performance", "throughput"},
+    "feasibility": {"feasible", "viable", "practical", "realistic", "possible", "deploy", "adoption", "implement"},
+    "reliability": {"reliable", "reliability", "bug", "bugs", "failure", "broken", "quality", "issue", "issues", "crash", "flaw"},
+    "support": {"support", "service", "repair", "warranty", "help", "customer", "helpdesk", "refund"},
+    "safety": {"safe", "safety", "risk", "danger", "recall", "hazard", "secure", "security", "injury"},
+    "trust": {"trust", "truth", "honest", "misleading", "accurate", "accuracy", "data", "source", "credible", "fake"},
+    "policy": {"policy", "regulation", "legal", "law", "government", "approval", "ratings", "compliance", "ban"},
+    "design": {"design", "style", "aesthetic", "look", "appearance", "ergonomic", "build", "material"},
+    "innovation": {"innovative", "innovation", "technology", "cutting-edge", "breakthrough", "novel", "advanced"},
+    "availability": {"available", "availability", "stock", "supply", "shortage", "delivery", "access", "global"},
+    "competition": {"competitor", "competition", "rival", "alternative", "versus", "compared", "better", "worse"},
+    "environment": {"environment", "environmental", "sustainable", "carbon", "green", "emission", "climate", "eco"},
+    "usability": {"usable", "usability", "intuitive", "interface", "experience", "difficult", "complex", "simple"},
 }
-STOP_WORDS = {
-    "about", "after", "again", "against", "among", "and", "are", "because", "been", "being",
-    "but", "can", "could", "from", "have", "into", "more", "over", "that", "the", "their",
-    "them", "then", "there", "this", "very", "with", "would", "should", "while", "your",
-}
+
+# Comprehensive English stop words — single tokens that carry no semantic signal.
+STOP_WORDS: frozenset[str] = frozenset({
+    # Articles / determiners
+    "the", "a", "an", "this", "that", "these", "those", "its", "our", "their",
+    "his", "her", "him", "she", "they", "them", "we", "you", "your", "ours",
+    # Prepositions / conjunctions
+    "for", "and", "but", "nor", "not", "yet", "so", "in", "on", "at", "to",
+    "by", "of", "or", "as", "if", "is", "it", "be", "do", "go", "up", "out",
+    "off", "via", "per", "vs", "etc", "i.e", "e.g",
+    # Common verbs
+    "are", "was", "were", "been", "has", "had", "have", "will", "would", "could",
+    "should", "may", "might", "must", "can", "did", "does", "do", "get", "got",
+    "use", "used", "make", "made", "say", "said", "see", "seen", "know", "went",
+    "come", "came", "take", "took", "give", "gave", "let", "set", "put", "seem",
+    "look", "keep", "show", "told", "feel", "try", "turn", "start", "keep",
+    # Adverbs / adjectives (generic)
+    "very", "just", "more", "most", "also", "even", "still", "back", "only",
+    "then", "than", "when", "well", "here", "there", "where", "too", "now",
+    "how", "why", "who", "what", "all", "any", "few", "new", "old", "big",
+    "good", "bad", "one", "two", "own", "other", "such", "same", "much",
+    "many", "some", "both", "each", "next", "last", "long", "high", "low",
+    # Transitions / fillers
+    "about", "after", "again", "against", "among", "because", "being", "could",
+    "from", "from", "have", "into", "over", "that", "with", "while", "though",
+    "although", "however", "therefore", "instead", "through", "between",
+    "during", "before", "after", "since", "until", "unless", "without",
+    "within", "along", "across", "around", "behind", "below", "above",
+    # Opinion filler words
+    "think", "really", "actually", "basically", "literally", "honestly",
+    "definitely", "probably", "generally", "simply", "quite", "rather",
+    "pretty", "maybe", "perhaps", "often", "never", "always", "every",
+    # Short words that slip through the length filter
+    "the", "and", "for", "not", "but", "nor", "yet",
+})
 
 
 def compute_aspects(chunks: list[EvidenceChunk], topic: str, limit: int = 8) -> list[dict]:
-    """Summarize directional sentiment around recurring aspect keywords."""
+    """Summarize directional sentiment around recurring aspect keywords.
+
+    Each returned aspect includes the top evidence IDs so the frontend can
+    show a detail modal with source links when the node is clicked.
+    """
     labels = [label.value for label in SentimentLabel]
     aspect_counts: dict[str, Counter] = defaultdict(Counter)
+    aspect_evidence: dict[str, list[str]] = defaultdict(list)
+
+    # Topic words are filtered out from free-form token discovery.
+    topic_tokens = set(re.findall(r"[a-zA-Z][a-zA-Z0-9-]{2,}", topic.lower()))
 
     for chunk in chunks:
         text = f"{chunk.summary} {chunk.snippet}".lower()
         for aspect, keywords in ASPECT_KEYWORDS.items():
             if any(keyword in text for keyword in keywords):
                 aspect_counts[aspect][str(chunk.label)] += 1
+                # Keep up to 5 evidence IDs per aspect for the detail popover.
+                if len(aspect_evidence[aspect]) < 5:
+                    aspect_evidence[aspect].append(chunk.id)
 
-    for token, count in _topic_terms(topic, chunks).most_common(limit):
+    for token, count in _topic_terms(topic, chunks).most_common(limit * 2):
+        # Skip: in STOP_WORDS, short tokens (≤4 chars), or topic name words.
+        if token in STOP_WORDS or len(token) <= 4 or token in topic_tokens:
+            continue
         if token not in aspect_counts and count >= 2:
             aspect_counts[token]["neutral"] += count
+            aspect_evidence[token] = [
+                c.id for c in chunks
+                if token in f"{c.summary} {c.snippet}".lower()
+            ][:5]
 
     aspects = []
     for aspect, counts in aspect_counts.items():
@@ -118,6 +172,7 @@ def compute_aspects(chunks: list[EvidenceChunk], topic: str, limit: int = 8) -> 
                 "positive": counts["positive"] / total,
                 "neutral": counts["neutral"] / total,
                 "negative": counts["negative"] / total,
+                "evidence_ids": aspect_evidence.get(aspect, []),
             }
         )
 
@@ -168,12 +223,29 @@ def build_idea_graph(topic: str, chunks: list[EvidenceChunk], themes: list[str],
 
     for theme in themes[:6]:
         node_id = f"theme:{theme}"
-        nodes.append({"id": node_id, "label": theme, "kind": "theme", "weight": 2})
+        # Find chunks that mention this theme keyword in their summary.
+        theme_evidence = [
+            c.id for c in chunks
+            if theme.lower() in f"{c.summary} {c.snippet}".lower()
+        ][:5]
+        nodes.append({
+            "id": node_id,
+            "label": theme,
+            "kind": "theme",
+            "weight": max(2, len(theme_evidence)),
+            "evidence_ids": theme_evidence,
+        })
         edges.append({"source": "topic", "target": node_id, "kind": "theme", "weight": 2})
 
     for aspect in aspects[:8]:
         node_id = f"aspect:{aspect['name']}"
-        nodes.append({"id": node_id, "label": aspect["name"], "kind": "aspect", "weight": aspect["count"]})
+        nodes.append({
+            "id": node_id,
+            "label": aspect["name"],
+            "kind": "aspect",
+            "weight": aspect["count"],
+            "evidence_ids": aspect.get("evidence_ids", []),
+        })
         edges.append({"source": "topic", "target": node_id, "kind": "aspect", "weight": aspect["count"]})
         edges.append({"source": node_id, "target": f"sentiment:{aspect['sentiment']}", "kind": "direction", "weight": aspect["count"]})
 
@@ -202,8 +274,10 @@ def build_idea_graph(topic: str, chunks: list[EvidenceChunk], themes: list[str],
 
 
 def _topic_terms(topic: str, chunks: list[EvidenceChunk]) -> Counter:
-    text = " ".join([topic, *(chunk.summary for chunk in chunks)])
-    tokens = re.findall(r"[a-zA-Z][a-zA-Z0-9-]{2,}", text.lower())
+    """Extract candidate topic tokens from chunk summaries (not the topic itself)."""
+    # Only scan chunk summaries — the topic words would trivially dominate otherwise.
+    text = " ".join(chunk.summary for chunk in chunks)
+    tokens = re.findall(r"[a-zA-Z][a-zA-Z0-9-]{3,}", text.lower())  # 5+ chars minimum
     return Counter(token for token in tokens if token not in STOP_WORDS)
 
 

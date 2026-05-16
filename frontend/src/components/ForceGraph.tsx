@@ -2,12 +2,14 @@
  * Spring-physics force-directed graph.
  *
  * Interaction:
- *   Left-click  → open the node's URL in a new tab (source nodes only)
- *   Right-click + drag → reposition node (context menu prevented)
- *   Hover source node → show link popover with all URLs from that domain
+ *   Left-click source node → link popover with all URLs from that domain
+ *   Left-click theme/aspect node → topic detail popover (evidence + links)
+ *   Left-click sentiment node → calls onNodeClick to scroll to quotes
+ *   Right-click + drag → reposition node
  */
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import type { GraphEdge, GraphNode, IdeaGraph } from '../lib/api'
+import type { EvidenceChunk, GraphEdge, GraphNode, IdeaGraph } from '../lib/api'
+import { getEvidence } from '../lib/api'
 
 const W = 900
 const H = 480
@@ -207,24 +209,110 @@ function NodePopover({ node, x, y, onClose }: {
   )
 }
 
+// ── Topic detail popover (theme / aspect nodes) ───────────────────────────
+
+interface TopicDetailState { node: GraphNode; x: number; y: number }
+
+function TopicDetailPopover({ node, runId, x, y, onClose }: {
+  node: GraphNode; runId: string; x: number; y: number; onClose: () => void
+}) {
+  const [chunks, setChunks] = useState<EvidenceChunk[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const ids = node.evidence_ids ?? []
+    if (!ids.length) { setLoading(false); return }
+    Promise.all(ids.map(id => getEvidence(runId, id)))
+      .then(results => setChunks(results.filter(Boolean)))
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [node, runId])
+
+  const left = Math.min(x, window.innerWidth - 380)
+  const top  = Math.min(y, window.innerHeight - 420)
+
+  function faviconUrl(url: string) {
+    try { return `https://www.google.com/s2/favicons?domain=${new URL(url).hostname}&sz=14` }
+    catch { return '' }
+  }
+
+  return (
+    <>
+      <div style={{ position: 'fixed', inset: 0, zIndex: 199 }} onClick={onClose} />
+      <div
+        className="topic-detail-popover"
+        style={{ left, top }}
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="topic-detail-header">
+          <span className={`topic-detail-kind topic-detail-kind--${node.kind}`}>{node.kind}</span>
+          <strong className="topic-detail-title">{node.label}</strong>
+          <button className="topic-detail-close" onClick={onClose}>✕</button>
+        </div>
+
+        {loading && (
+          <div style={{ padding: '12px 14px' }}>
+            <div className="skeleton skeleton-line skeleton-line--full" />
+            <div className="skeleton skeleton-line skeleton-line--medium" style={{ marginTop: 8 }} />
+          </div>
+        )}
+
+        {!loading && chunks.length === 0 && (
+          <p className="topic-detail-empty">No supporting evidence stored for this topic.</p>
+        )}
+
+        {chunks.map(chunk => (
+          <div key={chunk.id} className="topic-detail-evidence">
+            <p className="topic-detail-summary">"{chunk.summary}"</p>
+            <div className="topic-detail-meta">
+              <span className={`sentiment-chip sentiment-chip--${chunk.label}`} style={{ fontSize: 9 }}>
+                {chunk.label}
+              </span>
+              <a
+                href={chunk.url}
+                target="_blank"
+                rel="noreferrer"
+                className="topic-detail-link"
+                title={chunk.url}
+              >
+                <img src={faviconUrl(chunk.url)} alt="" width={12} height={12}
+                  onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
+                <span>{new URL(chunk.url).hostname.replace(/^www\./, '')}</span>
+                <span>↗</span>
+              </a>
+            </div>
+          </div>
+        ))}
+      </div>
+    </>
+  )
+}
+
 // ── Component ─────────────────────────────────────────────────────────────
 
 interface Props {
   graph: IdeaGraph
-  /** Called when the user left-clicks a non-source node (e.g. sentiment/theme/aspect). */
+  runId: string
+  /** Called when the user left-clicks a sentiment node to scroll to quotes. */
   onNodeClick?: (node: GraphNode) => void
 }
 
-export function ForceGraph({ graph, onNodeClick }: Props) {
+export function ForceGraph({ graph, runId, onNodeClick }: Props) {
   const { positions, onContextMenu } = useForce(graph.nodes, graph.edges)
   const [popover, setPopover] = useState<PopoverState | null>(null)
+  const [topicDetail, setTopicDetail] = useState<TopicDetailState | null>(null)
 
   const popoverNode = popover ? graph.nodes.find(n => n.id === popover.nodeId) : null
 
   function handleLeftClick(node: GraphNode, e: React.MouseEvent) {
+    e.stopPropagation()
     if (node.kind === 'source' && (node.urls?.length || node.url)) {
+      setTopicDetail(null)
       setPopover({ nodeId: node.id, x: e.clientX + 12, y: e.clientY + 4 })
-    } else if (node.kind === 'sentiment' || node.kind === 'theme' || node.kind === 'aspect') {
+    } else if (node.kind === 'theme' || node.kind === 'aspect') {
+      setPopover(null)
+      setTopicDetail({ node, x: e.clientX + 12, y: e.clientY + 4 })
+    } else if (node.kind === 'sentiment') {
       onNodeClick?.(node)
     } else if (node.url) {
       window.open(node.url, '_blank')
@@ -312,6 +400,16 @@ export function ForceGraph({ graph, onNodeClick }: Props) {
           node={popoverNode}
           x={popover.x} y={popover.y}
           onClose={() => setPopover(null)}
+        />
+      )}
+
+      {/* Topic detail popover (theme / aspect nodes) */}
+      {topicDetail && (
+        <TopicDetailPopover
+          node={topicDetail.node}
+          runId={runId}
+          x={topicDetail.x} y={topicDetail.y}
+          onClose={() => setTopicDetail(null)}
         />
       )}
     </div>

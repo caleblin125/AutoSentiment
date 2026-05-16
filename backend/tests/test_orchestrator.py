@@ -144,11 +144,24 @@ async def test_run_research_marks_run_error_and_emits_sentinel(monkeypatch, sess
 def test_expand_platform_queries_adds_unique_opinion_platforms() -> None:
     queries = orchestrator._expand_platform_queries(["Tesla Model 3", "tesla model 3"], "Tesla Model 3")
 
+    # Original query must be first; no duplicates (case-insensitive).
     assert queries[0] == "Tesla Model 3"
-    assert len(queries) == len({query.lower() for query in queries})
-    assert "Tesla Model 3 site:reddit.com" in queries
-    assert "Tesla Model 3 site:youtube.com" in queries
-    assert "Tesla Model 3 forum discussion" in queries
+    assert len(queries) == len({q.lower() for q in queries})
+
+    # Must include diverse platforms — Reddit limited to ≤1 explicit query.
+    query_str = " ".join(queries)
+    assert "site:reddit.com" in query_str
+    assert "site:youtube.com" in query_str
+    assert "site:quora.com" in query_str
+    assert "site:trustpilot.com" in query_str
+    reddit_count = sum(1 for q in queries if "reddit.com" in q.lower())
+    assert reddit_count <= 1, f"Too many Reddit queries ({reddit_count})"
+
+    # Must include at least one semantic review query.
+    assert any("review" in q.lower() or "opinion" in q.lower() for q in queries)
+
+    # Must include international languages.
+    assert any("opinión" in q or "avis" in q or "Bewertung" in q for q in queries)
 
 
 def test_summaries_for_synthesis_limits_and_balances_labels() -> None:

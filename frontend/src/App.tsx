@@ -60,7 +60,7 @@ export default function App() {
           <div className="app-logo-mark">AS</div>
           <h1>Auto<span>Sentiment</span></h1>
         </div>
-        <p className="app-lede">ROG-powered citation-backed analysis</p>
+        <p className="app-lede">Multi-source public sentiment intelligence</p>
       </header>
 
       {/* ── Tab bar ── */}
