@@ -31,6 +31,7 @@ class SSEEventType(StrEnum):
     URL_FETCHED = "url_fetched"
     ITEM_ANALYZED = "item_analyzed"
     SYNTHESIS_STARTED = "synthesis_started"
+    SYNTHESIS_TOKEN = "synthesis_token"
     RUN_COMPLETED = "run_completed"
     RUN_CANCELLED = "run_cancelled"
     RUN_ERROR = "run_error"

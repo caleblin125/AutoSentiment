@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 
-from app.agents.ollama import ollama_generate
+from app.agents.ollama import ollama_generate, ollama_generate_streaming
 
 if TYPE_CHECKING:
     from app.core.config import Settings
@@ -158,6 +159,84 @@ async def synthesize_report(
             model=settings.nemoclaw_model,
             base_url=settings.ollama_base_url,
             cancel_check=cancel_check,
+        )
+        themes = payload.get("themes", [])
+        if not isinstance(themes, list):
+            themes = []
+        impacts = payload.get("impacts", [])
+        if not isinstance(impacts, list):
+            impacts = []
+        reasons = payload.get("reasons", [])
+        if not isinstance(reasons, list):
+            reasons = []
+        arguments = payload.get("arguments", [])
+        if not isinstance(arguments, list):
+            arguments = []
+        return {
+            "themes": [str(t) for t in themes],
+            "narrative": str(payload.get("narrative", "Synthesis unavailable.")),
+            "impacts": [i for i in impacts if isinstance(i, dict)],
+            "reasons": [str(r) for r in reasons],
+            "arguments": [a for a in arguments if isinstance(a, dict)],
+        }
+    except Exception:
+        return {"themes": [], "narrative": "Synthesis unavailable.", "impacts": [], "reasons": [], "arguments": []}
+
+
+async def synthesize_report_streaming(
+    topic: str,
+    chunks_summary: list[dict],
+    counts: dict,
+    *,
+    settings: Settings,
+    cancel_check: Callable[[], bool] | None = None,
+    on_token: Callable[[str], None] | None = None,
+) -> dict:
+    """Stream synthesis tokens and return the full structured result."""
+    overall = counts.get("overall", {})
+    total = int(overall.get("total", 0))
+    pos_pct = round(float(overall.get("positive", 0.0)) * 100)
+    neu_pct = round(float(overall.get("neutral", 0.0)) * 100)
+    neg_pct = round(float(overall.get("negative", 0.0)) * 100)
+
+    sample_opinions = "\n".join(
+        f"- {chunk.get('label', 'neutral')}: {chunk.get('summary', '')} "
+        f"({chunk.get('source_type', 'unknown')})"
+        for chunk in chunks_summary
+    )
+    if not sample_opinions:
+        sample_opinions = "- neutral: no sample opinions available (unknown)"
+
+    system = "You are a research analyst summarising public sentiment. Respond with JSON only."
+    prompt = (
+        f"Topic: {topic}\n"
+        f"Analysed {total} items: {pos_pct}% positive, {neu_pct}% neutral, "
+        f"{neg_pct}% negative.\n\n"
+        f"Sample opinions:\n{sample_opinions}\n\n"
+        "Return exactly this JSON (no extra keys, no markdown):\n"
+        "{\n"
+        '  "themes": ["theme1", "theme2", "theme3"],\n'
+        '  "narrative": "2-3 sentence plain-English summary",\n'
+        '  "impacts": [\n'
+        '    {"direction": "positive", "description": "..."},\n'
+        '    {"direction": "negative", "description": "..."}\n'
+        "  ],\n"
+        '  "reasons": ["reason the sentiment is what it is", "..."],\n'
+        '  "arguments": [\n'
+        '    {"claim": "...", "side": "for"},\n'
+        '    {"claim": "...", "side": "against"}\n'
+        "  ]\n"
+        "}"
+    )
+
+    try:
+        payload = await ollama_generate_streaming(
+            prompt,
+            system=system,
+            model=settings.nemoclaw_model,
+            base_url=settings.ollama_base_url,
+            cancel_check=cancel_check,
+            on_token=on_token,
         )
         themes = payload.get("themes", [])
         if not isinstance(themes, list):

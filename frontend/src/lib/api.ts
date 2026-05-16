@@ -242,6 +242,7 @@ export type SSEEventType =
   | 'url_fetched'
   | 'item_analyzed'
   | 'synthesis_started'
+  | 'synthesis_token'
   | 'run_completed'
   | 'run_cancelled'
   | 'run_error'

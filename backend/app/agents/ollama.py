@@ -70,6 +70,61 @@ async def ollama_generate(
         raise ValueError(raw) from exc
 
 
+async def ollama_generate_streaming(
+    prompt: str,
+    *,
+    system: str,
+    model: str,
+    base_url: str,
+    cancel_check: Callable[[], bool] | None = None,
+    on_token: Callable[[str], None] | None = None,
+) -> dict:
+    """Stream from Ollama, calling on_token for each response chunk.
+
+    Returns the parsed JSON result after streaming completes. The on_token
+    callback receives each new text fragment as it arrives.
+    """
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        async with client.stream(
+            "POST",
+            f"{base_url.rstrip('/')}/api/generate",
+            json={
+                "model": model,
+                "prompt": prompt,
+                "system": system,
+                "format": "json",
+                "stream": True,
+            },
+        ) as response:
+            response.raise_for_status()
+            full_response = ""
+            full_thinking = ""
+            async for line in response.aiter_lines():
+                if cancel_check and cancel_check():
+                    raise GenerationCancelled()
+                if not line.strip():
+                    continue
+                try:
+                    chunk = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                token = chunk.get("response", "")
+                if token and on_token:
+                    on_token(token)
+                full_response += token
+                full_thinking += chunk.get("thinking", "")
+                if chunk.get("done"):
+                    break
+
+    raw = _pick_text(full_response, full_thinking)
+    if not raw:
+        raise ValueError("Empty response from model")
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ValueError(raw) from exc
+
+
 def _pick_text(response: str, thinking: str) -> str:
     """Prefer the response field; fall back to thinking for reasoning models."""
     if response.strip():

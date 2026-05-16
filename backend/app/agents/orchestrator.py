@@ -14,7 +14,7 @@ import httpx
 from app.api import event_bus
 from app.api.event_bus import clear_cancel, is_cancelled, request_cancel as _request_cancel  # noqa: F401
 from app.agents.light_queue import SentimentQueue
-from app.agents.nemoclaw import expand_queries, synthesize_report
+from app.agents.nemoclaw import expand_queries, synthesize_report, synthesize_report_streaming
 from app.agents.ollama import GenerationCancelled
 from app.agents.types import SSEEventType, SentimentLabel
 from app.db.session import AsyncSessionLocal
@@ -361,9 +361,22 @@ async def run_research(
             await db.commit()
 
             stage_started = perf_counter()
-            synthesis = await synthesize_report(
-                topic, chunks_summary, counts, settings=settings, cancel_check=_cancel_check
+            token_buf: list[str] = []
+            async def _on_synthesis_token(token: str):
+                token_buf.append(token)
+                # Emit every ~8 tokens to avoid flooding the SSE stream.
+                if len(token_buf) >= 8:
+                    await emit(SSEEventType.SYNTHESIS_TOKEN, "", {"text": "".join(token_buf)})
+                    token_buf.clear()
+
+            synthesis = await synthesize_report_streaming(
+                topic, chunks_summary, counts,
+                settings=settings, cancel_check=_cancel_check,
+                on_token=_on_synthesis_token,
             )
+            # Flush remaining tokens.
+            if token_buf:
+                await emit(SSEEventType.SYNTHESIS_TOKEN, "", {"text": "".join(token_buf)})
             timings["synthesis_ms"] = _elapsed_ms(stage_started)
             themes = synthesis.get("themes", [])
             timings["total_ms"] = _elapsed_ms(run_started_at)
