@@ -746,6 +746,22 @@ export function ReportView({ runId, topic, report, onSearchTopic }: Props) {
       {/* ── Summary tab ── */}
       {activeTab === 'summary' && (
         <div className="report-tab-panel" role="tabpanel">
+          {/* Executive summary card */}
+          <div className="exec-summary">
+            <div className="exec-summary-score">
+              <span className="exec-summary-big">{Math.round(overall.positive * 100)}%</span>
+              <span className="exec-summary-label">positive</span>
+            </div>
+            <div className="exec-summary-body">
+              <p>{narrative.slice(0, 200)}{narrative.length > 200 ? '…' : ''}</p>
+              <div className="exec-summary-meta">
+                <span>{overall.total} sources analyzed</span>
+                {themes.length > 0 && <span>Top: {themes.slice(0, 3).join(', ')}</span>}
+                {timings && <span>Completed in {fmtDuration(timings.total_ms ?? 0)}</span>}
+              </div>
+            </div>
+          </div>
+
           <HistoryChart topic={topic} currentRunId={runId} />
 
           <div className="sentiment-bars">

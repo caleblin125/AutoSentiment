@@ -10,6 +10,7 @@ import {
   type Report, type ResearchDepth, type RunRequest, type SearchPlan, type UseCase,
 } from '../lib/api'
 import { useRunStream } from '../hooks/useRunStream'
+import { ErrorBoundary } from './ErrorBoundary'
 import { EventTimeline } from './EventTimeline'
 import { ReportView } from './ReportView'
 import { HistoryPanel } from './HistoryPanel'
@@ -400,12 +401,14 @@ export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMo
       {runId && events.length > 0 && <EventTimeline events={events} status={status} />}
 
       {report && runId && activeTopic && (
-        <ReportView
-          runId={runId}
-          topic={activeTopic}
-          report={report}
-          onSearchTopic={(subtopic) => { setTopic(subtopic); setCached(false); }}
-        />
+        <ErrorBoundary>
+          <ReportView
+            runId={runId}
+            topic={activeTopic}
+            report={report}
+            onSearchTopic={(subtopic) => { setTopic(subtopic); setCached(false); }}
+          />
+        </ErrorBoundary>
       )}
     </div>
   )

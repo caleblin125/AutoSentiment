@@ -1,0 +1,61 @@
+# AutoSentiment — Containerized Deployment
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - BRAVE_API_KEY=${BRAVE_API_KEY:-}
+      - AUTH_API_KEY=${AUTH_API_KEY:-}
+      - NEMCLAW_MODEL=${NEMCLAW_MODEL:-nemotron-3-super}
+      - LIGHTWEIGHT_MODEL=${LIGHTWEIGHT_MODEL:-nemotron-3-nano}
+      - MAX_QUERIES_PER_RUN=${MAX_QUERIES_PER_RUN:-16}
+      - MAX_URLS_PER_RUN=${MAX_URLS_PER_RUN:-100}
+      - MAX_ITEMS_PER_RUN=${MAX_ITEMS_PER_RUN:-300}
+      - LIGHT_QUEUE_MAX_PARALLEL=${LIGHT_QUEUE_MAX_PARALLEL:-4}
+    volumes:
+      - backend_data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_API_BASE_URL=http://backend:8000
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  # Optional: local Ollama instance. Comment out if using external Ollama.
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+    profiles:
+      - gpu  # Only start with: docker compose --profile gpu up
+
+volumes:
+  backend_data:
+  ollama_data:

@@ -89,6 +89,14 @@ function TabPanel({
 
 export default function App() {
   const [devMode, setDevMode] = useState(false)
+  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
+    return (localStorage.getItem('autosentiment_theme') as 'dark' | 'light') ?? 'dark'
+  })
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme)
+    localStorage.setItem('autosentiment_theme', theme)
+  }, [theme])
 
   // ── Restore session from localStorage ───────────────────────────────────
   const [tabs, setTabs] = useState<Tab[]>(() => {
@@ -190,14 +198,24 @@ export default function App() {
           <h1>Auto<span>Sentiment</span></h1>
         </div>
         <p className="app-lede">Multi-source public sentiment intelligence</p>
-        <button
-          className="dev-toggle-btn"
-          onClick={() => setDevMode(d => !d)}
-          title="Dev mode (Ctrl+Shift+D)"
-          aria-pressed={devMode}
-        >
-          {devMode ? '⚙ dev on' : '⚙'}
-        </button>
+        <div style={{ display: 'flex', gap: 6, marginLeft: 'auto', alignItems: 'center' }}>
+          <button
+            className="theme-toggle-btn"
+            onClick={() => setTheme(t => t === 'dark' ? 'light' : 'dark')}
+            title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
+            aria-label="Toggle theme"
+          >
+            {theme === 'dark' ? '☀' : '🌙'}
+          </button>
+          <button
+            className="dev-toggle-btn"
+            onClick={() => setDevMode(d => !d)}
+            title="Dev mode (Ctrl+Shift+D)"
+            aria-pressed={devMode}
+          >
+            {devMode ? '⚙ dev on' : '⚙'}
+          </button>
+        </div>
       </header>
 
       <TabBar

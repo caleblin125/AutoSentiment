@@ -1,3 +1,40 @@
+/* ── Theme variables ──────────────────────────────────────────────────── */
+
+:root {
+  --surface: #0a0a0f;
+  --panel: #111118;
+  --border: #252530;
+  --text: #8a8a9a;
+  --text-strong: #d0d0e0;
+  --positive: #00d68f;
+  --neutral: #8a8aaa;
+  --rog-red: #e62e4b;
+  --rog-red-dim: rgba(230, 46, 75, 0.12);
+  --rog-cyan: #00d4d4;
+  --rog-cyan-dim: rgba(0, 212, 212, 0.12);
+  --skeleton: #1a1a28;
+}
+
+[data-theme="light"] {
+  --surface: #f4f4f8;
+  --panel: #ffffff;
+  --border: #d4d4dc;
+  --text: #666680;
+  --text-strong: #1a1a2e;
+  --positive: #007a4d;
+  --neutral: #6a6a7a;
+  --rog-red: #c41e3a;
+  --rog-red-dim: rgba(196, 30, 58, 0.08);
+  --rog-cyan: #008a8a;
+  --rog-cyan-dim: rgba(0, 138, 138, 0.08);
+  --skeleton: #e0e0e8;
+}
+
+body {
+  background: var(--surface);
+  color: var(--text);
+}
+
 /* ── Layout ─────────────────────────────────────────────────────────────── */
 
 .app {
@@ -432,6 +469,59 @@ input:focus, select:focus, button:focus-visible {
   padding: 24px 0;
   text-align: center;
   opacity: 0.65;
+}
+
+/* ── Executive summary ── */
+.exec-summary {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.exec-summary-score {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 80px;
+  padding: 12px;
+  background: var(--surface);
+  border-radius: 6px;
+}
+
+.exec-summary-big {
+  font-family: var(--mono);
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--positive);
+}
+
+.exec-summary-label {
+  font-size: 11px;
+  color: var(--text);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.exec-summary-body p {
+  font-size: 13px;
+  color: var(--text-strong);
+  line-height: 1.5;
+  margin: 0 0 8px;
+}
+
+.exec-summary-meta {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text);
+  opacity: 0.7;
 }
 
 /* ── Thread cards ── */
@@ -1567,8 +1657,26 @@ button[type="submit"] {
 
 /* ── Dev mode overlay ────────────────────────────────────────────────────── */
 
+.theme-toggle-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 14px;
+  padding: 4px 8px;
+  border-radius: 3px;
+  cursor: pointer;
+  min-height: unset;
+  letter-spacing: 0;
+  text-transform: none;
+  line-height: 1;
+}
+
+.theme-toggle-btn:hover {
+  border-color: var(--rog-red);
+  background: var(--rog-red-dim);
+}
+
 .dev-toggle-btn {
-  margin-left: auto;
   background: transparent;
   border: 1px solid var(--border);
   color: var(--text);
