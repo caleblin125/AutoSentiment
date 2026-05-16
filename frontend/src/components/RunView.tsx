@@ -6,8 +6,8 @@
  */
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
-  cancelRun, createRun, expandRun, startNemoClaw, suggestAngles,
-  type Report, type ResearchDepth, type RunRequest,
+  cancelRun, createRun, expandRun, previewSearchPlan, startNemoClaw, suggestAngles,
+  type Report, type ResearchDepth, type RunRequest, type SearchPlan, type UseCase,
 } from '../lib/api'
 import { useRunStream } from '../hooks/useRunStream'
 import { EventTimeline } from './EventTimeline'
@@ -37,6 +37,14 @@ const DEPTH_OPTIONS: Array<{
   { value: 'exhaustive', label: 'Exhaustive', queryCount: 16, urlCount: 100, itemCount: 300, synthesisSampleSize: 160 },
 ]
 
+const USE_CASE_OPTIONS: Array<{ value: UseCase; label: string }> = [
+  { value: 'generic', label: 'Generic' },
+  { value: 'entertainment_product', label: 'Entertainment' },
+  { value: 'public_current_event', label: 'Current event' },
+  { value: 'brand_product', label: 'Brand/product' },
+  { value: 'policy_civic', label: 'Policy/civic' },
+]
+
 interface Props {
   onStatusChange: (status: string, label: string, runId?: string) => void
   onOpenRunInNewTab: (runId: string, topic: string) => void
@@ -48,6 +56,7 @@ export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMo
   const [topic, setTopic] = useState('')
   const [freshness, setFreshness] = useState<string>('pm')
   const [researchDepth, setResearchDepth] = useState<ResearchDepth>('standard')
+  const [useCase, setUseCase] = useState<UseCase>('generic')
   const [runId, setRunId] = useState<string | null>(initialRunId ?? null)
   const [activeTopic, setActiveTopic] = useState<string | null>(null)
   const [cached, setCached] = useState(false)
@@ -60,6 +69,7 @@ export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMo
   const [suggestions, setSuggestions] = useState<string[]>([])
   const [showSuggestions, setShowSuggestions] = useState(false)
   const [suggestLoading, setSuggestLoading] = useState(false)
+  const [searchPlan, setSearchPlan] = useState<SearchPlan | null>(null)
   // Track the pre-expand runId so we can restore it if the expanded run is cancelled.
   const [preExpandRunId, setPreExpandRunId] = useState<string | null>(null)
 
@@ -79,6 +89,29 @@ export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMo
     DEPTH_OPTIONS.length - 1,
   )]
   const expandDepthOption = selectedDepthIndex > activeDepthIndex ? selectedDepth : nextDepthOption
+
+  useEffect(() => {
+    const trimmedTopic = topic.trim()
+    if (trimmedTopic.length < 2) {
+      queueMicrotask(() => setSearchPlan(null))
+      return
+    }
+    const controller = new AbortController()
+    const timeout = window.setTimeout(() => {
+      previewSearchPlan({
+        topic: trimmedTopic,
+        ...(freshness ? { freshness: freshness as RunRequest['freshness'] } : {}),
+        research_depth: researchDepth,
+        use_case: useCase,
+      })
+        .then(plan => { if (!controller.signal.aborted) setSearchPlan(plan) })
+        .catch(() => { if (!controller.signal.aborted) setSearchPlan(null) })
+    }, 300)
+    return () => {
+      controller.abort()
+      window.clearTimeout(timeout)
+    }
+  }, [topic, freshness, researchDepth, useCase])
 
   // Restore the pre-expand run when an expanded run is cancelled.
   useEffect(() => {
@@ -112,6 +145,7 @@ export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMo
         topic: topic.trim(),
         ...(freshness ? { freshness: freshness as RunRequest['freshness'] } : {}),
         research_depth: researchDepth,
+        use_case: useCase,
       }
       const { run_id, cached: isCached } = await createRun(req)
       setRunId(run_id)
@@ -258,17 +292,39 @@ export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMo
                 <option key={o.value} value={o.value}>{o.label}</option>
               ))}
             </select>
+            <select
+              className="use-case-select"
+              value={useCase}
+              onChange={e => setUseCase(e.target.value as UseCase)}
+              disabled={loading}
+              title="Use case adjusts source mix and query planning"
+            >
+              {USE_CASE_OPTIONS.map(o => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
             <button type="submit" disabled={loading || !topic.trim()}>
               {loading && <span className="spinner" aria-hidden="true" />}
               <span>{loading ? 'Starting…' : 'Analyze'}</span>
             </button>
           </form>
           <div className="budget-preview">
-            <span>{selectedDepth.queryCount} Brave queries</span>
-            <span>{selectedDepth.urlCount} URLs</span>
-            <span>{selectedDepth.itemCount} items</span>
+            <span>{searchPlan?.estimated_brave_queries ?? selectedDepth.queryCount} Brave queries</span>
+            <span>{searchPlan?.url_budget ?? selectedDepth.urlCount} URLs</span>
+            <span>{searchPlan?.item_budget ?? selectedDepth.itemCount} items</span>
             <span>{selectedDepth.synthesisSampleSize} synthesis samples</span>
+            {searchPlan && <span>{searchPlan.monthly_quota_remaining} monthly queries left</span>}
           </div>
+          {searchPlan?.quota_warning && <p className="quota-warning">{searchPlan.quota_warning}</p>}
+          {searchPlan && (
+            <div className="search-plan-preview" aria-label="Search plan preview">
+              {searchPlan.queries.slice(0, 4).map(query => (
+                <span key={`${query.purpose}:${query.query}`} title={query.query}>
+                  {query.purpose}
+                </span>
+              ))}
+            </div>
+          )}
           {formError && <p className="error-msg">{formError}</p>}
         </div>
 

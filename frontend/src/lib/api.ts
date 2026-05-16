@@ -6,9 +6,11 @@ export interface RunRequest {
   topic: string
   freshness?: 'pd' | 'pw' | 'pm' | 'py'
   research_depth?: ResearchDepth
+  use_case?: UseCase
 }
 
 export type ResearchDepth = 'quick' | 'standard' | 'deep' | 'exhaustive'
+export type UseCase = 'generic' | 'entertainment_product' | 'public_current_event' | 'brand_product' | 'policy_civic'
 
 export interface DepthBudget {
   query_count: number
@@ -21,6 +23,28 @@ export interface DepthBudget {
 export interface RunCreated {
   run_id: string
   cached: boolean
+}
+
+export interface PlannedQuery {
+  query: string
+  purpose: string
+  source_target: string
+}
+
+export interface SearchPlan {
+  topic: string
+  freshness: string | null
+  research_depth: ResearchDepth
+  use_case: UseCase
+  query_budget: number
+  url_budget: number
+  item_budget: number
+  source_diversity_target: number
+  estimated_brave_queries: number
+  monthly_quota_used: number
+  monthly_quota_remaining: number
+  quota_warning: string | null
+  queries: PlannedQuery[]
 }
 
 export interface Run {
@@ -41,7 +65,9 @@ export interface Report {
     topic?: string
     freshness?: string | null
     research_depth?: ResearchDepth
+    use_case?: UseCase
     depth_budget?: Partial<DepthBudget>
+    search_plan?: SearchPlan
   }
   overall: { positive: number; neutral: number; negative: number; total: number }
   by_source: Record<string, SourceStats | undefined>
@@ -161,6 +187,18 @@ export async function createRun(req: RunRequest): Promise<RunCreated> {
     body: JSON.stringify(req),
   })
   if (!res.ok) throw new Error(`POST /api/runs failed: ${res.status}`)
+  return res.json()
+}
+
+export async function previewSearchPlan(req: RunRequest): Promise<SearchPlan> {
+  const params = new URLSearchParams({
+    topic: req.topic,
+    research_depth: req.research_depth ?? 'standard',
+    use_case: req.use_case ?? 'generic',
+  })
+  if (req.freshness) params.set('freshness', req.freshness)
+  const res = await fetch(`${API_BASE_URL}/api/search-plan?${params}`)
+  if (!res.ok) throw new Error(`GET /api/search-plan failed: ${res.status}`)
   return res.json()
 }
 

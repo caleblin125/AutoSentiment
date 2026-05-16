@@ -102,6 +102,13 @@ def test_extract_result_urls_supports_legacy_top_level_shape() -> None:
     ]
 
 
+def test_is_cached_search_reports_valid_cache_entry() -> None:
+    search._search_cache[("topic", "pm", 5)] = (search.monotonic(), ["https://example.com"])
+
+    assert search.is_cached_search(" Topic ", freshness="pm", count=5)
+    assert not search.is_cached_search("Topic", freshness="pw", count=5)
+
+
 @pytest.mark.asyncio
 async def test_brave_search_uses_cache_without_second_http_call(monkeypatch) -> None:
     calls = 0

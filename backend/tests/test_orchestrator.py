@@ -321,7 +321,7 @@ async def test_cancel_during_search_stops_run_and_emits_cancelled(monkeypatch, s
 
 @pytest.mark.asyncio
 async def test_run_research_respects_query_budget(monkeypatch, session_factory) -> None:
-    settings = Settings(max_queries_per_run=2, max_urls_per_run=20, max_items_per_run=10)
+    settings = Settings(max_urls_per_run=20, max_items_per_run=10)
     searched: list[str] = []
 
     monkeypatch.setattr(orchestrator, "AsyncSessionLocal", session_factory)
@@ -342,12 +342,12 @@ async def test_run_research_respects_query_budget(monkeypatch, session_factory) 
         run_id = run.id
 
     queue = event_bus.register(run_id)
-    await orchestrator.run_research(run_id, "budgeted", None, settings)
+    await orchestrator.run_research(run_id, "budgeted", None, settings, research_depth="quick")
     while await queue.get() is not None:
         pass
     event_bus.deregister(run_id)
 
-    assert len(searched) == 2
+    assert len(searched) == 3
 
 
 @pytest.mark.asyncio
@@ -396,6 +396,37 @@ async def test_run_research_deduplicates_identical_sentiment_snippets(monkeypatc
     assert run is not None
     assert run.report["overall"]["total"] == 3
     assert run.report["timings"]["sentiment_cache_hits"] == 1.0
+
+
+@pytest.mark.asyncio
+async def test_run_research_does_not_count_cached_search_against_quota(monkeypatch, session_factory) -> None:
+    from app.models import BraveQuotaUsage
+
+    settings = Settings(max_urls_per_run=2, max_items_per_run=1)
+
+    monkeypatch.setattr(orchestrator, "AsyncSessionLocal", session_factory)
+    monkeypatch.setattr(orchestrator, "expand_queries", lambda *_a, **_kw: _async(["q"]))
+    monkeypatch.setattr(orchestrator, "is_cached_search", lambda *_a, **_kw: True)
+    monkeypatch.setattr(orchestrator, "brave_search", lambda *_a, **_kw: _async([]))
+    monkeypatch.setattr(orchestrator, "synthesize_report", lambda *_a, **_kw: _async({"themes": [], "narrative": ""}))
+
+    async with session_factory() as db:
+        run = Run(topic="cached-search", freshness=None, status="pending")
+        db.add(run)
+        await db.commit()
+        await db.refresh(run)
+        run_id = run.id
+
+    queue = event_bus.register(run_id)
+    await orchestrator.run_research(run_id, "cached-search", None, settings, research_depth="quick")
+    while await queue.get() is not None:
+        pass
+    event_bus.deregister(run_id)
+
+    async with session_factory() as db:
+        usage_rows = (await db.execute(BraveQuotaUsage.__table__.select())).all()
+
+    assert usage_rows == []
 
 
 @pytest.mark.asyncio

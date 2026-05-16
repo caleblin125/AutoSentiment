@@ -71,3 +71,10 @@ def _extract_result_urls(payload: dict) -> list[str]:
     """
     results: Iterable[dict] = payload.get("results") or payload.get("web", {}).get("results") or []
     return [result["url"] for result in results if result.get("url")]
+
+
+def is_cached_search(query: str, *, freshness: str | None = None, count: int = 10) -> bool:
+    clamped_count = max(1, min(count, _BRAVE_MAX_COUNT))
+    cache_key = (query.strip().lower(), freshness, clamped_count)
+    cached = _search_cache.get(cache_key)
+    return bool(cached and monotonic() - cached[0] < _CACHE_TTL_SECONDS)

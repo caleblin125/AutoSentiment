@@ -21,6 +21,7 @@ from app.research_depth import (
     next_depth_name,
     normalize_depth_name,
 )
+from app.search_planner import build_search_plan, normalize_use_case
 
 router = APIRouter()
 
@@ -31,6 +32,7 @@ class RunRequest(BaseModel):
     topic: str
     freshness: Optional[str] = "pm"  # pd | pw | pm | py | None
     research_depth: str = DEFAULT_DEPTH
+    use_case: str = "generic"
 
     @field_validator("topic")
     @classmethod
@@ -52,10 +54,16 @@ class RunRequest(BaseModel):
     def validate_research_depth(cls, value: str) -> str:
         return normalize_depth_name(value)
 
+    @field_validator("use_case")
+    @classmethod
+    def validate_use_case(cls, value: str) -> str:
+        return normalize_use_case(value)
+
 
 class ExpandRunRequest(BaseModel):
     research_depth: Optional[str] = None
     freshness: Optional[str] = None
+    use_case: Optional[str] = None
 
     @field_validator("research_depth")
     @classmethod
@@ -68,6 +76,11 @@ class ExpandRunRequest(BaseModel):
         if value is not None and value not in VALID_FRESHNESS:
             raise ValueError("freshness must be one of: pd, pw, pm, py")
         return value
+
+    @field_validator("use_case")
+    @classmethod
+    def validate_use_case(cls, value: Optional[str]) -> Optional[str]:
+        return normalize_use_case(value) if value is not None else None
 
 
 CACHE_TTL_HOURS = 2
@@ -149,6 +162,32 @@ async def suggest_topics(
     return {"suggestions": suggestions}
 
 
+@router.get("/search-plan")
+async def preview_search_plan(
+    topic: str = Query(min_length=1, max_length=200),
+    freshness: Optional[str] = Query(default="pm"),
+    research_depth: str = Query(default=DEFAULT_DEPTH),
+    use_case: str = Query(default="generic"),
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> dict:
+    """Preview planned search cost and source mix before spending Brave quota."""
+    if freshness is not None and freshness not in VALID_FRESHNESS:
+        raise HTTPException(status_code=422, detail="freshness must be one of: pd, pw, pm, py")
+    try:
+        plan = await build_search_plan(
+            topic.strip(),
+            freshness=freshness,
+            research_depth=research_depth,
+            use_case=use_case,
+            settings=settings,
+            db=db,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return plan.to_dict()
+
+
 @router.delete("/runs")
 async def clear_history(db: AsyncSession = Depends(get_db)) -> dict:
     """Delete all non-running runs (completed, cancelled, error) from the history."""
@@ -218,6 +257,7 @@ async def create_run(
             depth_budget.apply_to_settings(settings),
             research_depth=depth_budget.name,
             depth_budget=depth_budget.to_metadata(),
+            use_case=body.use_case,
         )
     )
 
@@ -321,6 +361,13 @@ async def expand_run(
     depth_budget = get_depth_budget(requested_depth, settings)
     expanded_settings = depth_budget.apply_to_settings(settings)
     expanded_freshness = body.freshness if body.freshness is not None else original.freshness
+    original_metadata = original.report.get("metadata", {}) if original.report else {}
+    original_use_case = (
+        original_metadata.get("use_case")
+        if isinstance(original_metadata, dict)
+        else None
+    )
+    expanded_use_case = body.use_case or (original_use_case if isinstance(original_use_case, str) else "generic")
 
     run = Run(topic=original.topic, freshness=expanded_freshness, status="pending")
     db.add(run)
@@ -369,6 +416,7 @@ async def expand_run(
             frozenset(skip_urls),
             research_depth=depth_budget.name,
             depth_budget=depth_budget.to_metadata(),
+            use_case=expanded_use_case,
         )
     )
 

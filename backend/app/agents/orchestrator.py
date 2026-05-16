@@ -20,7 +20,8 @@ from app.db.session import AsyncSessionLocal
 from app.ingest.fetch import classify_source_type, fetch_items
 from app.models import EvidenceChunk, Run, RunEvent
 from app.reports.builder import build_idea_graph, compute_aspects, compute_counts, compute_source_facts, pick_top_quotes
-from app.tools.search import brave_search
+from app.search_planner import build_search_plan, record_brave_query
+from app.tools.search import brave_search, is_cached_search
 
 if TYPE_CHECKING:
     from app.core.config import Settings
@@ -47,6 +48,7 @@ async def run_research(
     skip_urls: frozenset[str] = frozenset(),
     research_depth: str = "standard",
     depth_budget: dict | None = None,
+    use_case: str = "generic",
 ) -> None:
     """End-to-end pipeline for one run. Runs as a background asyncio task.
 
@@ -126,7 +128,16 @@ async def run_research(
                 ),
                 topic,
             )
-            queries = queries[: settings.max_queries_per_run]
+            search_plan = await build_search_plan(
+                topic,
+                freshness=freshness,
+                research_depth=research_depth,
+                use_case=use_case,
+                settings=settings,
+                db=db,
+                base_queries=queries,
+            )
+            queries = [planned.query for planned in search_plan.queries]
             timings["query_expansion_ms"] = _elapsed_ms(stage_started)
 
             if is_cancelled(run_id):
@@ -150,6 +161,9 @@ async def run_research(
 
                 # Wrap in wait_for so a pending cancel isn't blocked by a slow HTTP response.
                 try:
+                    if not is_cached_search(query, freshness=freshness, count=remaining):
+                        await record_brave_query(db)
+                        await db.commit()
                     search_results = await asyncio.wait_for(
                         brave_search(query, freshness=freshness, count=remaining, settings=settings),
                         timeout=12.0,
@@ -291,7 +305,9 @@ async def run_research(
                     "topic": topic,
                     "freshness": freshness,
                     "research_depth": research_depth,
+                    "use_case": use_case,
                     "depth_budget": depth_budget or {},
+                    "search_plan": search_plan.to_dict(),
                 },
                 **counts,
                 "top_positive": top_positive,

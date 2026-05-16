@@ -48,6 +48,7 @@ async def test_create_run_persists_pending_run_registers_queue_and_schedules_tas
     assert args[3].max_queries_per_run == 6
     assert args[3].max_urls_per_run == 30
     assert kwargs["research_depth"] == "standard"
+    assert kwargs["use_case"] == "generic"
 
     event_bus.deregister(response.run_id)
 
@@ -105,6 +106,25 @@ def test_run_request_validates_topic_and_freshness() -> None:
         routes.RunRequest(topic="topic", freshness="bad")
     with pytest.raises(ValueError):
         routes.RunRequest(topic="topic", research_depth="too-much")
+    with pytest.raises(ValueError):
+        routes.RunRequest(topic="topic", use_case="not-real")
+
+
+@pytest.mark.asyncio
+async def test_preview_search_plan_returns_quota_and_queries(db_session) -> None:
+    payload = await routes.preview_search_plan(
+        topic="Movie launch",
+        freshness="pm",
+        research_depth="quick",
+        use_case="entertainment_product",
+        db=db_session,
+        settings=Settings(),
+    )
+
+    assert payload["estimated_brave_queries"] == 3
+    assert payload["monthly_quota_remaining"] == 2000
+    assert payload["queries"]
+    assert payload["queries"][0]["purpose"]
 
 
 @pytest.mark.asyncio
@@ -256,7 +276,7 @@ async def test_expand_run_creates_new_run_with_requested_depth(monkeypatch, db_s
         topic="EVs",
         freshness="pm",
         status="completed",
-        report={"metadata": {"research_depth": "standard"}},
+        report={"metadata": {"research_depth": "standard", "use_case": "entertainment_product"}},
     )
     db_session.add(original)
     await db_session.commit()
@@ -284,6 +304,7 @@ async def test_expand_run_creates_new_run_with_requested_depth(monkeypatch, db_s
     assert expanded_settings.max_urls_per_run == 60
     assert expanded_settings.max_items_per_run == 180
     assert kwargs["research_depth"] == "deep"
+    assert kwargs["use_case"] == "entertainment_product"
     assert kwargs["depth_budget"]["query_count"] == 10
 
     event_bus.deregister(response.run_id)

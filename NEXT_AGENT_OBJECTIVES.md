@@ -448,6 +448,18 @@ Benchmark result from the synthetic fetch-client case:
 - optimized: 1 HTTP client created
 - elapsed time was not faster under in-memory mock transport; treat this as a resource and real-network connection-pooling improvement.
 
+Implemented the first pass of Objective 2:
+
+- Added central search planner in `backend/app/search_planner.py`.
+- Added `use_case` support for generic, entertainment product, public current event, brand/product, and policy/civic planning.
+- Added `GET /api/search-plan` so the frontend can preview queries and Brave quota cost before a run starts.
+- Added SQLite-backed monthly Brave quota tracking in `BraveQuotaUsage`.
+- Orchestrator now records non-cached Brave query usage as searches are dispatched.
+- Frontend now shows use-case selection, planned query purposes, estimated Brave queries, and remaining monthly quota.
+- Cached Brave search results no longer count against tracked monthly quota.
+
+Objective 2 still needs a richer long-term quota dashboard and configurable monthly limits, but the planner, preview, and accounting foundation are in place.
+
 ```bash
 cd /home/asus/AutoSentiment/frontend
 npm run lint

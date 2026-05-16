@@ -53,3 +53,11 @@ class RunEvent(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
 
     run: Mapped["Run"] = relationship(back_populates="events")
+
+
+class BraveQuotaUsage(Base):
+    __tablename__ = "brave_quota_usage"
+
+    month: Mapped[str] = mapped_column(String, primary_key=True)
+    query_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
