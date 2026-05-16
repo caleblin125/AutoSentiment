@@ -567,6 +567,105 @@ def _event_description(chunk: EvidenceChunk) -> str:
     return chunk.summary[:140] + ("…" if len(chunk.summary) > 140 else "")
 
 
+def compute_threads(chunks: list[EvidenceChunk], topic: str, limit: int = 12) -> list[dict]:
+    """Extract fine-grain recurring topic threads from evidence.
+
+    Each thread is a cluster of related phrases that appear across multiple
+    sources. Threads carry temporal provenance (when they appeared), source
+    diversity, and sentiment distribution so users can trace how opinions
+    evolved and click any thread to launch a deeper search.
+    """
+    # Build 2-gram and 3-gram frequency map from all evidence.
+    topic_lower = topic.lower()
+    topic_tokens = set(re.findall(r"[a-zA-Z][a-zA-Z0-9-]{2,}", topic_lower))
+    ngram_map: dict[str, Counter] = defaultdict(Counter)
+    ngram_docs: dict[str, list[dict]] = defaultdict(list)
+    for chunk in chunks:
+        text = f"{chunk.summary} {chunk.snippet}".lower()
+        tokens = [t for t in re.findall(r"[a-zA-Z][a-zA-Z0-9-]{2,}", text)
+                  if t not in STOP_WORDS and t not in topic_tokens]
+        phrases: set[str] = set()
+        for i in range(len(tokens) - 1):
+            bigram = f"{tokens[i]} {tokens[i + 1]}"
+            if 8 <= len(bigram) <= 60:
+                phrases.add(bigram)
+        for i in range(len(tokens) - 2):
+            trigram = f"{tokens[i]} {tokens[i + 1]} {tokens[i + 2]}"
+            if 12 <= len(trigram) <= 80:
+                phrases.add(trigram)
+        for phrase in phrases:
+            ngram_map[phrase][str(chunk.label)] += 1
+            ngram_docs[phrase].append({
+                "evidence_id": chunk.id,
+                "source_type": chunk.source_type,
+                "label": chunk.label,
+                "date": chunk.retrieved_at.date().isoformat() if chunk.retrieved_at else "unknown",
+                "domain": urlparse(chunk.url).netloc.removeprefix("www.") or "unknown",
+                "snippet": chunk.summary[:120],
+            })
+
+    # Filter to recurring phrases (≥ 2 chunks).
+    recurring = [(phrase, counts) for phrase, counts in ngram_map.items()
+                 if sum(counts.values()) >= 2]
+    recurring.sort(key=lambda item: sum(item[1].values()), reverse=True)
+
+    # Cluster overlapping phrases into threads.
+    threads: list[dict] = []
+    used_phrases: set[str] = set()
+    for phrase, counts in recurring:
+        if phrase in used_phrases:
+            continue
+        # Find related phrases that share tokens.
+        phrase_tokens = set(phrase.split())
+        cluster = [phrase]
+        cluster_counts = Counter(counts)
+        for other, oc in recurring:
+            if other == phrase or other in used_phrases:
+                continue
+            other_tokens = set(other.split())
+            if phrase_tokens & other_tokens and len(phrase_tokens & other_tokens) >= 1:
+                cluster.append(other)
+                cluster_counts.update(oc)
+                used_phrases.add(other)
+        used_phrases.add(phrase)
+
+        # Merge documents from all clustered phrases.
+        all_docs: list[dict] = []
+        seen_evidence: set[str] = set()
+        for p in cluster:
+            for doc in ngram_docs.get(p, []):
+                if doc["evidence_id"] not in seen_evidence:
+                    seen_evidence.add(doc["evidence_id"])
+                    all_docs.append(doc)
+
+        total = sum(cluster_counts.values())
+        dominant = max(SentimentLabel, key=lambda l: cluster_counts[l.value])
+        domains = list({doc["domain"] for doc in all_docs})[:5]
+        dates = sorted({doc["date"] for doc in all_docs if doc["date"] != "unknown"})
+
+        threads.append({
+            "phrase": cluster[0],
+            "cluster": cluster[:4],
+            "total_mentions": total,
+            "positive": cluster_counts["positive"] / max(1, total),
+            "neutral": cluster_counts["neutral"] / max(1, total),
+            "negative": cluster_counts["negative"] / max(1, total),
+            "dominant_sentiment": dominant.value,
+            "source_count": len(domains),
+            "evidence_count": len(seen_evidence),
+            "domains": domains,
+            "date_range": [dates[0], dates[-1]] if dates else None,
+            "evidence_ids": [doc["evidence_id"] for doc in all_docs[:6]],
+            "sample_snippets": [doc["snippet"] for doc in all_docs[:3]],
+            "search_query": phrase,
+        })
+
+        if len(threads) >= limit:
+            break
+
+    return threads
+
+
 def build_idea_graph(topic: str, chunks: list[EvidenceChunk], themes: list[str], aspects: list[dict]) -> dict:
     """Build a small graph linking topic, sentiment, themes, aspects, sources, and evidence.
 

@@ -402,7 +402,12 @@ export function RunView({ onStatusChange, onOpenRunInNewTab, initialRunId, devMo
       {runId && events.length > 0 && <EventTimeline events={events} status={status} />}
 
       {report && runId && activeTopic && (
-        <ReportView runId={runId} topic={activeTopic} report={report} />
+        <ReportView
+          runId={runId}
+          topic={activeTopic}
+          report={report}
+          onSearchTopic={(subtopic) => { setTopic(subtopic); setCached(false); }}
+        />
       )}
     </div>
   )

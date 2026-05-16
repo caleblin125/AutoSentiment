@@ -434,6 +434,93 @@ input:focus, select:focus, button:focus-visible {
   opacity: 0.65;
 }
 
+/* ── Thread cards ── */
+.thread-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 10px;
+}
+
+.thread-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.thread-card:hover {
+  border-color: var(--rog-cyan);
+  box-shadow: 0 0 0 1px var(--rog-cyan-dim);
+}
+
+.thread-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.thread-card-header strong {
+  font-size: 13px;
+  color: var(--text-strong);
+  max-width: 70%;
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.thread-card-bar {
+  display: flex;
+  height: 4px;
+  border-radius: 2px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.thread-card-meta {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text);
+  opacity: 0.7;
+  margin-bottom: 6px;
+}
+
+.thread-card-snippets p {
+  font-size: 11px;
+  color: var(--text);
+  opacity: 0.8;
+  margin: 0 0 4px;
+  font-style: italic;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.thread-card-domains {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+
+.thread-domain-tag {
+  font-family: var(--mono);
+  font-size: 9px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
 button {
   min-height: 40px;
   border: 1px solid var(--rog-red);

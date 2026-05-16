@@ -11,7 +11,7 @@ import {
 import { ForceGraph } from './ForceGraph'
 import { HistoryChart } from './HistoryChart'
 
-interface Props { runId: string; topic: string; report: Report }
+interface Props { runId: string; topic: string; report: Report; onSearchTopic?: (topic: string) => void }
 
 // ── Favicon / provider helpers ────────────────────────────────────────────
 
@@ -602,10 +602,11 @@ function EvidenceModal({ chunk, onClose }: { chunk: EvidenceChunk; onClose: () =
 
 // ── Report tabs ────────────────────────────────────────────────────────
 
-type ReportTab = 'summary' | 'timeline' | 'evidence' | 'claims' | 'graph' | 'performance'
+type ReportTab = 'summary' | 'topics' | 'timeline' | 'evidence' | 'claims' | 'graph' | 'performance'
 
 const REPORT_TABS: Array<{ id: ReportTab; label: string }> = [
   { id: 'summary', label: 'Summary' },
+  { id: 'topics', label: 'Topics' },
   { id: 'timeline', label: 'Timeline' },
   { id: 'evidence', label: 'Evidence' },
   { id: 'claims', label: 'Claims' },
@@ -615,7 +616,7 @@ const REPORT_TABS: Array<{ id: ReportTab; label: string }> = [
 
 // ── Main component ────────────────────────────────────────────────────────
 
-export function ReportView({ runId, topic, report }: Props) {
+export function ReportView({ runId, topic, report, onSearchTopic }: Props) {
   const [activeChunk, setActiveChunk] = useState<EvidenceChunk | null>(null)
   const [loadingChunk, setLoadingChunk] = useState(false)
   const [highlightedId, setHighlightedId] = useState<string | null>(null)
@@ -670,7 +671,7 @@ export function ReportView({ runId, topic, report }: Props) {
 
   const {
     overall, by_source, top_positive, top_negative, themes, narrative,
-    timings, aspects, source_facts, timeline, fact_check, use_case_insights, chart_data, graph, impacts, reasons, arguments: args,
+    timings, aspects, source_facts, timeline, fact_check, threads, use_case_insights, chart_data, graph, impacts, reasons, arguments: args,
   } = report
 
   function exportReport(format: 'json' | 'csv' | 'markdown') {
@@ -767,6 +768,65 @@ export function ReportView({ runId, topic, report }: Props) {
           <AnalysisSection impacts={impacts} reasons={reasons} arguments={args} />
 
           {chart_data && <ChartDataSection chartData={chart_data} />}
+        </div>
+      )}
+
+      {/* ── Topics tab ── */}
+      {activeTab === 'topics' && (
+        <div className="report-tab-panel" role="tabpanel">
+          {threads && threads.length > 0 ? (
+            <div className="insight-section">
+              <h3>Recurring topic threads</h3>
+              <p className="muted" style={{ fontSize: 12, marginBottom: 12 }}>
+                Fine-grain phrases appearing across multiple sources. Click any thread to search for deeper sentiment on that topic.
+              </p>
+              <div className="thread-grid">
+                {threads.map(thread => {
+                  return (
+                    <div
+                      className="thread-card"
+                      key={thread.phrase}
+                      onClick={() => onSearchTopic?.(thread.search_query)}
+                      title={`Search for "${thread.search_query}"`}
+                    >
+                      <div className="thread-card-header">
+                        <strong className="clip-text">{thread.phrase}</strong>
+                        <span className={`sentiment-chip sentiment-chip--${thread.dominant_sentiment}`}>
+                          {thread.dominant_sentiment}
+                        </span>
+                      </div>
+                      <div className="thread-card-bar">
+                        <div style={{ flex: thread.positive, background: 'var(--positive)' }} />
+                        <div style={{ flex: thread.neutral, background: 'var(--neutral)' }} />
+                        <div style={{ flex: thread.negative, background: 'var(--rog-red)' }} />
+                      </div>
+                      <div className="thread-card-meta">
+                        <span>{thread.evidence_count} mentions</span>
+                        <span>{thread.source_count} sources</span>
+                        {thread.date_range && (
+                          <span>{thread.date_range[0]} → {thread.date_range[1]}</span>
+                        )}
+                      </div>
+                      {thread.sample_snippets.length > 0 && (
+                        <div className="thread-card-snippets">
+                          {thread.sample_snippets.slice(0, 2).map((snip, i) => (
+                            <p key={i} className="clip-text">"{snip}"</p>
+                          ))}
+                        </div>
+                      )}
+                      <div className="thread-card-domains">
+                        {thread.domains.map(d => (
+                          <span key={d} className="thread-domain-tag">{d}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          ) : (
+            <p className="empty-tab-msg">No recurring topic threads extracted. More evidence may be needed.</p>
+          )}
         </div>
       )}
 

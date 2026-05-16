@@ -60,6 +60,23 @@ export interface Run {
 export interface ImpactItem { direction: 'positive' | 'negative'; description: string }
 export interface ArgumentItem { claim: string; side: 'for' | 'against' }
 
+export interface ThreadItem {
+  phrase: string
+  cluster: string[]
+  total_mentions: number
+  positive: number
+  neutral: number
+  negative: number
+  dominant_sentiment: 'positive' | 'neutral' | 'negative'
+  source_count: number
+  evidence_count: number
+  domains: string[]
+  date_range: [string, string] | null
+  evidence_ids: string[]
+  sample_snippets: string[]
+  search_query: string
+}
+
 export interface Report {
   metadata?: {
     topic?: string
@@ -83,6 +100,7 @@ export interface Report {
   source_facts?: SourceFact[]
   timeline?: ReportTimeline
   fact_check?: FactCheck
+  threads?: ThreadItem[]
   use_case_insights?: UseCaseInsights
   chart_data?: ChartData
   graph?: IdeaGraph

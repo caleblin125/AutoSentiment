@@ -26,6 +26,7 @@ from app.reports.builder import (
     compute_chart_data,
     compute_counts,
     compute_source_facts,
+    compute_threads,
     compute_timeline,
     compute_use_case_insights,
     pick_top_quotes,
@@ -298,6 +299,7 @@ async def run_research(
             source_facts = compute_source_facts(chunks)
             timeline = compute_timeline(chunks, topic)
             fact_check = compute_claims(chunks)
+            threads = compute_threads(chunks, topic)
             use_case_insights = compute_use_case_insights(chunks, use_case, aspects, fact_check)
             chart_data = compute_chart_data(chunks, aspects, fact_check)
             synthesis_limit = _synthesis_limit(depth_budget)
@@ -336,6 +338,7 @@ async def run_research(
                 "source_facts": source_facts,
                 "timeline": timeline,
                 "fact_check": fact_check,
+                "threads": threads,
                 "use_case_insights": use_case_insights,
                 "chart_data": chart_data,
                 "graph": build_idea_graph(topic, chunks, themes, aspects),
