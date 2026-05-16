@@ -38,7 +38,8 @@
 }
 
 .panel h2,
-.quote-list h3 {
+.quote-list h3,
+.insight-section h3 {
   margin: 0 0 12px;
   color: var(--text-strong);
   font-size: 18px;
@@ -301,6 +302,125 @@ button[type="submit"] {
 .narrative {
   margin: 0 0 18px;
   color: var(--text-strong);
+}
+
+.timing-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.timing-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-muted);
+  padding: 10px;
+}
+
+.timing-card span,
+.source-fact span,
+.aspect-card span {
+  display: block;
+  color: var(--text);
+  font-size: 12px;
+}
+
+.timing-card strong {
+  color: var(--text-strong);
+  font-size: 18px;
+}
+
+.timing-card--slowest {
+  border-color: #f59e0b;
+  background: #fffbeb;
+}
+
+.insight-section {
+  margin: 18px 0;
+}
+
+.aspect-grid,
+.source-fact-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.aspect-card,
+.source-fact {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  padding: 10px;
+}
+
+.aspect-card strong,
+.source-fact strong {
+  display: block;
+  color: var(--text-strong);
+  text-transform: capitalize;
+}
+
+.aspect-card--positive {
+  border-left: 4px solid var(--positive);
+}
+
+.aspect-card--neutral {
+  border-left: 4px solid var(--neutral);
+}
+
+.aspect-card--negative {
+  border-left: 4px solid var(--negative);
+}
+
+.idea-graph {
+  width: 100%;
+  height: auto;
+  min-height: 300px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: radial-gradient(circle at center, #fff 0, #f8fafc 70%);
+}
+
+.graph-edge {
+  stroke: #cbd5e1;
+  stroke-opacity: 0.9;
+}
+
+.graph-edge--direction {
+  stroke: #94a3b8;
+}
+
+.graph-node circle {
+  stroke: #fff;
+  stroke-width: 2;
+}
+
+.graph-node text {
+  fill: var(--text-strong);
+  font-size: 11px;
+  text-anchor: middle;
+}
+
+.graph-node--topic circle {
+  fill: #2563eb;
+}
+
+.graph-node--sentiment circle {
+  fill: var(--neutral);
+}
+
+.graph-node--theme circle {
+  fill: #8b5cf6;
+}
+
+.graph-node--aspect circle {
+  fill: #f59e0b;
+}
+
+.graph-node--source circle {
+  fill: #14b8a6;
 }
 
 .quote-list {

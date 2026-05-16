@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from time import perf_counter
 from typing import TYPE_CHECKING
 
 from app.api import event_bus
@@ -10,9 +11,9 @@ from app.agents.light_queue import SentimentQueue
 from app.agents.nemoclaw import expand_queries, synthesize_report
 from app.agents.types import SSEEventType, SentimentLabel
 from app.db.session import AsyncSessionLocal
-from app.ingest.fetch import fetch_items, is_reddit_url
+from app.ingest.fetch import classify_source_type, fetch_items
 from app.models import EvidenceChunk, Run, RunEvent
-from app.reports.builder import compute_counts, pick_top_quotes
+from app.reports.builder import build_idea_graph, compute_aspects, compute_counts, compute_source_facts, pick_top_quotes
 from app.tools.search import brave_search
 
 if TYPE_CHECKING:
@@ -33,6 +34,15 @@ async def run_research(run_id: str, topic: str, freshness: str | None, settings:
     """
     queue = event_bus.get(run_id)
     seq = 0
+    run_started_at = perf_counter()
+    timings: dict[str, float] = {
+        "query_expansion_ms": 0.0,
+        "search_ms": 0.0,
+        "fetch_ms": 0.0,
+        "sentiment_ms": 0.0,
+        "synthesis_ms": 0.0,
+        "total_ms": 0.0,
+    }
 
     async with AsyncSessionLocal() as db:
         async def emit(event_type: SSEEventType, message: str, detail: dict | None = None) -> None:
@@ -72,10 +82,13 @@ async def run_research(run_id: str, topic: str, freshness: str | None, settings:
             )
             await db.commit()
 
-            queries = await expand_queries(topic, settings=settings)
+            stage_started = perf_counter()
+            queries = _expand_platform_queries(await expand_queries(topic, settings=settings), topic)
+            timings["query_expansion_ms"] = _elapsed_ms(stage_started)
             urls: list[str] = []
             seen_urls: set[str] = set()
 
+            stage_started = perf_counter()
             for query in queries:
                 await emit(SSEEventType.SEARCH_QUERIED, "Search queried", {"query": query})
                 await db.commit()
@@ -97,8 +110,10 @@ async def run_research(run_id: str, topic: str, freshness: str | None, settings:
                     urls.append(url)
                     if len(urls) >= settings.max_urls_per_run:
                         break
+            timings["search_ms"] = _elapsed_ms(stage_started)
 
             fetched_items = []
+            stage_started = perf_counter()
             for url in urls:
                 if len(fetched_items) >= settings.max_items_per_run:
                     break
@@ -111,19 +126,27 @@ async def run_research(run_id: str, topic: str, freshness: str | None, settings:
                 source_type = (
                     selected_items[0].source_type.value
                     if selected_items
-                    else ("reddit" if is_reddit_url(url) else "news")
+                    else classify_source_type(url).value
                 )
                 await emit(
                     SSEEventType.URL_FETCHED,
                     "URL fetched",
-                    {"url": url, "source_type": source_type, "item_count": len(selected_items)},
+                    {
+                        "url": url,
+                        "source_type": source_type,
+                        "item_count": len(selected_items),
+                        "duration_ms": _elapsed_ms(stage_started),
+                    },
                 )
                 await db.commit()
+            timings["fetch_ms"] = _elapsed_ms(stage_started)
 
             sentiment_queue = SentimentQueue(settings)
             chunks: list[EvidenceChunk] = []
 
+            stage_started = perf_counter()
             for item in fetched_items:
+                item_started = perf_counter()
                 result = await sentiment_queue.analyze(item.snippet)
                 chunk = EvidenceChunk(
                     run_id=run_id,
@@ -146,13 +169,17 @@ async def run_research(run_id: str, topic: str, freshness: str | None, settings:
                         "summary": chunk.summary,
                         "url": chunk.url,
                         "source_type": chunk.source_type,
+                        "duration_ms": _elapsed_ms(item_started),
                     },
                 )
                 await db.commit()
+            timings["sentiment_ms"] = _elapsed_ms(stage_started)
 
             counts = compute_counts(chunks)
             top_positive = pick_top_quotes(chunks, SentimentLabel.POSITIVE)
             top_negative = pick_top_quotes(chunks, SentimentLabel.NEGATIVE)
+            aspects = compute_aspects(chunks, topic)
+            source_facts = compute_source_facts(chunks)
             chunks_summary = [
                 {
                     "label": chunk.label,
@@ -166,13 +193,21 @@ async def run_research(run_id: str, topic: str, freshness: str | None, settings:
             await emit(SSEEventType.SYNTHESIS_STARTED, "Synthesis started")
             await db.commit()
 
+            stage_started = perf_counter()
             synthesis = await synthesize_report(topic, chunks_summary, counts, settings=settings)
+            timings["synthesis_ms"] = _elapsed_ms(stage_started)
+            themes = synthesis.get("themes", [])
+            timings["total_ms"] = _elapsed_ms(run_started_at)
             report = {
                 **counts,
                 "top_positive": top_positive,
                 "top_negative": top_negative,
-                "themes": synthesis.get("themes", []),
+                "themes": themes,
                 "narrative": synthesis.get("narrative", "Synthesis unavailable."),
+                "timings": timings,
+                "aspects": aspects,
+                "source_facts": source_facts,
+                "graph": build_idea_graph(topic, chunks, themes, aspects),
             }
 
             run.report = report
@@ -193,3 +228,28 @@ async def run_research(run_id: str, topic: str, freshness: str | None, settings:
         finally:
             if queue is not None:
                 queue.put_nowait(None)
+
+
+def _elapsed_ms(started_at: float) -> float:
+    return round((perf_counter() - started_at) * 1000, 2)
+
+
+def _expand_platform_queries(queries: list[str], topic: str) -> list[str]:
+    """Add opinion-heavy platforms while preserving model-generated intent."""
+    platform_queries = [
+        f"{topic} site:reddit.com",
+        f"{topic} site:news.ycombinator.com",
+        f"{topic} site:quora.com",
+        f"{topic} site:youtube.com",
+        f"{topic} forum discussion",
+        f"{topic} user complaints",
+    ]
+    expanded = [*queries, *platform_queries]
+    seen = set()
+    unique = []
+    for query in expanded:
+        normalized = query.strip()
+        if normalized and normalized.lower() not in seen:
+            seen.add(normalized.lower())
+            unique.append(normalized)
+    return unique

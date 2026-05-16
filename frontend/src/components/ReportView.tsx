@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { getEvidence, type EvidenceChunk, type Quote, type Report } from '../lib/api'
+import { getEvidence, type EvidenceChunk, type GraphNode, type IdeaGraph, type Quote, type Report } from '../lib/api'
 
 interface Props {
   runId: string
@@ -33,11 +33,13 @@ export function ReportView({ runId, report }: Props) {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [activeChunk])
 
-  const { overall, by_source, top_positive, top_negative, themes, narrative } = report
+  const { overall, by_source, top_positive, top_negative, themes, narrative, timings, aspects, source_facts, graph } = report
 
   return (
     <section className="panel" aria-label="Report">
       <h2>Report</h2>
+
+      {timings && <TimingSummary timings={timings} />}
 
       <div className="sentiment-bars">
         <SentimentBar label="Positive" value={overall.positive} color="#22c55e" />
@@ -77,6 +79,10 @@ export function ReportView({ runId, report }: Props) {
 
       <p className="narrative">{narrative}</p>
 
+      {aspects && aspects.length > 0 && <AspectSummary aspects={aspects} />}
+      {source_facts && source_facts.length > 0 && <SourceFacts facts={source_facts} />}
+      {graph && graph.nodes.length > 0 && <IdeaGraphView graph={graph} />}
+
       <QuoteList title="Top positive" quotes={top_positive} onCite={openCitation} />
       <QuoteList title="Top negative" quotes={top_negative} onCite={openCitation} />
       {loadingChunk && <p className="muted">Loading evidence...</p>}
@@ -99,6 +105,100 @@ export function ReportView({ runId, report }: Props) {
         </div>
       )}
     </section>
+  )
+}
+
+function TimingSummary({ timings }: { timings: Record<string, number> }) {
+  const rows = [
+    ['Search', timings.search_ms],
+    ['Fetch', timings.fetch_ms],
+    ['Sentiment', timings.sentiment_ms],
+    ['Synthesis', timings.synthesis_ms],
+    ['Total', timings.total_ms],
+  ].filter(([, value]) => typeof value === 'number') as [string, number][]
+
+  if (rows.length === 0) return null
+
+  const slowest = rows.reduce((max, row) => row[1] > max[1] ? row : max, rows[0])
+
+  return (
+    <div className="timing-grid">
+      {rows.map(([label, value]) => (
+        <div className={`timing-card ${slowest?.[0] === label ? 'timing-card--slowest' : ''}`} key={label}>
+          <span>{label}</span>
+          <strong>{formatDuration(value)}</strong>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function AspectSummary({ aspects }: { aspects: NonNullable<Report['aspects']> }) {
+  return (
+    <div className="insight-section">
+      <h3>Directional topics</h3>
+      <div className="aspect-grid">
+        {aspects.map(aspect => (
+          <div className={`aspect-card aspect-card--${aspect.sentiment}`} key={aspect.name}>
+            <strong>{aspect.name}</strong>
+            <span>{aspect.sentiment} · {aspect.count} mentions</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function SourceFacts({ facts }: { facts: NonNullable<Report['source_facts']> }) {
+  return (
+    <div className="insight-section">
+      <h3>Evidence sources</h3>
+      <div className="source-fact-list">
+        {facts.slice(0, 8).map(fact => (
+          <div className="source-fact" key={fact.domain}>
+            <strong>{fact.domain}</strong>
+            <span>{fact.source_type} · {fact.count} items</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function IdeaGraphView({ graph }: { graph: IdeaGraph }) {
+  const layout = layoutGraph(graph.nodes)
+  return (
+    <div className="insight-section">
+      <h3>Idea graph</h3>
+      <svg className="idea-graph" viewBox="0 0 720 360" role="img" aria-label="Topic relationship graph">
+        {graph.edges.map(edge => {
+          const source = layout.get(edge.source)
+          const target = layout.get(edge.target)
+          if (!source || !target) return null
+          return (
+            <line
+              key={`${edge.source}-${edge.target}-${edge.kind}`}
+              className={`graph-edge graph-edge--${edge.kind}`}
+              x1={source.x}
+              y1={source.y}
+              x2={target.x}
+              y2={target.y}
+              strokeWidth={Math.max(1, Math.min(6, edge.weight / 8))}
+            />
+          )
+        })}
+        {graph.nodes.map(node => {
+          const point = layout.get(node.id)
+          if (!point) return null
+          return (
+            <g key={node.id} className={`graph-node graph-node--${node.kind}`}>
+              <circle cx={point.x} cy={point.y} r={nodeRadius(node)} />
+              <text x={point.x} y={point.y + nodeRadius(node) + 14}>{shortLabel(node.label)}</text>
+            </g>
+          )
+        })}
+      </svg>
+    </div>
   )
 }
 
@@ -139,4 +239,33 @@ function QuoteList({ title, quotes, onCite }: {
 
 function pct(ratio: number): string {
   return `${Math.round(ratio * 100)}%`
+}
+
+function formatDuration(ms: number): string {
+  if (ms >= 1000) return `${(ms / 1000).toFixed(1)}s`
+  return `${Math.round(ms)}ms`
+}
+
+function layoutGraph(nodes: GraphNode[]): Map<string, { x: number; y: number }> {
+  const layout = new Map<string, { x: number; y: number }>()
+  const center = { x: 360, y: 180 }
+  const outer = nodes.filter(node => node.kind !== 'topic')
+  layout.set('topic', center)
+  outer.forEach((node, index) => {
+    const angle = (Math.PI * 2 * index) / Math.max(1, outer.length)
+    const radius = node.kind === 'sentiment' ? 110 : 150
+    layout.set(node.id, {
+      x: center.x + Math.cos(angle) * radius,
+      y: center.y + Math.sin(angle) * radius,
+    })
+  })
+  return layout
+}
+
+function nodeRadius(node: GraphNode): number {
+  return Math.max(10, Math.min(28, 8 + Math.sqrt(Math.max(1, node.weight)) * 2))
+}
+
+function shortLabel(label: string): string {
+  return label.length > 22 ? `${label.slice(0, 19)}...` : label
 }

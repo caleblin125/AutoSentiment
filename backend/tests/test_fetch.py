@@ -71,3 +71,11 @@ async def test_fetch_items_returns_empty_list_on_fetch_failure(monkeypatch) -> N
     monkeypatch.setattr(fetch, "_fetch_news", failing_fetch)
 
     assert await fetch.fetch_items("https://news.example/fail") == []
+
+
+def test_classify_source_type_identifies_platforms() -> None:
+    assert fetch.classify_source_type("https://www.reddit.com/r/test") == SourceType.REDDIT
+    assert fetch.classify_source_type("https://news.ycombinator.com/item?id=1") == SourceType.FORUM
+    assert fetch.classify_source_type("https://youtube.com/watch?v=1") == SourceType.VIDEO
+    assert fetch.classify_source_type("https://x.com/example/status/1") == SourceType.SOCIAL
+    assert fetch.classify_source_type("https://example.com/post") == SourceType.WEB

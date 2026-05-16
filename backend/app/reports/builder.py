@@ -6,6 +6,9 @@ The 120B model receives pre-computed counts and writes only themes + narrative.
 
 from __future__ import annotations
 
+import re
+from collections import Counter, defaultdict
+from urllib.parse import urlparse
 from typing import TYPE_CHECKING
 
 from app.agents.types import SentimentLabel, SourceType
@@ -67,6 +70,121 @@ def pick_top_quotes(chunks: list[EvidenceChunk], label: SentimentLabel, n: int =
         for chunk in chunks
         if str(chunk.label) == label.value
     ][:n]
+
+
+ASPECT_KEYWORDS = {
+    "cost": {"cost", "price", "pricing", "expensive", "cheap", "value", "afford", "fee", "fees"},
+    "efficiency": {"efficient", "efficiency", "fast", "slow", "speed", "latency", "battery", "range"},
+    "feasibility": {"feasible", "viable", "practical", "realistic", "possible", "deploy", "adoption"},
+    "reliability": {"reliable", "reliability", "bug", "bugs", "failure", "broken", "quality", "issue"},
+    "support": {"support", "service", "repair", "warranty", "help", "customer"},
+    "safety": {"safe", "safety", "risk", "danger", "recall", "crash"},
+    "trust": {"trust", "truth", "honest", "misleading", "accurate", "accuracy", "data", "source"},
+    "policy": {"policy", "regulation", "legal", "law", "government", "approval", "ratings"},
+}
+STOP_WORDS = {
+    "about", "after", "again", "against", "among", "and", "are", "because", "been", "being",
+    "but", "can", "could", "from", "have", "into", "more", "over", "that", "the", "their",
+    "them", "then", "there", "this", "very", "with", "would", "should", "while", "your",
+}
+
+
+def compute_aspects(chunks: list[EvidenceChunk], topic: str, limit: int = 8) -> list[dict]:
+    """Summarize directional sentiment around recurring aspect keywords."""
+    labels = [label.value for label in SentimentLabel]
+    aspect_counts: dict[str, Counter] = defaultdict(Counter)
+
+    for chunk in chunks:
+        text = f"{chunk.summary} {chunk.snippet}".lower()
+        for aspect, keywords in ASPECT_KEYWORDS.items():
+            if any(keyword in text for keyword in keywords):
+                aspect_counts[aspect][str(chunk.label)] += 1
+
+    for token, count in _topic_terms(topic, chunks).most_common(limit):
+        if token not in aspect_counts and count >= 2:
+            aspect_counts[token]["neutral"] += count
+
+    aspects = []
+    for aspect, counts in aspect_counts.items():
+        total = sum(counts.values())
+        if not total:
+            continue
+        dominant = max(labels, key=lambda label: counts[label])
+        aspects.append(
+            {
+                "name": aspect,
+                "sentiment": dominant,
+                "count": total,
+                "positive": counts["positive"] / total,
+                "neutral": counts["neutral"] / total,
+                "negative": counts["negative"] / total,
+            }
+        )
+
+    return sorted(aspects, key=lambda item: item["count"], reverse=True)[:limit]
+
+
+def compute_source_facts(chunks: list[EvidenceChunk], limit: int = 10) -> list[dict]:
+    """Aggregate evidence domains so opinions can be traced back to source material."""
+    by_domain: dict[str, Counter] = defaultdict(Counter)
+    for chunk in chunks:
+        domain = urlparse(chunk.url).netloc or "unknown"
+        by_domain[domain]["count"] += 1
+        by_domain[domain][str(chunk.label)] += 1
+        by_domain[domain][str(chunk.source_type)] += 1
+
+    facts = []
+    for domain, counts in by_domain.items():
+        labels = {label.value: counts[label.value] for label in SentimentLabel}
+        source_type = max(
+            (source.value for source in SourceType),
+            key=lambda source: counts[source],
+        )
+        facts.append(
+            {
+                "domain": domain,
+                "source_type": source_type,
+                "count": counts["count"],
+                "labels": labels,
+            }
+        )
+    return sorted(facts, key=lambda item: item["count"], reverse=True)[:limit]
+
+
+def build_idea_graph(topic: str, chunks: list[EvidenceChunk], themes: list[str], aspects: list[dict]) -> dict:
+    """Build a small graph linking topic, sentiment, themes, aspects, sources, and evidence."""
+    nodes = [{"id": "topic", "label": topic, "kind": "topic", "weight": max(1, len(chunks))}]
+    edges = []
+
+    for label in SentimentLabel:
+        node_id = f"sentiment:{label.value}"
+        count = sum(1 for chunk in chunks if str(chunk.label) == label.value)
+        nodes.append({"id": node_id, "label": label.value, "kind": "sentiment", "weight": count})
+        edges.append({"source": "topic", "target": node_id, "kind": "sentiment", "weight": count})
+
+    for theme in themes[:6]:
+        node_id = f"theme:{theme}"
+        nodes.append({"id": node_id, "label": theme, "kind": "theme", "weight": 2})
+        edges.append({"source": "topic", "target": node_id, "kind": "theme", "weight": 2})
+
+    for aspect in aspects[:8]:
+        node_id = f"aspect:{aspect['name']}"
+        nodes.append({"id": node_id, "label": aspect["name"], "kind": "aspect", "weight": aspect["count"]})
+        edges.append({"source": "topic", "target": node_id, "kind": "aspect", "weight": aspect["count"]})
+        edges.append({"source": node_id, "target": f"sentiment:{aspect['sentiment']}", "kind": "direction", "weight": aspect["count"]})
+
+    for fact in compute_source_facts(chunks, limit=8):
+        node_id = f"source:{fact['domain']}"
+        nodes.append({"id": node_id, "label": fact["domain"], "kind": "source", "weight": fact["count"]})
+        edges.append({"source": "topic", "target": node_id, "kind": "source", "weight": fact["count"]})
+
+    return {"nodes": nodes, "edges": edges}
+
+
+def _topic_terms(topic: str, chunks: list[EvidenceChunk]) -> Counter:
+    text = " ".join([topic, *(chunk.summary for chunk in chunks)])
+    tokens = re.findall(r"[a-zA-Z][a-zA-Z0-9-]{2,}", text.lower())
+    return Counter(token for token in tokens if token not in STOP_WORDS)
 
 
 async def build_report(chunks: list[EvidenceChunk], topic: str, *, settings: Settings) -> dict:

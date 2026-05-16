@@ -22,14 +22,15 @@ export interface Run {
 
 export interface Report {
   overall: { positive: number; neutral: number; negative: number; total: number }
-  by_source: {
-    reddit?: SourceStats
-    news?: SourceStats
-  }
+  by_source: Record<string, SourceStats | undefined>
   top_positive: Quote[]
   top_negative: Quote[]
   themes: string[]
   narrative: string
+  timings?: Record<string, number>
+  aspects?: AspectInsight[]
+  source_facts?: SourceFact[]
+  graph?: IdeaGraph
 }
 
 export interface SourceStats {
@@ -54,6 +55,41 @@ export interface EvidenceChunk {
   label: 'positive' | 'neutral' | 'negative'
   summary: string
   retrieved_at: string
+}
+
+export interface AspectInsight {
+  name: string
+  sentiment: 'positive' | 'neutral' | 'negative'
+  count: number
+  positive: number
+  neutral: number
+  negative: number
+}
+
+export interface SourceFact {
+  domain: string
+  source_type: string
+  count: number
+  labels: Record<string, number>
+}
+
+export interface IdeaGraph {
+  nodes: GraphNode[]
+  edges: GraphEdge[]
+}
+
+export interface GraphNode {
+  id: string
+  label: string
+  kind: 'topic' | 'sentiment' | 'theme' | 'aspect' | 'source'
+  weight: number
+}
+
+export interface GraphEdge {
+  source: string
+  target: string
+  kind: string
+  weight: number
 }
 
 // ── SSE event types ─────────────────────────────────────────────────────────

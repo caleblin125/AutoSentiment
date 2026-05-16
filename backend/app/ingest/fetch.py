@@ -7,7 +7,7 @@ News URLs:   httpx GET → trafilatura extraction → split into paragraphs.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import urlparse, urlsplit, urlunsplit
 
 import httpx
 import trafilatura
@@ -30,6 +30,22 @@ class FetchedItem:
 
 def is_reddit_url(url: str) -> bool:
     return "reddit.com" in url
+
+
+def classify_source_type(url: str) -> SourceType:
+    """Map common opinion platforms to broad source buckets."""
+    host = urlparse(url).netloc.lower()
+    if "reddit.com" in host:
+        return SourceType.REDDIT
+    if any(domain in host for domain in ("youtube.com", "youtu.be", "tiktok.com")):
+        return SourceType.VIDEO
+    if any(domain in host for domain in ("x.com", "twitter.com", "facebook.com", "instagram.com")):
+        return SourceType.SOCIAL
+    if any(domain in host for domain in ("news.ycombinator.com", "quora.com", "stackexchange.com", "stackoverflow.com")):
+        return SourceType.FORUM
+    if any(term in host for term in ("news", "nytimes", "reuters", "apnews", "bbc", "cnn", "wsj", "bloomberg", "insideevs")):
+        return SourceType.NEWS
+    return SourceType.WEB
 
 
 async def fetch_items(url: str) -> list[FetchedItem]:
@@ -74,7 +90,7 @@ async def _fetch_news(url: str) -> list[FetchedItem]:
 
     extracted = trafilatura.extract(response.text) or ""
     return [
-        FetchedItem(snippet=chunk.strip(), url=url, source_type=SourceType.NEWS)
+        FetchedItem(snippet=chunk.strip(), url=url, source_type=classify_source_type(url))
         for chunk in extracted.split("\n\n")
         if len(chunk.strip()) >= 40
     ]

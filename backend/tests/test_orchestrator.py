@@ -82,17 +82,14 @@ async def test_run_research_completes_and_persists_report(monkeypatch, session_f
     assert run.status == "completed"
     assert run.report["overall"]["total"] == 2
     assert run.report["top_positive"][0]["summary"] == "mock summary"
-    assert [event["type"] for event in streamed] == [
-        "run_started",
-        "search_queried",
-        "search_queried",
-        "url_fetched",
-        "url_fetched",
-        "item_analyzed",
-        "item_analyzed",
-        "synthesis_started",
-        "run_completed",
-    ]
+    assert run.report["timings"]["total_ms"] >= 0
+    assert "graph" in run.report
+    assert "source_facts" in run.report
+    event_types = [event["type"] for event in streamed]
+    assert event_types[0] == "run_started"
+    assert event_types[-1] == "run_completed"
+    assert event_types.count("item_analyzed") == 2
+    assert "synthesis_started" in event_types
     assert len(chunks) == 2
     assert len(events) == len(streamed)
 
@@ -135,6 +132,16 @@ async def test_run_research_marks_run_error_and_emits_sentinel(monkeypatch, sess
     assert run.status == "error"
     assert streamed[-1]["type"] == "run_error"
     assert streamed[-1]["detail"] == {"message": "query failed"}
+
+
+def test_expand_platform_queries_adds_unique_opinion_platforms() -> None:
+    queries = orchestrator._expand_platform_queries(["Tesla Model 3", "tesla model 3"], "Tesla Model 3")
+
+    assert queries[0] == "Tesla Model 3"
+    assert len(queries) == len({query.lower() for query in queries})
+    assert "Tesla Model 3 site:reddit.com" in queries
+    assert "Tesla Model 3 site:youtube.com" in queries
+    assert "Tesla Model 3 forum discussion" in queries
 
 
 async def _async(value):

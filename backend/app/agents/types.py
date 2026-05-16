@@ -11,6 +11,10 @@ class SentimentLabel(StrEnum):
 class SourceType(StrEnum):
     REDDIT = "reddit"
     NEWS = "news"
+    FORUM = "forum"
+    SOCIAL = "social"
+    VIDEO = "video"
+    WEB = "web"
 
 
 class Freshness(StrEnum):

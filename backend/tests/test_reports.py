@@ -31,6 +31,7 @@ def test_compute_counts_overall_and_by_source() -> None:
         "negative": 0.0,
         "count": 2,
     }
+    assert counts["by_source"]["forum"]["count"] == 0
 
 
 def test_pick_top_quotes_returns_expected_shape_and_limit() -> None:
@@ -46,3 +47,21 @@ def test_pick_top_quotes_returns_expected_shape_and_limit() -> None:
         {"summary": "summary 1", "evidence_id": "1", "url": "https://example.com/1"},
         {"summary": "summary 2", "evidence_id": "2", "url": "https://example.com/2"},
     ]
+
+
+def test_report_aspects_source_facts_and_graph_link_evidence() -> None:
+    from app.reports.builder import build_idea_graph, compute_aspects, compute_source_facts
+
+    chunks = [
+        EvidenceChunk(id="1", run_id="r", url="https://reddit.com/r/cars/1", source_type="reddit", snippet="The price is too expensive but range is efficient.", label="negative", summary="price too expensive"),
+        EvidenceChunk(id="2", run_id="r", url="https://news.example/story", source_type="news", snippet="Battery range and efficiency are strong.", label="positive", summary="efficient range"),
+    ]
+
+    aspects = compute_aspects(chunks, "Tesla Model 3")
+    facts = compute_source_facts(chunks)
+    graph = build_idea_graph("Tesla Model 3", chunks, ["pricing"], aspects)
+
+    assert {aspect["name"] for aspect in aspects} >= {"cost", "efficiency"}
+    assert facts[0]["count"] == 1
+    assert any(node["kind"] == "aspect" for node in graph["nodes"])
+    assert any(edge["kind"] == "source" for edge in graph["edges"])
