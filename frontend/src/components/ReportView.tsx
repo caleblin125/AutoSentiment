@@ -4,7 +4,6 @@ import {
   getEvidence,
   type ArgumentItem,
   type EvidenceChunk,
-  type GraphNode,
   type ImpactItem,
   type Quote,
   type Report,
@@ -731,7 +730,6 @@ const REPORT_TABS: Array<{ id: ReportTab; label: string }> = [
 export function ReportView({ runId, topic, report, onSearchTopic, autoScroll }: Props) {
   const [activeChunk, setActiveChunk] = useState<EvidenceChunk | null>(null)
   const [loadingChunk, setLoadingChunk] = useState(false)
-  const [highlightedId, setHighlightedId] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<ReportTab>('summary')
   const [selectedThread, setSelectedThread] = useState<ThreadItem | null>(null)
   const posRef = useRef<HTMLDivElement | null>(null)
@@ -760,45 +758,6 @@ export function ReportView({ runId, topic, report, onSearchTopic, autoScroll }: 
     setLoadingChunk(true)
     try { setActiveChunk(await getEvidence(runId, quote.evidence_id)) }
     finally { setLoadingChunk(false) }
-  }
-
-  /**
-   * Handle clicks on graph nodes — scroll to the relevant quote section
-   * and highlight the best-matching quote for 3 seconds.
-   */
-  function handleGraphNodeClick(node: GraphNode) {
-    const label = node.label.toLowerCase()
-    const allQuotes = [...top_positive, ...top_negative]
-
-    // Decide which section to scroll to and which quote to highlight.
-    let targetRef: React.RefObject<HTMLDivElement | null>
-    let matchQuote: Quote | undefined
-
-    if (node.id === 'sentiment:positive' || node.label.toLowerCase() === 'positive') {
-      targetRef = posRef
-      matchQuote = top_positive[0]
-    } else if (node.id === 'sentiment:negative' || node.label.toLowerCase() === 'negative') {
-      targetRef = negRef
-      matchQuote = top_negative[0]
-    } else {
-      // Theme or aspect — find the quote whose summary contains the label
-      matchQuote = allQuotes.find(q => q.summary.toLowerCase().includes(label))
-      // Scroll to the section that contains the match
-      const inPos = top_positive.some(q => q.evidence_id === matchQuote?.evidence_id)
-      targetRef = inPos ? posRef : negRef
-      if (!matchQuote) {
-        // No match — just scroll to positive section
-        targetRef = posRef
-        matchQuote = top_positive[0]
-      }
-    }
-
-    targetRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-
-    if (matchQuote) {
-      setHighlightedId(matchQuote.evidence_id)
-      setTimeout(() => setHighlightedId(null), 3000)
-    }
   }
 
   const {
@@ -1018,14 +977,14 @@ export function ReportView({ runId, topic, report, onSearchTopic, autoScroll }: 
             title="Top positive"
             quotes={top_positive}
             onCite={openCitation}
-            highlightedId={highlightedId}
+            highlightedId={null}
             sectionRef={posRef}
           />
           <QuoteList
             title="Top negative"
             quotes={top_negative}
             onCite={openCitation}
-            highlightedId={highlightedId}
+            highlightedId={null}
             sectionRef={negRef}
           />
           {aspects && aspects.length > 0 && <AspectSummary aspects={aspects} />}
@@ -1046,7 +1005,7 @@ export function ReportView({ runId, topic, report, onSearchTopic, autoScroll }: 
         <div className="report-tab-panel" role="tabpanel">
           {graph && graph.nodes.length > 0 ? (
             <ErrorBoundary>
-              <ForceGraph graph={graph} runId={runId} onNodeClick={handleGraphNodeClick} />
+              <ForceGraph graph={graph} runId={runId} />
             </ErrorBoundary>
           ) : (
             <p className="empty-tab-msg">No graph data available for this run.</p>

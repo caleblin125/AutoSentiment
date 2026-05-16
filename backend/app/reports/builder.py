@@ -920,86 +920,77 @@ def compute_threads(chunks: list[EvidenceChunk], topic: str, limit: int = 12) ->
 
 
 def build_idea_graph(topic: str, chunks: list[EvidenceChunk], themes: list[str], aspects: list[dict]) -> dict:
-    """Build a small graph linking topic, sentiment, themes, aspects, sources, and evidence.
+    """Build a sentiment-colored graph: red center (topic), colored sources
+    (green=positive, gray=neutral, red=negative), aspects and themes orbit.
 
-    Source nodes carry a representative URL and up to 5 example URLs so the
-    frontend can render a clickable link list inside the node popover.
+    No separate sentiment nodes — source color IS the sentiment signal.
+    Sources cluster near the center based on their dominant sentiment direction.
     """
-    nodes = [{"id": "topic", "label": topic, "kind": "topic", "weight": max(1, len(chunks))}]
-    edges = []
+    nodes: list[dict] = [{"id": "topic", "label": topic, "kind": "topic", "weight": max(1, len(chunks))}]
+    edges: list[dict] = []
 
-    for label in SentimentLabel:
-        node_id = f"sentiment:{label.value}"
-        count = sum(1 for chunk in chunks if str(chunk.label) == label.value)
-        if count > 0:  # skip zero-count sentiment nodes
-            nodes.append({"id": node_id, "label": label.value, "kind": "sentiment", "weight": count})
-            edges.append({"source": "topic", "target": node_id, "kind": "sentiment", "weight": count})
-
+    # ── Theme and aspect nodes connect to topic ────────────────────────
     for theme in themes[:6]:
-        node_id = f"theme:{theme}"
         theme_evidence = [
             c.id for c in chunks
             if theme.lower() in f"{c.summary} {c.snippet}".lower()
         ][:5]
         nodes.append({
-            "id": node_id, "label": theme, "kind": "theme",
+            "id": f"theme:{theme}", "label": theme, "kind": "theme",
             "weight": max(2, len(theme_evidence)), "evidence_ids": theme_evidence,
         })
-        edges.append({"source": "topic", "target": node_id, "kind": "theme", "weight": 2})
+        edges.append({"source": "topic", "target": f"theme:{theme}", "kind": "theme", "weight": 2})
 
     for aspect in aspects[:8]:
-        node_id = f"aspect:{aspect['name']}"
         nodes.append({
-            "id": node_id, "label": aspect["name"], "kind": "aspect",
+            "id": f"aspect:{aspect['name']}", "label": aspect["name"], "kind": "aspect",
             "weight": aspect["count"], "evidence_ids": aspect.get("evidence_ids", []),
         })
-        edges.append({"source": "topic", "target": node_id, "kind": "aspect", "weight": aspect["count"]})
-        # Only connect to the dominant sentiment (not all three) to reduce edge clutter.
-        dominant = aspect["sentiment"]
-        edges.append({"source": node_id, "target": f"sentiment:{dominant}", "kind": "direction", "weight": aspect["count"]})
+        edges.append({"source": "topic", "target": f"aspect:{aspect['name']}", "kind": "aspect", "weight": aspect["count"]})
 
-    # Collect URLs per domain and build a chunk → domain lookup for source linking.
+    # ── Source nodes: colored by dominant sentiment, clustered near topic ──
     domain_urls: dict[str, list[str]] = defaultdict(list)
-    chunk_domains: dict[str, str] = {}
+    domain_sentiment: dict[str, Counter] = defaultdict(Counter)
     for chunk in chunks:
         domain = urlparse(chunk.url).netloc or "unknown"
-        chunk_domains[chunk.id] = domain
+        domain_sentiment[domain][str(chunk.label)] += 1
         if len(domain_urls[domain]) < 5 and chunk.url not in domain_urls[domain]:
             domain_urls[domain].append(chunk.url)
 
     for fact in compute_source_facts(chunks, limit=8):
         domain = fact["domain"]
-        node_id = f"source:{domain}"
         urls = domain_urls.get(domain, [])
+        # Determine dominant sentiment for coloring.
+        dom_counts = domain_sentiment.get(domain, Counter())
+        dominant = max(dom_counts, key=dom_counts.get) if dom_counts else "neutral"
         nodes.append({
-            "id": node_id, "label": domain, "kind": "source",
+            "id": f"source:{domain}", "label": domain, "kind": "source",
             "weight": fact["count"], "url": urls[0] if urls else None, "urls": urls,
+            "sentiment": dominant,
         })
-        # Connect source to topic.
-        edges.append({"source": "topic", "target": node_id, "kind": "source", "weight": fact["count"]})
+        # Connect source to topic — spring rest distance varies by sentiment
+        # so sources cluster in directionality zones.
+        edges.append({"source": "topic", "target": f"source:{domain}", "kind": "source", "weight": fact["count"]})
         # Connect source to themes/aspects where its evidence appears.
         source_evidence = {c.id for c in chunks if urlparse(c.url).netloc == domain}
         for theme in themes[:6]:
-            theme_node = f"theme:{theme}"
             theme_ids = {c.id for c in chunks if theme.lower() in f"{c.summary} {c.snippet}".lower()}
             if source_evidence & theme_ids:
-                edges.append({"source": theme_node, "target": node_id, "kind": "source", "weight": 1})
+                edges.append({"source": f"theme:{theme}", "target": f"source:{domain}", "kind": "source", "weight": 1})
         for aspect in aspects[:8]:
-            aspect_node = f"aspect:{aspect['name']}"
             aspect_ids = set(aspect.get("evidence_ids", []))
             if source_evidence & aspect_ids:
-                edges.append({"source": aspect_node, "target": node_id, "kind": "source", "weight": 1})
-        # Only add 1 URL sub-node per source (not 3) to reduce clutter.
+                edges.append({"source": f"aspect:{aspect['name']}", "target": f"source:{domain}", "kind": "source", "weight": 1})
+        # URL sub-node for each source.
         if urls:
             url = urls[0]
             url_id = f"url:{url[:60]}"
             path = urlparse(url).path.rstrip("/") or "/"
-            short_path = path[:28] + "…" if len(path) > 28 else path
             nodes.append({
-                "id": url_id, "label": short_path or domain, "kind": "url",
-                "weight": 1, "url": url, "urls": [url],
+                "id": url_id, "label": path[:28] + "…" if len(path) > 28 else (path or domain),
+                "kind": "url", "weight": 1, "url": url, "urls": [url],
             })
-            edges.append({"source": node_id, "target": url_id, "kind": "source", "weight": 1})
+            edges.append({"source": f"source:{domain}", "target": url_id, "kind": "source", "weight": 1})
 
     return {"nodes": nodes, "edges": edges}
 

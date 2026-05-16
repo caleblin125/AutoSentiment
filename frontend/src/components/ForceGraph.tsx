@@ -368,11 +368,9 @@ function TopicDetailPopover({ node, runId, x, y, onClose }: {
 interface Props {
   graph: IdeaGraph
   runId: string
-  /** Called when the user left-clicks a sentiment node to scroll to quotes. */
-  onNodeClick?: (node: GraphNode) => void
 }
 
-export function ForceGraph({ graph, runId, onNodeClick }: Props) {
+export function ForceGraph({ graph, runId }: Props) {
   const [hiddenKinds, setHiddenKinds] = useState<Set<GraphNode['kind']>>(new Set())
   const [searchQuery, setSearchQuery] = useState('')
   const [zoom, setZoom] = useState(1)
@@ -386,7 +384,6 @@ export function ForceGraph({ graph, runId, onNodeClick }: Props) {
   const [showMinimap, setShowMinimap] = useState(true)
 
   const visibleNodes = useMemo(() => graph.nodes.filter(node => {
-    if (node.kind === 'sentiment' && node.weight <= 0) return false
     if (hiddenKinds.has(node.kind as GraphNode['kind'])) return false
     return true
   }), [graph.nodes, hiddenKinds])
@@ -445,10 +442,8 @@ export function ForceGraph({ graph, runId, onNodeClick }: Props) {
     } else if (node.kind === 'theme' || node.kind === 'aspect') {
       setPopover(null)
       setTopicDetail({ node, x: e.clientX + 12, y: e.clientY + 4 })
-    } else if (node.kind === 'sentiment') {
-      onNodeClick?.(node)
     } else if (node.url) {
-      window.open(node.url, '_blank')
+      window.open(node.url, '_blank', 'noreferrer')
     }
   }
 
@@ -646,7 +641,7 @@ export function ForceGraph({ graph, runId, onNodeClick }: Props) {
             const r = nodeRadius(node)
             const isUrl = node.kind === 'url'
             const hasLinks = (node.kind === 'source' || isUrl) && (node.urls?.length || node.url)
-            const isClickable = hasLinks || node.kind === 'sentiment' || node.kind === 'theme' || node.kind === 'aspect'
+            const isClickable = hasLinks || node.kind === 'theme' || node.kind === 'aspect'
             const dimmedBySearch = matchingIds && !matchingIds.has(node.id)
             const dimmedByFocus = neighborIds && !neighborIds.has(node.id)
             const dimmed = dimmedBySearch || dimmedByFocus

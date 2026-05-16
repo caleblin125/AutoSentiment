@@ -251,11 +251,12 @@ export interface IdeaGraph {
 export interface GraphNode {
   id: string
   label: string
-  kind: 'topic' | 'sentiment' | 'theme' | 'aspect' | 'source' | 'url'
+  kind: 'topic' | 'theme' | 'aspect' | 'source' | 'url'
   weight: number
   url?: string
   urls?: string[]
   evidence_ids?: string[]
+  sentiment?: 'positive' | 'neutral' | 'negative'
 }
 
 export interface GraphEdge {
