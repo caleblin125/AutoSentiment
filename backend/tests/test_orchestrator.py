@@ -426,8 +426,8 @@ async def test_run_research_does_not_count_cached_search_against_quota(monkeypat
 
     settings = Settings(max_urls_per_run=2, max_items_per_run=1)
 
+    monkeypatch.setattr(orchestrator, "supplemental_media_search", lambda *_a, **_kw: _async([]))
     monkeypatch.setattr(orchestrator, "AsyncSessionLocal", session_factory)
-    monkeypatch.setattr(orchestrator, "expand_queries", lambda *_a, **_kw: _async(["q"]))
     monkeypatch.setattr(orchestrator, "is_cached_search", lambda *_a, **_kw: True)
     monkeypatch.setattr(orchestrator, "brave_search", lambda *_a, **_kw: _async([]))
     monkeypatch.setattr(orchestrator, "synthesize_report", lambda *_a, **_kw: _async({"themes": [], "narrative": ""}))
@@ -479,6 +479,7 @@ async def test_run_research_reuses_fetched_url_cache_across_runs(monkeypatch, se
     settings = Settings(max_queries_per_run=1, max_urls_per_run=1, max_items_per_run=4)
     fetch_calls: list[str] = []
 
+    monkeypatch.setattr(orchestrator, "supplemental_media_search", lambda *_a, **_kw: _async([]))
     monkeypatch.setattr(orchestrator, "AsyncSessionLocal", session_factory)
     monkeypatch.setattr(orchestrator, "expand_queries", lambda *_a, **_kw: _async(["q"]))
     monkeypatch.setattr(orchestrator, "brave_search", lambda *_a, **_kw: _async(["https://news.example/cached"]))
