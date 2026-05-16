@@ -2581,6 +2581,17 @@ button[type="submit"] {
 
 .nemoclaw-col li { font-size: 12px; line-height: 1.4; }
 
+.nemoclaw-loading { padding: 12px 16px; }
+.nemoclaw-cat-title { font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.8px; margin: 0 0 6px; font-weight: 700; }
+.nemoclaw-cat-title--positive { color: var(--positive); }
+.nemoclaw-cat-title--negative { color: var(--rog-red); }
+.nemoclaw-cat-title--neutral  { color: var(--rog-cyan); }
+.nemoclaw-cat-item { font-size: 12px; line-height: 1.4; }
+.nemoclaw-cat-item--positive { color: var(--positive); }
+.nemoclaw-cat-item--negative { color: var(--rog-red); }
+.nemoclaw-cat-item--neutral  { color: var(--rog-cyan); }
+.status-spinner--xs { width: 10px; height: 10px; }
+
 /* ── Suggest button ──────────────────────────────────────────────────────── */
 
 .btn-suggest {

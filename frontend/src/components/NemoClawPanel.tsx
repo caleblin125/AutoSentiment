@@ -48,7 +48,7 @@ export function NemoClawPanel({ ncRunId, topic }: Props) {
           <span className="nemoclaw-subtitle">Autonomous expert research · {topic}</span>
         </div>
         <span className={`nemoclaw-status nemoclaw-status--${status}`}>
-          {status === 'running' && <><span className="status-spinner" style={{ width: 10, height: 10 }} /> Researching</>}
+          {status === 'running' && <><span className="status-spinner status-spinner--xs" /> Researching</>}
           {status === 'completed' && '✓ Complete'}
           {status === 'cancelled' && '⊘ Stopped'}
           {status === 'error'    && '⚠ Error'}
@@ -93,17 +93,14 @@ export function NemoClawPanel({ ncRunId, topic }: Props) {
               </div>
             )}
             {report.categories.map((cat, ci) => {
-              const color = cat.side === 'positive' ? 'var(--positive)'
-                          : cat.side === 'negative' ? 'var(--rog-red)'
-                          : 'var(--rog-cyan)'
               return (
                 <div className="nemoclaw-col" key={ci}>
-                  <h4 className="nemoclaw-cat-title" style={{ color, fontSize: '0.95rem', fontWeight: 700, letterSpacing: '0.02em' }}>
+                  <h4 className={`nemoclaw-cat-title nemoclaw-cat-title--${cat.side}`}>
                     {cat.name}
                   </h4>
                   <ul>
                     {cat.items.map((item, i) => (
-                      <li key={i} style={{ color }}>{item}</li>
+                      <li key={i} className={`nemoclaw-cat-item nemoclaw-cat-item--${cat.side}`}>{item}</li>
                     ))}
                   </ul>
                 </div>
@@ -114,9 +111,9 @@ export function NemoClawPanel({ ncRunId, topic }: Props) {
       )}
 
       {status === 'running' && !report && events.length === 0 && (
-        <div style={{ padding: '12px 16px' }}>
+        <div className="nemoclaw-loading">
           <div className="skeleton skeleton-line skeleton-line--full" />
-          <div className="skeleton skeleton-line skeleton-line--medium" style={{ marginTop: 8 }} />
+          <div className="skeleton skeleton-line skeleton-line--medium skeleton-line--mb" />
         </div>
       )}
     </div>
