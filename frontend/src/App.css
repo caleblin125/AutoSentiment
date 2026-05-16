@@ -3727,3 +3727,22 @@ button[type="submit"] {
 .report-tab-panel {
   animation: tab-fadein 0.15s ease-out;
 }
+
+/* ── Timeline URL list row — spans all columns ──────────────────────────── */
+.timeline-event--url-list {
+  display: block;
+  padding: 0 4px 4px;
+}
+.timeline-event--url-list .fetch-url-list {
+  margin-left: 0;
+  width: 100%;
+}
+
+/* ── EventTimeline collapse animation ───────────────────────────────────── */
+@keyframes timeline-expand {
+  from { opacity: 0; max-height: 0; }
+  to   { opacity: 1; max-height: 280px; }
+}
+.timeline-event--url-list .fetch-url-list {
+  animation: timeline-expand 0.18s ease-out;
+}
