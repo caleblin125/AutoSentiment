@@ -38,7 +38,7 @@ async def test_run_research_completes_and_persists_report(monkeypatch, session_f
     monkeypatch.setattr(
         orchestrator,
         "fetch_items",
-        lambda url: _async([FetchedItem(snippet=f"snippet {url}", url=url, source_type=SourceType.REDDIT if "reddit" in url else SourceType.NEWS)]),
+        lambda url, **_kw: _async([FetchedItem(snippet=f"snippet {url}", url=url, source_type=SourceType.REDDIT if "reddit" in url else SourceType.NEWS)]),
     )
     monkeypatch.setattr(
         orchestrator.SentimentQueue,
@@ -208,7 +208,7 @@ async def test_parallel_fetch_respects_item_cap_and_emits_events(monkeypatch, se
 
     call_times: list[float] = []
 
-    async def _fake_fetch(url: str) -> list[FetchedItem]:
+    async def _fake_fetch(url: str, **_kw) -> list[FetchedItem]:
         import time
         call_times.append(time.monotonic())
         # Simulate a small I/O delay to allow genuine concurrency.
@@ -361,7 +361,7 @@ async def test_run_research_deduplicates_identical_sentiment_snippets(monkeypatc
     monkeypatch.setattr(
         orchestrator,
         "fetch_items",
-        lambda _url: _async([
+        lambda _url, **_kw: _async([
             FetchedItem(snippet="Same snippet", url="https://news.example/1", source_type=SourceType.NEWS),
             FetchedItem(snippet=" same   snippet ", url="https://news.example/1", source_type=SourceType.NEWS),
             FetchedItem(snippet="Different snippet", url="https://news.example/1", source_type=SourceType.NEWS),
@@ -400,7 +400,7 @@ async def test_run_research_deduplicates_identical_sentiment_snippets(monkeypatc
 
 @pytest.mark.asyncio
 async def test_fetch_url_timed_returns_empty_items_on_timeout(monkeypatch) -> None:
-    async def slow_fetch(_url: str):
+    async def slow_fetch(_url: str, **_kw):
         await asyncio.sleep(0.02)
         return [FetchedItem(snippet="late", url="https://example.com", source_type=SourceType.NEWS)]
 

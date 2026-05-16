@@ -6,6 +6,7 @@ News URLs:   httpx GET → trafilatura extraction → split into paragraphs.
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from urllib.parse import urlparse, urlsplit, urlunsplit
 
@@ -48,20 +49,25 @@ def classify_source_type(url: str) -> SourceType:
     return SourceType.WEB
 
 
-async def fetch_items(url: str) -> list[FetchedItem]:
+async def fetch_items(url: str, client: httpx.AsyncClient | None = None) -> list[FetchedItem]:
     """Dispatch to reddit or news fetcher based on URL. Returns list of extractable items."""
     try:
         if is_reddit_url(url):
-            return await _fetch_reddit(url)
-        return await _fetch_news(url)
+            return await _fetch_reddit(url, client=client)
+        return await _fetch_news(url, client=client)
     except Exception:
         return []
 
 
-async def _fetch_reddit(url: str) -> list[FetchedItem]:
+async def _fetch_reddit(url: str, client: httpx.AsyncClient | None = None) -> list[FetchedItem]:
     """GET url.json, parse comments array, return up to REDDIT_COMMENTS_PER_THREAD items."""
     reddit_url = _reddit_json_url(url)
-    async with httpx.AsyncClient(timeout=10.0, headers={"User-Agent": _USER_AGENT}) as client:
+    if client is None:
+        async with httpx.AsyncClient(timeout=10.0, headers={"User-Agent": _USER_AGENT}) as own_client:
+            response = await own_client.get(reddit_url)
+            response.raise_for_status()
+            payload = response.json()
+    else:
         response = await client.get(reddit_url)
         response.raise_for_status()
         payload = response.json()
@@ -82,13 +88,17 @@ async def _fetch_reddit(url: str) -> list[FetchedItem]:
     return items
 
 
-async def _fetch_news(url: str) -> list[FetchedItem]:
+async def _fetch_news(url: str, client: httpx.AsyncClient | None = None) -> list[FetchedItem]:
     """httpx GET, trafilatura.extract, split on double-newline into paragraph chunks."""
-    async with httpx.AsyncClient(timeout=10.0, headers={"User-Agent": _USER_AGENT}) as client:
+    if client is None:
+        async with httpx.AsyncClient(timeout=10.0, headers={"User-Agent": _USER_AGENT}) as own_client:
+            response = await own_client.get(url)
+            response.raise_for_status()
+    else:
         response = await client.get(url)
         response.raise_for_status()
 
-    extracted = trafilatura.extract(response.text) or ""
+    extracted = await asyncio.to_thread(trafilatura.extract, response.text) or ""
     return [
         FetchedItem(snippet=chunk.strip(), url=url, source_type=classify_source_type(url))
         for chunk in extracted.split("\n\n")

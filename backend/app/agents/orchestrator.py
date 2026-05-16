@@ -8,6 +8,8 @@ from time import perf_counter
 from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
+import httpx
+
 from app.api import event_bus
 from app.api.event_bus import clear_cancel, is_cancelled, request_cancel as _request_cancel  # noqa: F401
 from app.agents.light_queue import SentimentQueue
@@ -27,6 +29,10 @@ logger = logging.getLogger(__name__)
 
 _FETCH_CONCURRENCY = 8
 _FETCH_TIMEOUT_SECONDS = 15.0
+_FETCH_USER_AGENT = (
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/125.0 Safari/537.36"
+)
 
 
 class _CancelledByUser(Exception):
@@ -175,38 +181,43 @@ async def run_research(
             fetched_items: list[FetchedItem] = []  # type: ignore[name-defined]
             stage_started = perf_counter()
 
-            fetch_tasks = [
-                asyncio.create_task(_fetch_url_timed(url, fetch_sem))
-                for url in urls
-            ]
-            for future in asyncio.as_completed(fetch_tasks):
-                url, items, fetch_ms = await future
-                if is_cancelled(run_id):
-                    for t in fetch_tasks:
-                        t.cancel()
-                    raise _CancelledByUser()
-                remaining = settings.max_items_per_run - len(fetched_items)
-                selected = items[:remaining] if remaining > 0 else []
-                fetched_items.extend(selected)
+            async with httpx.AsyncClient(
+                timeout=10.0,
+                headers={"User-Agent": _FETCH_USER_AGENT},
+                follow_redirects=True,
+            ) as fetch_client:
+                fetch_tasks = [
+                    asyncio.create_task(_fetch_url_timed(url, fetch_sem, fetch_client))
+                    for url in urls
+                ]
+                for future in asyncio.as_completed(fetch_tasks):
+                    url, items, fetch_ms = await future
+                    if is_cancelled(run_id):
+                        for t in fetch_tasks:
+                            t.cancel()
+                        raise _CancelledByUser()
+                    remaining = settings.max_items_per_run - len(fetched_items)
+                    selected = items[:remaining] if remaining > 0 else []
+                    fetched_items.extend(selected)
 
-                source_type = (
-                    selected[0].source_type.value
-                    if selected
-                    else classify_source_type(url).value
-                )
-                domain = _domain_from_url(url)
-                await emit(
-                    SSEEventType.URL_FETCHED,
-                    f"Fetched {len(selected)} items from {domain}",
-                    {
-                        "url": url,
-                        "domain": domain,
-                        "source_type": source_type,
-                        "item_count": len(selected),
-                        "fetch_ms": round(fetch_ms, 1),
-                    },
-                )
-                await db.commit()
+                    source_type = (
+                        selected[0].source_type.value
+                        if selected
+                        else classify_source_type(url).value
+                    )
+                    domain = _domain_from_url(url)
+                    await emit(
+                        SSEEventType.URL_FETCHED,
+                        f"Fetched {len(selected)} items from {domain}",
+                        {
+                            "url": url,
+                            "domain": domain,
+                            "source_type": source_type,
+                            "item_count": len(selected),
+                            "fetch_ms": round(fetch_ms, 1),
+                        },
+                    )
+                    await db.commit()
             timings["fetch_ms"] = _elapsed_ms(stage_started)
 
             # ── Stage 4: sentiment analysis (parallel, capped by SentimentQueue) ──
@@ -342,12 +353,16 @@ def _synthesis_limit(depth_budget: dict | None) -> int:
     return max(12, min(value, 240))
 
 
-async def _fetch_url_timed(url: str, sem: asyncio.Semaphore) -> tuple[str, list, float]:
+async def _fetch_url_timed(
+    url: str,
+    sem: asyncio.Semaphore,
+    client: httpx.AsyncClient | None = None,
+) -> tuple[str, list, float]:
     """Fetch items from one URL, gated by sem, returning (url, items, duration_ms)."""
     t0 = perf_counter()
     async with sem:
         try:
-            items = await asyncio.wait_for(fetch_items(url), timeout=_FETCH_TIMEOUT_SECONDS)
+            items = await asyncio.wait_for(fetch_items(url, client=client), timeout=_FETCH_TIMEOUT_SECONDS)
         except asyncio.TimeoutError:
             logger.warning("Fetch timed out for URL: %s", url)
             items = []

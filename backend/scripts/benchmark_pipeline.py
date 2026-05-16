@@ -17,10 +17,13 @@ import sys
 from pathlib import Path
 from time import perf_counter
 
+import httpx
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.agents.orchestrator import _analyze_item, _analyze_item_cached
 from app.agents.types import SentimentLabel, SentimentResult, SourceType
+from app.ingest import fetch as fetch_mod
 from app.ingest.fetch import FetchedItem
 
 
@@ -68,18 +71,62 @@ async def _run_optimized(items: list[FetchedItem]) -> dict:
     }
 
 
+async def _run_fetch_client_benchmark(total: int = 60) -> dict:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text="<html>benchmark</html>")
+
+    original_async_client = fetch_mod.httpx.AsyncClient
+    original_extract = fetch_mod.trafilatura.extract
+    client_creations = 0
+
+    def client_factory(**kwargs):
+        nonlocal client_creations
+        client_creations += 1
+        return original_async_client(**{**kwargs, "transport": httpx.MockTransport(handler)})
+
+    fetch_mod.httpx.AsyncClient = client_factory  # type: ignore[assignment]
+    fetch_mod.trafilatura.extract = lambda _html: "Benchmark paragraph long enough to become one fetched item."
+    urls = [f"https://news.example/story/{idx}" for idx in range(total)]
+    try:
+        started = perf_counter()
+        await asyncio.gather(*[fetch_mod.fetch_items(url) for url in urls])
+        baseline = {
+            "elapsed_ms": round((perf_counter() - started) * 1000, 2),
+            "http_clients_created": client_creations,
+        }
+
+        client_creations = 0
+        started = perf_counter()
+        async with original_async_client(transport=httpx.MockTransport(handler)) as client:
+            await asyncio.gather(*[fetch_mod.fetch_items(url, client=client) for url in urls])
+        optimized = {
+            "elapsed_ms": round((perf_counter() - started) * 1000, 2),
+            "http_clients_created": 1,
+        }
+    finally:
+        fetch_mod.httpx.AsyncClient = original_async_client  # type: ignore[assignment]
+        fetch_mod.trafilatura.extract = original_extract
+
+    return {"baseline": baseline, "optimized": optimized}
+
+
 async def main() -> None:
     items = _items()
     baseline = await _run_baseline(items)
     optimized = await _run_optimized(items)
+    fetch_client = await _run_fetch_client_benchmark()
     print(json.dumps({
-        "scenario": "sentiment_dedup_80_items_20_unique",
-        "baseline": baseline,
-        "optimized": optimized,
-        "model_call_reduction_pct": round(
-            100 * (baseline["model_calls"] - optimized["model_calls"]) / baseline["model_calls"],
-            2,
-        ),
+        "scenarios": {
+            "sentiment_dedup_80_items_20_unique": {
+                "baseline": baseline,
+                "optimized": optimized,
+                "model_call_reduction_pct": round(
+                    100 * (baseline["model_calls"] - optimized["model_calls"]) / baseline["model_calls"],
+                    2,
+                ),
+            },
+            "fetch_shared_client_60_urls": fetch_client,
+        },
     }, indent=2))
 
 

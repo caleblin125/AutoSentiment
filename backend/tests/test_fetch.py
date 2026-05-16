@@ -64,6 +64,29 @@ async def test_fetch_news_extracts_long_paragraphs(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
+async def test_fetch_items_can_reuse_shared_http_client(monkeypatch) -> None:
+    calls = 0
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(200, text="<html>ignored</html>")
+
+    monkeypatch.setattr(
+        fetch.trafilatura,
+        "extract",
+        lambda _html: "This shared client paragraph is long enough to become a fetched news item.",
+    )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        items = await fetch.fetch_items("https://news.example/story", client=client)
+
+    assert calls == 1
+    assert len(items) == 1
+    assert items[0].snippet.startswith("This shared client paragraph")
+
+
+@pytest.mark.asyncio
 async def test_fetch_items_returns_empty_list_on_fetch_failure(monkeypatch) -> None:
     async def failing_fetch(_url: str):
         raise RuntimeError("network failed")

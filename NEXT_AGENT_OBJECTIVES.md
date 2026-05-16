@@ -424,6 +424,8 @@ Implemented the first pass of Objective 1 and several performance optimizations:
 - Duplicate sentiment snippets within a run share one model call.
 - Added `backend/scripts/benchmark_pipeline.py` for local hot-path benchmarking.
 - Fixed frontend lint issues encountered while validating.
+- Reused one shared HTTP client across orchestrator URL fetches.
+- Moved Trafilatura extraction into a worker thread to avoid blocking the event loop.
 
 Validation completed:
 
@@ -439,6 +441,12 @@ Benchmark result from the synthetic duplicate-sentiment case:
 - baseline: 80 model calls
 - optimized: 20 model calls
 - model call reduction: 75%
+
+Benchmark result from the synthetic fetch-client case:
+
+- baseline: 60 HTTP clients created
+- optimized: 1 HTTP client created
+- elapsed time was not faster under in-memory mock transport; treat this as a resource and real-network connection-pooling improvement.
 
 ```bash
 cd /home/asus/AutoSentiment/frontend
