@@ -99,3 +99,56 @@ def test_run_request_validates_topic_and_freshness() -> None:
         routes.RunRequest(topic="   ", freshness="pm")
     with pytest.raises(ValueError):
         routes.RunRequest(topic="topic", freshness="bad")
+
+
+@pytest.mark.asyncio
+async def test_create_run_returns_cached_when_recent_completed_run_exists(monkeypatch, db_session) -> None:
+    """POST /api/runs must return cached=True and the existing run_id when a
+    completed run for the same topic+freshness exists within the TTL window."""
+    monkeypatch.setattr(routes, "run_research", lambda *_a, **_kw: None)
+
+    # Seed a completed run that is fresh (within TTL).
+    from datetime import UTC, datetime
+    existing = Run(
+        topic="EV trucks",
+        freshness="pm",
+        status="completed",
+        created_at=datetime.now(UTC),
+        report={"overall": {"total": 10}},
+    )
+    db_session.add(existing)
+    await db_session.commit()
+    await db_session.refresh(existing)
+
+    response = await routes.create_run(
+        routes.RunRequest(topic="EV trucks", freshness="pm"),
+        db=db_session,
+        settings=Settings(),
+    )
+
+    assert response.cached is True
+    assert response.run_id == existing.id
+
+
+@pytest.mark.asyncio
+async def test_stream_events_replays_stored_events_for_completed_run(db_session) -> None:
+    """The SSE endpoint must replay stored RunEvent rows for completed runs
+    so cached runs deliver their full event history to the frontend."""
+    from app.models import RunEvent
+
+    run = Run(topic="topic", freshness="pm", status="completed", report={})
+    db_session.add(run)
+    await db_session.flush()
+    ev = RunEvent(run_id=run.id, seq=1, type="run_completed", message="Done", detail={"ok": True})
+    db_session.add(ev)
+    await db_session.commit()
+    await db_session.refresh(run)
+
+    response = await routes.stream_events(run.id, db_session)
+    chunks = [c async for c in response.body_iterator]
+
+    assert len(chunks) == 1
+    import json
+    payload = json.loads(chunks[0].removeprefix("data: ").removesuffix("\n\n"))
+    assert payload["type"] == "run_completed"
+    assert payload["detail"] == {"ok": True}

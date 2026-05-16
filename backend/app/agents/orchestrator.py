@@ -213,6 +213,9 @@ async def run_research(run_id: str, topic: str, freshness: str | None, settings:
                 "top_negative": top_negative,
                 "themes": themes,
                 "narrative": synthesis.get("narrative", "Synthesis unavailable."),
+                "impacts": synthesis.get("impacts", []),
+                "reasons": synthesis.get("reasons", []),
+                "arguments": synthesis.get("arguments", []),
                 "timings": timings,
                 "aspects": aspects,
                 "source_facts": source_facts,
@@ -282,16 +285,37 @@ def _summaries_for_synthesis(chunks: list[EvidenceChunk], limit: int = 40) -> li
 
 
 def _expand_platform_queries(queries: list[str], topic: str) -> list[str]:
-    """Add opinion-heavy platforms while preserving model-generated intent."""
-    platform_queries = [
+    """Expand queries across opinion-heavy social platforms and international sources.
+
+    English social/forum/video platforms come first (highest signal). International
+    queries in Spanish, French, German, and Japanese are appended so Brave can
+    surface non-English discussions that may offer a different perspective.
+    Translation of retrieved snippets is handled by the sentiment queue if enabled.
+    """
+    social_queries = [
+        # Core social / opinion platforms
         f"{topic} site:reddit.com",
-        f"{topic} site:news.ycombinator.com",
+        f"{topic} site:x.com",
+        f"{topic} site:twitter.com",
+        f"{topic} site:threads.net",
         f"{topic} site:quora.com",
         f"{topic} site:youtube.com",
+        f"{topic} site:facebook.com",
+        f"{topic} site:news.ycombinator.com",
+        f"{topic} site:linkedin.com",
+        f"{topic} site:tiktok.com",
+        # Discussion / review aggregators
         f"{topic} forum discussion",
-        f"{topic} user complaints",
+        f"{topic} user review experience",
+        f"{topic} user complaints problems",
+        f"{topic} opinions pros cons",
+        # International queries (Brave will return results in those languages)
+        f"{topic} opinión foro",           # Spanish
+        f"{topic} avis forum discussion",  # French
+        f"{topic} Meinung Erfahrung",      # German
+        f"{topic} 評価 意見 ユーザー",      # Japanese
     ]
-    expanded = [*queries, *platform_queries]
+    expanded = [*queries, *social_queries]
     seen: set[str] = set()
     unique: list[str] = []
     for query in expanded:

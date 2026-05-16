@@ -152,7 +152,11 @@ def compute_source_facts(chunks: list[EvidenceChunk], limit: int = 10) -> list[d
 
 
 def build_idea_graph(topic: str, chunks: list[EvidenceChunk], themes: list[str], aspects: list[dict]) -> dict:
-    """Build a small graph linking topic, sentiment, themes, aspects, sources, and evidence."""
+    """Build a small graph linking topic, sentiment, themes, aspects, sources, and evidence.
+
+    Source nodes carry a representative URL and up to 5 example URLs so the
+    frontend can render a clickable link list inside the node popover.
+    """
     nodes = [{"id": "topic", "label": topic, "kind": "topic", "weight": max(1, len(chunks))}]
     edges = []
 
@@ -173,9 +177,25 @@ def build_idea_graph(topic: str, chunks: list[EvidenceChunk], themes: list[str],
         edges.append({"source": "topic", "target": node_id, "kind": "aspect", "weight": aspect["count"]})
         edges.append({"source": node_id, "target": f"sentiment:{aspect['sentiment']}", "kind": "direction", "weight": aspect["count"]})
 
+    # Collect up to 5 representative URLs per domain for the link popover.
+    domain_urls: dict[str, list[str]] = defaultdict(list)
+    for chunk in chunks:
+        domain = urlparse(chunk.url).netloc or "unknown"
+        if len(domain_urls[domain]) < 5 and chunk.url not in domain_urls[domain]:
+            domain_urls[domain].append(chunk.url)
+
     for fact in compute_source_facts(chunks, limit=8):
-        node_id = f"source:{fact['domain']}"
-        nodes.append({"id": node_id, "label": fact["domain"], "kind": "source", "weight": fact["count"]})
+        domain = fact["domain"]
+        node_id = f"source:{domain}"
+        urls = domain_urls.get(domain, [])
+        nodes.append({
+            "id": node_id,
+            "label": domain,
+            "kind": "source",
+            "weight": fact["count"],
+            "url": urls[0] if urls else None,
+            "urls": urls,
+        })
         edges.append({"source": "topic", "target": node_id, "kind": "source", "weight": fact["count"]})
 
     return {"nodes": nodes, "edges": edges}

@@ -70,9 +70,20 @@ async def synthesize_report(
         f"Analysed {total} items: {pos_pct}% positive, {neu_pct}% neutral, "
         f"{neg_pct}% negative.\n\n"
         f"Sample opinions:\n{sample_opinions}\n\n"
-        "Return exactly: {\"themes\": [\"theme1\", \"theme2\", \"theme3\"], "
-        "\"narrative\": \"2-3 sentence plain-English summary of overall sentiment "
-        "and key drivers\"}"
+        "Return exactly this JSON (no extra keys, no markdown):\n"
+        "{\n"
+        '  "themes": ["theme1", "theme2", "theme3"],\n'
+        '  "narrative": "2-3 sentence plain-English summary",\n'
+        '  "impacts": [\n'
+        '    {"direction": "positive", "description": "..."},\n'
+        '    {"direction": "negative", "description": "..."}\n'
+        "  ],\n"
+        '  "reasons": ["reason the sentiment is what it is", "..."],\n'
+        '  "arguments": [\n'
+        '    {"claim": "...", "side": "for"},\n'
+        '    {"claim": "...", "side": "against"}\n'
+        "  ]\n"
+        "}"
     )
 
     try:
@@ -85,9 +96,21 @@ async def synthesize_report(
         themes = payload.get("themes", [])
         if not isinstance(themes, list):
             themes = []
+        impacts = payload.get("impacts", [])
+        if not isinstance(impacts, list):
+            impacts = []
+        reasons = payload.get("reasons", [])
+        if not isinstance(reasons, list):
+            reasons = []
+        arguments = payload.get("arguments", [])
+        if not isinstance(arguments, list):
+            arguments = []
         return {
-            "themes": [str(theme) for theme in themes],
+            "themes": [str(t) for t in themes],
             "narrative": str(payload.get("narrative", "Synthesis unavailable.")),
+            "impacts": [i for i in impacts if isinstance(i, dict)],
+            "reasons": [str(r) for r in reasons],
+            "arguments": [a for a in arguments if isinstance(a, dict)],
         }
     except Exception:
-        return {"themes": [], "narrative": "Synthesis unavailable."}
+        return {"themes": [], "narrative": "Synthesis unavailable.", "impacts": [], "reasons": [], "arguments": []}

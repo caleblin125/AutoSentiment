@@ -104,12 +104,18 @@ async def test_nemoclaw_wrappers_parse_success_and_fallback(monkeypatch) -> None
     monkeypatch.setattr("app.agents.nemoclaw.ollama_generate", fake_generate)
 
     assert await expand_queries("topic", settings=Settings()) == ["a", "b", "c", "d", "e"]
-    assert await synthesize_report(
+    result = await synthesize_report(
         "topic",
         [{"label": "positive", "summary": "likes range", "source_type": "reddit"}],
         {"overall": {"positive": 1, "neutral": 0, "negative": 0, "total": 1}},
         settings=Settings(),
-    ) == {"themes": ["range", "price"], "narrative": "Mostly positive."}
+    )
+    assert result["themes"] == ["range", "price"]
+    assert result["narrative"] == "Mostly positive."
+    # New fields default to empty lists when the model doesn't return them.
+    assert result["impacts"] == []
+    assert result["reasons"] == []
+    assert result["arguments"] == []
 
     async def failing_generate(*_args, **_kwargs):
         raise RuntimeError("down")

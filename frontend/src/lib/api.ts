@@ -9,6 +9,7 @@ export interface RunRequest {
 
 export interface RunCreated {
   run_id: string
+  cached: boolean
 }
 
 export interface Run {
@@ -20,6 +21,9 @@ export interface Run {
   report: Report | null
 }
 
+export interface ImpactItem { direction: 'positive' | 'negative'; description: string }
+export interface ArgumentItem { claim: string; side: 'for' | 'against' }
+
 export interface Report {
   overall: { positive: number; neutral: number; negative: number; total: number }
   by_source: Record<string, SourceStats | undefined>
@@ -27,6 +31,9 @@ export interface Report {
   top_negative: Quote[]
   themes: string[]
   narrative: string
+  impacts?: ImpactItem[]
+  reasons?: string[]
+  arguments?: ArgumentItem[]
   timings?: Record<string, number>
   aspects?: AspectInsight[]
   source_facts?: SourceFact[]
@@ -83,6 +90,8 @@ export interface GraphNode {
   label: string
   kind: 'topic' | 'sentiment' | 'theme' | 'aspect' | 'source'
   weight: number
+  url?: string
+  urls?: string[]
 }
 
 export interface GraphEdge {

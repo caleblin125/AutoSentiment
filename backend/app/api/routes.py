@@ -1,5 +1,6 @@
 import asyncio
 import json
+from datetime import UTC, datetime, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -12,7 +13,7 @@ from app.api import event_bus
 from app.agents.orchestrator import run_research
 from app.core.config import Settings, get_settings
 from app.db.session import get_db
-from app.models import EvidenceChunk, Run
+from app.models import EvidenceChunk, Run, RunEvent
 
 router = APIRouter()
 
@@ -39,8 +40,11 @@ class RunRequest(BaseModel):
         return value
 
 
+CACHE_TTL_HOURS = 2
+
 class RunResponse(BaseModel):
     run_id: str
+    cached: bool = False
 
 
 def _run_to_dict(run: Run) -> dict:
@@ -109,6 +113,23 @@ async def create_run(
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> RunResponse:
+    # Return a recent completed run for the same topic+freshness instead of
+    # running a full pipeline again (cache TTL = CACHE_TTL_HOURS).
+    cutoff = datetime.now(UTC) - timedelta(hours=CACHE_TTL_HOURS)
+    cached_stmt = (
+        select(Run)
+        .where(Run.topic == body.topic)
+        .where(Run.freshness == body.freshness)
+        .where(Run.status == "completed")
+        .where(Run.created_at >= cutoff)
+        .order_by(desc(Run.created_at))
+        .limit(1)
+    )
+    cached_result = await db.execute(cached_stmt)
+    cached_run = cached_result.scalar_one_or_none()
+    if cached_run is not None:
+        return RunResponse(run_id=cached_run.id, cached=True)
+
     run = Run(topic=body.topic, freshness=body.freshness, status="pending")
     db.add(run)
     await db.commit()
@@ -133,6 +154,20 @@ async def stream_events(run_id: str, db: AsyncSession = Depends(get_db)) -> Stre
     run = await db.get(Run, run_id)
     if run is None:
         raise HTTPException(status_code=404, detail="Run not found")
+
+    # Completed/errored runs replay stored events from the DB so cached runs
+    # can be fully replayed by the frontend without needing a live queue.
+    if run.status in ("completed", "error"):
+        ev_result = await db.execute(
+            select(RunEvent).where(RunEvent.run_id == run_id).order_by(RunEvent.seq)
+        )
+        stored = ev_result.scalars().all()
+
+        async def replay():
+            for ev in stored:
+                yield f"data: {json.dumps({'seq': ev.seq, 'type': ev.type, 'message': ev.message, 'detail': ev.detail or {}})}\n\n"
+
+        return StreamingResponse(replay(), media_type="text/event-stream")
 
     queue = event_bus.get(run_id)
     if queue is None:
